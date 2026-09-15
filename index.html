@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="description" content="不思議のダンジョン系ローグライク『風の村と天輪の塔』— 4ダンジョン＋ラストダンジョン＋もっと不思議のダンジョン">
+<meta name="theme-color" content="#0a0a10">
+<title>風の村と天輪の塔 ― 不思議のダンジョン</title>
+<style>
+  :root {
+    --bg: #05050a;
+    --frame: #1a1520;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%;
+    background: var(--bg);
+    overflow: hidden;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: none;
+    overscroll-behavior: none;
+  }
+  body {
+    display: flex; align-items: center; justify-content: center;
+    font-family: "Hiragino Kaku Gothic ProN", "Hiragino Sans", "Noto Sans JP",
+                 "Yu Gothic UI", "Meiryo", "MS PGothic", sans-serif;
+    color: #e8e4d8;
+  }
+  #stage {
+    position: relative;
+    width: 100%; height: 100%;
+    display: flex; align-items: center; justify-content: center;
+  }
+  canvas#game {
+    display: block;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    background: #000;
+    box-shadow: 0 0 0 1px #2a2436, 0 12px 48px rgba(0,0,0,.8);
+    touch-action: none;
+  }
+  #boot {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 14px; background: var(--bg); z-index: 10;
+    transition: opacity .4s ease;
+  }
+  #boot.hidden { opacity: 0; pointer-events: none; }
+  #boot h1 { font-size: 20px; letter-spacing: .3em; font-weight: 600; color: #cdbb7a; }
+  #boot p  { font-size: 12px; color: #6b6478; letter-spacing: .1em; }
+  #boot .err { color: #e06060; font-size: 12px; max-width: 560px; white-space: pre-wrap;
+               font-family: ui-monospace, monospace; text-align: left; line-height: 1.6; }
+  .spinner {
+    width: 26px; height: 26px; border: 2px solid #2a2436; border-top-color: #cdbb7a;
+    border-radius: 50%; animation: spin 1s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #nojs { color: #e8e4d8; font-size: 13px; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <canvas id="game" width="1280" height="720" tabindex="0" aria-label="ダンジョン画面"></canvas>
+  <div id="boot">
+    <h1>風の村と天輪の塔</h1>
+    <div class="spinner" id="spin"></div>
+    <p>よみこみちゅう…</p>
+    <div class="err" id="boot-err" hidden></div>
+  </div>
+  <noscript><p id="nojs">このゲームには JavaScript が必要です。</p></noscript>
+</div>
+<script type="module">
+  const bootEl = document.getElementById('boot');
+  const errEl  = document.getElementById('boot-err');
+  const spin   = document.getElementById('spin');
+  function fail(msg) {
+    spin.style.display = 'none';
+    errEl.hidden = false;
+    errEl.textContent = String(msg);
+  }
+  window.addEventListener('error', (e) => fail('起動エラー:\n' + (e.error?.stack || e.message)));
+  window.addEventListener('unhandledrejection', (e) => fail('起動エラー:\n' + (e.reason?.stack || e.reason)));
+  try {
+    const mod = await import('./dist/src/main.js');
+    await mod.boot(document.getElementById('game'));
+    bootEl.classList.add('hidden');
+    setTimeout(() => bootEl.remove(), 500);
+  } catch (e) {
+    fail('起動に失敗しました。\n`npm run build` を実行して dist/ を生成してください。\n\n' + (e?.stack || e));
+  }
+</script>
+</body>
+</html>

@@ -1,0 +1,18 @@
+{
+  "name": "fushigi-dungeon",
+  "version": "1.0.0",
+  "private": true,
+  "description": "不思議のダンジョン系ローグライク（トルネコ / 風来のシレン 風）— 依存パッケージゼロの TypeScript + Canvas 実装",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "watch": "tsc -p tsconfig.json --watch",
+    "clean": "rm -rf dist",
+    "test": "tsc -p tsconfig.json && node --test \"dist/test/**/*.test.js\"",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "serve": "python3 -m http.server 8000",
+    "start": "npm run build && npm run serve"
+  },
+  "keywords": ["roguelike", "mystery-dungeon", "不思議のダンジョン", "typescript", "canvas"],
+  "license": "MIT"
+}
