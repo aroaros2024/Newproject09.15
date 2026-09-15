@@ -1,0 +1,182 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import {
+  ALL_ITEMS, validateData, getDungeon, allDungeons, allMonsters,
+  itemsOfKind, UNIDENTIFIED_KINDS, getItem, getMonster,
+} from '../src/data/registry.js';
+import { DUNGEON_ORDER } from '../src/data/dungeons.js';
+import { ALIAS_POOLS } from '../src/data/names.js';
+import { EXCLUSIVE_RUNE_PAIRS, RUNES } from '../src/data/runes.js';
+
+test('データ整合性の検査がすべて通る', () => {
+  const errors = validateData();
+  assert.deepEqual(errors, [], `データ不整合:\n${errors.join('\n')}`);
+});
+
+test('依頼された構成（4 ダンジョン + ラスト + もっと不思議）になっている', () => {
+  assert.deepEqual([...DUNGEON_ORDER], ['d1', 'd2', 'd3', 'd4', 'dl', 'ex']);
+  assert.equal(allDungeons().length, 6);
+  assert.equal(getDungeon('d1').depth, 5);
+  assert.equal(getDungeon('d2').depth, 10);
+  assert.equal(getDungeon('d3').depth, 15);
+  assert.equal(getDungeon('d4').depth, 20);
+  assert.equal(getDungeon('dl').depth, 30, 'ラストダンジョンは 30F');
+  assert.equal(getDungeon('ex').depth, 99, 'もっと不思議は 99F');
+});
+
+test('もっと不思議のダンジョンは持ち込み不可・Lv1 スタート', () => {
+  const ex = getDungeon('ex');
+  assert.equal(ex.allowBring, false);
+  assert.equal(ex.resetLevel, true);
+  assert.equal(ex.allowAlly, false);
+  assert.equal(ex.requires, 'dl', 'ラストをクリアしてから解放される');
+});
+
+test('ストーリーダンジョンは前提が鎖になっている', () => {
+  assert.equal(getDungeon('d1').requires, null);
+  assert.equal(getDungeon('d2').requires, 'd1');
+  assert.equal(getDungeon('d3').requires, 'd2');
+  assert.equal(getDungeon('d4').requires, 'd3');
+  assert.equal(getDungeon('dl').requires, 'd4');
+});
+
+test('d1 はチュートリアルとして十分やさしい', () => {
+  const d1 = getDungeon('d1');
+  assert.equal(d1.monsterHouseRate, 0, 'チュートリアルにモンスターハウスは出さない');
+  assert.equal(d1.windTurns, 0, 'チュートリアルに風は吹かない');
+  assert.equal(d1.bosses.length, 0);
+  const ids = new Set(d1.traps.map((t) => t.id));
+  for (const dangerous of ['mine', 'bigMine', 'monsterHouseTrap', 'curseTrap']) {
+    assert.ok(!ids.has(dangerous), `d1 に ${dangerous} を出してはいけない`);
+  }
+});
+
+test('各ダンジョンに十分な種類のモンスターとアイテムが出る', () => {
+  for (const d of allDungeons()) {
+    assert.ok(d.monsters.length >= 5, `${d.id}: モンスターの種類が少ない`);
+    assert.ok(d.items.length >= 15, `${d.id}: アイテムの種類が少ない`);
+    assert.ok(d.traps.length >= 5, `${d.id}: ワナの種類が少ない`);
+  }
+});
+
+test('すべての階層に出現できるモンスターが存在する', () => {
+  for (const d of allDungeons()) {
+    for (let depth = 1; depth <= d.depth; depth++) {
+      const avail = d.monsters.filter((e) => depth >= e.from && depth <= e.to);
+      assert.ok(avail.length >= 2, `${d.id} ${depth}F: 出現できるモンスターが ${avail.length} 種`);
+    }
+  }
+});
+
+test('すべての階層に出現できるアイテムが存在する', () => {
+  for (const d of allDungeons()) {
+    for (let depth = 1; depth <= d.depth; depth++) {
+      const avail = d.items.filter((e) => depth >= e.from && depth <= e.to);
+      assert.ok(avail.length >= 5, `${d.id} ${depth}F: 出現できるアイテムが ${avail.length} 種`);
+    }
+  }
+});
+
+test('もっと不思議の 1F でも生き延びる道具が出る', () => {
+  const ex = getDungeon('ex');
+  const first = new Set(ex.items.filter((e) => e.from === 1).map((e) => e.id));
+  for (const need of ['healHerb', 'riceBall', 'woodStick', 'woodShield']) {
+    assert.ok(first.has(need), `ex 1F に ${need} が出ない`);
+  }
+});
+
+test('もっと不思議は深層ほど強い敵が出る', () => {
+  const ex = getDungeon('ex');
+  const at = (depth: number): number => {
+    const avail = ex.monsters.filter((e) => depth >= e.from && depth <= e.to);
+    const levels = avail.map((e) => getMonster(e.id).level);
+    return levels.reduce((a, b) => a + b, 0) / levels.length;
+  };
+  const shallow = at(5);
+  const mid = at(50);
+  const deep = at(95);
+  assert.ok(mid > shallow, `50F(${mid.toFixed(1)}) が 5F(${shallow.toFixed(1)}) より強くない`);
+  assert.ok(deep > mid, `95F(${deep.toFixed(1)}) が 50F(${mid.toFixed(1)}) より強くない`);
+});
+
+test('ボスは最深部に配置されている', () => {
+  for (const d of allDungeons()) {
+    for (const b of d.bosses) {
+      assert.equal(b.depth, d.depth, `${d.id}: ボスが最深部にいない`);
+      assert.equal(getMonster(b.monsterId).isBoss, true);
+    }
+  }
+  assert.equal(getDungeon('dl').bosses.length, 2, 'ラストボスは 2 形態');
+});
+
+test('アイテムが各カテゴリに十分な数ある', () => {
+  const want: Record<string, number> = {
+    weapon: 25, shield: 20, herb: 20, scroll: 25, staff: 15,
+    pot: 15, bracelet: 20, food: 8, misc: 5,
+  };
+  for (const [kind, n] of Object.entries(want)) {
+    const got = itemsOfKind(kind as never).length;
+    assert.ok(got >= n, `${kind} が ${got} 種しかない（${n} 種以上必要）`);
+  }
+});
+
+test('モンスターが 60 種以上いる', () => {
+  assert.ok(allMonsters().length >= 60, `モンスターが ${allMonsters().length} 種しかいない`);
+});
+
+test('モンスターの系統が tier 順に繋がっている', () => {
+  for (const m of allMonsters()) {
+    if (!m.evolveTo) continue;
+    const next = getMonster(m.evolveTo);
+    assert.equal(next.family, m.family, `${m.id} の進化先が別系統`);
+    assert.ok(next.tier > m.tier, `${m.id} の進化先の tier が上がっていない`);
+    assert.ok(next.hp > m.hp, `${m.id} → ${next.id} で HP が上がっていない`);
+    assert.ok(next.exp > m.exp, `${m.id} → ${next.id} で経験値が上がっていない`);
+  }
+});
+
+test('ボスと店主は成長の鎖に乗らない', () => {
+  for (const m of allMonsters()) {
+    if (m.isBoss || m.family === 'shop') {
+      assert.equal(m.evolveTo, null, `${m.id} が成長してしまう`);
+    }
+  }
+});
+
+test('未識別カテゴリの仮名プールが足りている', () => {
+  for (const kind of UNIDENTIFIED_KINDS) {
+    const pool = ALIAS_POOLS[kind];
+    const count = itemsOfKind(kind).length;
+    assert.ok(pool.length >= count, `${kind}: プール ${pool.length} < アイテム ${count}`);
+  }
+});
+
+test('排他の印は双方向に定義されている', () => {
+  const ids = new Set(RUNES.map((r) => r.id));
+  for (const [a, b] of EXCLUSIVE_RUNE_PAIRS) {
+    assert.ok(ids.has(a), `排他ペアの ${a} が存在しない`);
+    assert.ok(ids.has(b), `排他ペアの ${b} が存在しない`);
+  }
+});
+
+test('値段と出現重みに極端な値がない', () => {
+  for (const d of ALL_ITEMS) {
+    assert.ok(d.price >= 0, `${d.id}: 値段が負`);
+    assert.ok(d.weight >= 0, `${d.id}: 重みが負`);
+    assert.ok(d.name.length > 0 && d.desc.length > 0, `${d.id}: 名前か説明が空`);
+  }
+});
+
+test('装備の初期印がスロット数に収まっている', () => {
+  for (const d of ALL_ITEMS) {
+    if (d.kind !== 'weapon' && d.kind !== 'shield') continue;
+    assert.ok(d.innate.length <= d.slots, `${d.id}: 初期印がスロットを超えている`);
+  }
+});
+
+test('クリア報酬のアイテムが存在する', () => {
+  for (const d of allDungeons()) {
+    if (d.reward.itemId) assert.doesNotThrow(() => getItem(d.reward.itemId as string));
+    assert.ok(d.reward.message.length > 0, `${d.id}: 報酬メッセージが空`);
+  }
+});

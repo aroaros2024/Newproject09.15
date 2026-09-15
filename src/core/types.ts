@@ -290,33 +290,60 @@ export interface RuneDef {
 // ===========================================================================
 
 export type StatusId =
-  | 'confused' // 混乱: 移動・攻撃の方向がランダムになる
-  | 'blind' // めつぶし: 部屋も敵も見えなくなる
-  | 'asleep' // 睡眠: 行動できない。攻撃されると起きる
-  | 'paralyzed' // かなしばり: 行動できない。攻撃されても解けない
-  | 'poisoned' // 毒: ちからが下がる
-  | 'slow' // 鈍足: 2 ターンに 1 回しか行動できない
-  | 'quick' // 倍速: 1 ターンに 2 回行動できる
-  | 'invisible' // 透明: 敵から見えない
-  | 'sealed' // 封印: 特技・印が使えない
-  | 'levitate' // 浮遊: ワナを踏まない。水路・溶岩の上を歩ける
-  | 'burning' // 炎上: 毎ターンダメージ
-  | 'stuck' // くっつき: 移動できない（もがいて脱出）
-  | 'possessed' // 憑依: 操作が乗っ取られる
-  | 'terrified' // おびえ: プレイヤーから逃げる
-  | 'strengthened' // 強化: 攻撃力上昇
-  | 'shielded' // 身代わり: 攻撃を引き受ける対象になる
-  | 'hungryFast' // ハラペコ: 満腹度の減りが倍
-  | 'regen'; // 高速回復
+  /** 混乱: 5/8 の確率で移動・攻撃の方向がランダムになる */
+  | 'confused'
+  /** めつぶし: 隣接 8 マスしか見えない。命中率 -0.25 */
+  | 'blind'
+  /** 睡眠: 行動不能。ダメージを受けると即解除 */
+  | 'asleep'
+  /** バクスイ: 行動不能。ダメージでも解除されない */
+  | 'deepAsleep'
+  /** かなしばり: 移動と通常攻撃だけ不可。道具は使える */
+  | 'bound'
+  /** まひ: 完全に行動不能 */
+  | 'paralyzed'
+  /** 気絶: 完全に行動不能。受けるダメージ 1.5 倍 */
+  | 'fainted'
+  /** 毒: 付与時にちから -1。HP 自然回復が止まる */
+  | 'poisoned'
+  /** 猛毒: 付与時にちから -2。毎ターン HP -2（HP1 で止まる） */
+  | 'deadlyPoisoned'
+  /** 火傷: 毎ターン HP -3。水に入ると解除 */
+  | 'burning'
+  /** 濡れ: 炎ダメージ半減、雷ダメージ 2 倍。火傷を打ち消す */
+  | 'wet'
+  /** 鈍足: 2 ターンに 1 回しか行動できない */
+  | 'slow'
+  /** 倍速: 1 ターンに 2 回行動できる */
+  | 'quick'
+  /** 透明: 敵から見えない。攻撃すると解除 */
+  | 'invisible'
+  /** 封印: 印・腕輪・特技が無効になる */
+  | 'sealed'
+  /** 消化不良: 満腹度の減りが 2 倍 */
+  | 'hungryFast'
+  /** ちから増加: power の分だけ攻撃力計算上のちからが増える */
+  | 'strUp'
+  /** トラばさみ: 移動不可。毎ターン 1/3 で自力脱出 */
+  | 'trapped'
+  /** 浮遊: ワナを踏まず、水路・溶岩の上を移動できる */
+  | 'levitate'
+  /** おびえ: プレイヤーから逃げる */
+  | 'terrified';
 
 /** 状態異常 1 つ分。turns が 0 以下になったら解除 */
 export interface StatusEffect {
   id: StatusId;
   /** 残りターン。-1 は「解除されるまで永続」 */
   turns: number;
-  /** 効果の強さ（倍速の回数、毒の量など） */
+  /** 効果の強さ（ちから増加の量、毒の段階など）。使わないなら 0 */
   power: number;
 }
+
+/** 完全に行動できなくなる状態 */
+export const INCAPACITATING: readonly StatusId[] = [
+  'asleep', 'deepAsleep', 'paralyzed', 'fainted',
+];
 
 // ===========================================================================
 // ワナ
@@ -410,6 +437,12 @@ export interface MonsterDef {
   isBoss?: boolean;
   /** 仲間にできるか */
   recruitable?: boolean;
+  /** 回避率 0.00〜0.50。既定 0 */
+  evade?: number;
+  /** 会心（痛恨の一撃）率。既定 1/32 */
+  critRate?: number;
+  /** メタル系: 最終ダメージから 20 を引く */
+  metal?: boolean;
   /** 図鑑の説明 */
   desc: string;
 }
@@ -431,8 +464,13 @@ export interface ActorBase {
   statuses: StatusEffect[];
   /** 生きているか（死亡演出の間だけ false で残る） */
   alive: boolean;
-  /** このターン既に行動したか（ターンエンジンが使う） */
+  /** このターン既に行動した回数（ターンエンジンが使う） */
   actedThisTurn: number;
+  /**
+   * HP 自然回復のアキュムレータ（1/1000 単位）。
+   * 浮動小数を貯め込むと誤差が出るので整数で持つ。
+   */
+  regenAcc: number;
 }
 
 export interface PlayerActor extends ActorBase {
@@ -444,9 +482,10 @@ export interface PlayerActor extends ActorBase {
   str: number;
   /** ちからの最大値 */
   maxStr: number;
-  /** 満腹度 */
-  food: number;
-  maxFood: number;
+  /** 満腹度（1/10 単位。1000 = 満腹度 100.0） */
+  foodX10: number;
+  /** 満腹度の最大値（1/10 単位。上限 1500） */
+  maxFoodX10: number;
   gitan: number;
   /** 持ち物 */
   inventory: ItemInstance[];
