@@ -247,6 +247,8 @@ export interface ItemInstance {
   shopPrice: number;
   /** 印を封じられている（封印の巻物など） */
   sealed: boolean;
+  /** 成長の印が数えている撃破数 */
+  growthCount?: number;
 }
 
 /** 床に落ちているアイテム */
@@ -329,7 +331,9 @@ export type StatusId =
   /** 浮遊: ワナを踏まず、水路・溶岩の上を移動できる */
   | 'levitate'
   /** おびえ: プレイヤーから逃げる */
-  | 'terrified';
+  | 'terrified'
+  /** 無敵: ダメージを一切受けない */
+  | 'invincible';
 
 /** 状態異常 1 つ分。turns が 0 以下になったら解除 */
 export interface StatusEffect {

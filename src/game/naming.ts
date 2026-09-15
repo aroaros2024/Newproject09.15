@@ -1,0 +1,166 @@
+/**
+ * アイテムの表示名を組み立てる。
+ *
+ * 不思議のダンジョンでは「名前そのものが情報」なので、
+ * 未識別／修正値不明／呪い／印／残り回数の見せ方をここに集約する。
+ */
+
+import type { IdentifyState, ItemDef, ItemInstance } from '../core/types.js';
+import { getItem, tryGetRune, UNIDENTIFIED_KINDS } from '../data/registry.js';
+import { runeList } from './runes.js';
+import { KIND_SUFFIX } from '../data/names.js';
+
+/** そのカテゴリは未識別の対象か */
+export const isUnidentifiableKind = (def: ItemDef): boolean =>
+  UNIDENTIFIED_KINDS.includes(def.kind) && !def.alwaysIdentified;
+
+/** 種類が判明しているか */
+export function isKnown(item: ItemInstance, id: IdentifyState): boolean {
+  const def = getItem(item.defId);
+  if (def.alwaysIdentified) return true;
+  if (!isUnidentifiableKind(def)) return true; // 武器・盾・食料は種類自体は分かる
+  return !!id.known[item.defId];
+}
+
+/** 修正値まで含めて完全に分かっているか */
+export function isFullyIdentified(item: ItemInstance, id: IdentifyState): boolean {
+  const def = getItem(item.defId);
+  if (def.kind === 'weapon' || def.kind === 'shield' || def.kind === 'bracelet') {
+    return isKnown(item, id) && item.plusKnown;
+  }
+  return isKnown(item, id);
+}
+
+/** 未識別のときに出す仮の名前（「みどりの草」など） */
+export function aliasName(defId: string, id: IdentifyState): string {
+  const def = getItem(defId);
+  const alias = id.alias[defId];
+  const suffix = KIND_SUFFIX[def.kind] ?? '';
+  if (!alias) return `${suffix || def.name}？`;
+  return `${alias}${suffix}`;
+}
+
+export interface NameOptions {
+  /** 個数を付ける（持ち物一覧では付け、メッセージでは省くことがある） */
+  withCount?: boolean;
+  /** 杖の残り回数・壺の中身を付ける */
+  withDetail?: boolean;
+  /** 呪いの印を付ける */
+  withCurse?: boolean;
+  /** すべて識別済みとして表示する（図鑑・店・結果画面） */
+  revealAll?: boolean;
+}
+
+/**
+ * アイテムの表示名。
+ *
+ *   未識別の草            → 「みどりの草」
+ *   識別済みの草          → 「薬草」
+ *   修正値不明の武器      → 「鉄の剣」
+ *   修正値判明の武器      → 「鉄の剣+3」
+ *   印つき                → 「鉄の剣+3[会連]」
+ *   呪われていると分かる  → 「鉄の剣+3[会連]呪」
+ *   杖                    → 「眠りの杖[4]」
+ *   壺                    → 「保存の壺[2/4]」
+ *   まとめられるもの      → 「石 5個」
+ */
+export function itemName(
+  item: ItemInstance, id: IdentifyState, opts: NameOptions = {},
+): string {
+  const def = getItem(item.defId);
+  const known = opts.revealAll || isKnown(item, id);
+  const nickname = id.nicknames[item.defId];
+
+  let base: string;
+  if (def.kind === 'gitan') {
+    return `${item.count}ギタン`;
+  }
+  if (known) {
+    base = def.name;
+  } else if (nickname) {
+    base = `${aliasName(item.defId, id)}（${nickname}）`;
+  } else {
+    base = aliasName(item.defId, id);
+  }
+
+  // 修正値
+  if (def.kind === 'weapon' || def.kind === 'shield' || def.kind === 'bracelet') {
+    if (opts.revealAll || item.plusKnown) {
+      if (item.plus !== 0) base += item.plus > 0 ? `+${item.plus}` : `${item.plus}`;
+    } else if (def.kind !== 'bracelet') {
+      base += '+?';
+    }
+  }
+
+  // 印。重ねた印は「会2」のようにレベルを添える
+  if ((def.kind === 'weapon' || def.kind === 'shield') && item.runes.length > 0) {
+    const symbols = runeList(item).map(({ id: rid, level }) => {
+      const rune = tryGetRune(rid);
+      const sym = rune ? rune.symbol : '？';
+      return level > 1 ? `${sym}${level}` : sym;
+    }).join('');
+    base += item.sealed ? `[${symbols}封]` : `[${symbols}]`;
+  }
+
+  // 杖の残り回数・壺の中身
+  if (opts.withDetail !== false) {
+    if (def.kind === 'staff' && (opts.revealAll || known)) {
+      base += `[${item.charges}]`;
+    }
+    if (def.kind === 'pot') {
+      const cap = (def as { capacity: number }).capacity;
+      base += `[${item.contents.length}/${cap}]`;
+    }
+  }
+
+  // 呪い（識別済みの時だけ見える）
+  if (opts.withCurse !== false && item.cursed && (opts.revealAll || item.plusKnown || known)) {
+    base += '呪';
+  }
+
+  // 個数
+  if (opts.withCount !== false && def.stackable && item.count > 1) {
+    base += ` ${item.count}個`;
+  }
+
+  return base;
+}
+
+/** 「〜を」「〜が」のように助詞を付ける前の短い名前 */
+export const shortItemName = (item: ItemInstance, id: IdentifyState): string =>
+  itemName(item, id, { withCount: false, withDetail: false, withCurse: false });
+
+/** 装備できるカテゴリか */
+export const isEquipment = (def: ItemDef): boolean =>
+  def.kind === 'weapon' || def.kind === 'shield' || def.kind === 'bracelet';
+
+/** 使う系のコマンド名（食べる／読む／飲む／振る） */
+export function useVerb(def: ItemDef): string {
+  switch (def.kind) {
+    case 'herb': return '飲む';
+    case 'scroll': return '読む';
+    case 'staff': return '振る';
+    case 'food': return '食べる';
+    case 'pot': return '使う';
+    default: return '使う';
+  }
+}
+
+/** カテゴリの日本語名 */
+export function kindLabel(kind: string): string {
+  const table: Record<string, string> = {
+    weapon: '武器', shield: '盾', herb: '草', scroll: '巻物', staff: '杖',
+    pot: '壺', bracelet: '腕輪', food: '食料', gitan: 'ギタン', misc: 'その他',
+  };
+  return table[kind] ?? kind;
+}
+
+/** 持ち物一覧での並び順（カテゴリごとにまとめる） */
+export const KIND_ORDER: readonly string[] = [
+  'weapon', 'shield', 'bracelet', 'herb', 'scroll', 'staff', 'pot', 'food', 'misc', 'gitan',
+];
+
+export const kindOrderOf = (kind: string): number => {
+  const i = KIND_ORDER.indexOf(kind);
+  return i < 0 ? KIND_ORDER.length : i;
+};

@@ -200,6 +200,7 @@ export const STATUS_DURATION: Record<string, [number, number]> = {
   trapped: [99, 99],
   levitate: [30, 30],
   terrified: [8, 12],
+  invincible: [30, 30],
 };
 
 /** 混乱時に方向が狂う確率 */

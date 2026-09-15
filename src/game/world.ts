@@ -1,0 +1,264 @@
+/**
+ * 冒険中の世界。
+ *
+ * RunState（セーブに載る素のデータ）に、実行中だけ必要なもの
+ * （生きた Rng、演出イベントのキュー、ダンジョン定義）を足したもの。
+ * ゲームロジックはすべてこの World を受け取って動く。
+ */
+
+import { Rng } from '../core/rng.js';
+import type { Dir, Point } from '../core/geom.js';
+import { chebyshev, samePoint } from '../core/geom.js';
+import type {
+  Actor, DungeonDef, FloorItem, FloorMap, GameEvent, ItemInstance, LogStyle,
+  MonsterActor, MonsterDef, PlayerActor, RunState, StatusId,
+} from '../core/types.js';
+import { getMonster } from '../data/registry.js';
+import { at, canEnter, isOpen } from '../dungeon/tilemap.js';
+
+export class World {
+  readonly run: RunState;
+  readonly dungeon: DungeonDef;
+  rng: Rng;
+  /** 描画側が消化する演出イベント */
+  events: GameEvent[] = [];
+  /** 冒険が終わったか（死亡・クリア・脱出） */
+  finished: null | { kind: 'death' | 'clear' | 'escape'; reason: string } = null;
+  /**
+   * アイテムの実体を作る関数。
+   * spawn 側から注入する（combat から spawn を直接 import すると循環するため）。
+   */
+  itemFactory: ((defId: string) => ItemInstance | null) | null = null;
+
+  constructor(run: RunState, dungeon: DungeonDef) {
+    this.run = run;
+    this.dungeon = dungeon;
+    this.rng = Rng.fromState(run.rng);
+  }
+
+  // ------------------------------------------------------------ 参照
+
+  get map(): FloorMap {
+    return this.run.map;
+  }
+
+  get player(): PlayerActor {
+    return this.run.player;
+  }
+
+  get depth(): number {
+    return this.run.depth;
+  }
+
+  /** 最深部にいるか */
+  get atBottom(): boolean {
+    return this.run.depth >= this.dungeon.depth;
+  }
+
+  /** プレイヤー・仲間・敵をまとめて返す（行動順とは無関係） */
+  allActors(): Actor[] {
+    return [this.run.player, ...this.run.allies, ...this.run.monsters];
+  }
+
+  /** 生きているアクターだけ */
+  livingActors(): Actor[] {
+    return this.allActors().filter((a) => a.alive);
+  }
+
+  actorAt(p: Point): Actor | null {
+    for (const a of this.allActors()) {
+      if (a.alive && samePoint(a.pos, p)) return a;
+    }
+    return null;
+  }
+
+  monsterAt(p: Point): MonsterActor | null {
+    const a = this.actorAt(p);
+    return a && a.kind !== 'player' ? a : null;
+  }
+
+  actorById(id: number): Actor | null {
+    return this.allActors().find((a) => a.id === id) ?? null;
+  }
+
+  /** その場所にある床落ちアイテム（1 マスに 1 つ） */
+  floorItemAt(p: Point): FloorItem | null {
+    return this.run.floorItems.find((f) => samePoint(f.pos, p)) ?? null;
+  }
+
+  removeFloorItem(f: FloorItem): void {
+    const i = this.run.floorItems.indexOf(f);
+    if (i >= 0) this.run.floorItems.splice(i, 1);
+  }
+
+  /** モンスターの静的定義 */
+  defOf(m: MonsterActor): MonsterDef {
+    return getMonster(m.defId);
+  }
+
+  /** 表示名（ボスは固有名を優先） */
+  nameOf(a: Actor): string {
+    if (a.kind === 'player') return a.name;
+    return a.nameOverride ?? this.defOf(a).name;
+  }
+
+  /** 敵対しているか。プレイヤーと仲間は味方同士 */
+  isHostile(a: Actor, b: Actor): boolean {
+    const sideA = a.kind === 'player' || a.kind === 'ally';
+    const sideB = b.kind === 'player' || b.kind === 'ally';
+    if (a.kind === 'shopkeeper' || b.kind === 'shopkeeper') {
+      // 店主は怒っている時だけプレイヤーに敵対する
+      const keeper = a.kind === 'shopkeeper' ? a : (b as MonsterActor);
+      const other = a.kind === 'shopkeeper' ? b : a;
+      if (other.kind === 'player' || other.kind === 'ally') return keeper.angry;
+      return false;
+    }
+    return sideA !== sideB;
+  }
+
+  // ------------------------------------------------------------ 更新
+
+  nextUid(): number {
+    return this.run.nextUid++;
+  }
+
+  nextActorId(): number {
+    return this.run.nextActorId++;
+  }
+
+  addMonster(m: MonsterActor): MonsterActor {
+    if (m.kind === 'ally') this.run.allies.push(m);
+    else this.run.monsters.push(m);
+    return m;
+  }
+
+  removeActor(a: Actor): void {
+    if (a.kind === 'player') return;
+    const list = a.kind === 'ally' ? this.run.allies : this.run.monsters;
+    const i = list.indexOf(a);
+    if (i >= 0) list.splice(i, 1);
+  }
+
+  dropItem(item: ItemInstance, pos: Point): FloorItem | null {
+    const spot = this.findDropSpot(pos);
+    if (!spot) return null;
+    const f: FloorItem = { item, pos: spot };
+    this.run.floorItems.push(f);
+    this.emit({ t: 'itemDrop', uid: item.uid, pos: spot });
+    return f;
+  }
+
+  /**
+   * アイテムを置ける場所を探す。
+   * 指定位置が埋まっていたら、同心円状に近い空きマスを探す。
+   */
+  findDropSpot(from: Point, maxRadius = 6): Point | null {
+    if (this.canPlaceItem(from)) return from;
+    for (let r = 1; r <= maxRadius; r++) {
+      const candidates: Point[] = [];
+      for (let dy = -r; dy <= r; dy++) {
+        for (let dx = -r; dx <= r; dx++) {
+          if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+          const p = { x: from.x + dx, y: from.y + dy };
+          if (this.canPlaceItem(p)) candidates.push(p);
+        }
+      }
+      if (candidates.length > 0) return this.rng.pick(candidates);
+    }
+    return null;
+  }
+
+  /** アイテムを置けるマスか（床で、階段でなく、他のアイテムが無い） */
+  canPlaceItem(p: Point): boolean {
+    const t = at(this.map, p.x, p.y);
+    if (!t || t.kind !== 'floor') return false;
+    if (this.floorItemAt(p)) return false;
+    return true;
+  }
+
+  /** アクターが立てるマスか（他のアクターがいないこと込み） */
+  canStand(p: Point, a: Actor): boolean {
+    const move = a.kind === 'player' ? this.playerMoveType() : this.defOf(a).moveType;
+    if (!canEnter(this.map, p.x, p.y, move)) return false;
+    const other = this.actorAt(p);
+    return !other || other === a;
+  }
+
+  /** プレイヤーの移動タイプ（浮遊・水グモの腕輪で変わる） */
+  playerMoveType(): 'ground' | 'fly' | 'water' {
+    if (this.hasStatus(this.player, 'levitate')) return 'fly';
+    return 'ground';
+  }
+
+  // ------------------------------------------------------------ 状態異常
+
+  hasStatus(a: Actor, id: StatusId): boolean {
+    return a.statuses.some((s) => s.id === id && s.turns !== 0);
+  }
+
+  getStatus(a: Actor, id: StatusId): { id: StatusId; turns: number; power: number } | undefined {
+    return a.statuses.find((s) => s.id === id && s.turns !== 0);
+  }
+
+  // ------------------------------------------------------------ 乱数の補助
+
+  /** 条件に合う開けたマスをランダムに 1 つ */
+  randomOpenTile(pred?: (p: Point) => boolean): Point | null {
+    const candidates: Point[] = [];
+    for (let y = 0; y < this.map.height; y++) {
+      for (let x = 0; x < this.map.width; x++) {
+        if (!isOpen(at(this.map, x, y))) continue;
+        const p = { x, y };
+        if (pred && !pred(p)) continue;
+        candidates.push(p);
+      }
+    }
+    return candidates.length > 0 ? this.rng.pick(candidates) : null;
+  }
+
+  /** プレイヤーから離れた、誰もいない床（湧き位置に使う） */
+  randomSpawnTile(minDistFromPlayer = 6): Point | null {
+    return this.randomOpenTile((p) => {
+      const t = at(this.map, p.x, p.y);
+      if (!t || t.kind !== 'floor') return false;
+      if (this.actorAt(p)) return false;
+      if (t.shop) return false;
+      if (samePoint(p, this.map.stairs)) return false;
+      return chebyshev(p, this.player.pos) >= minDistFromPlayer;
+    });
+  }
+
+  // ------------------------------------------------------------ 演出
+
+  emit(e: GameEvent): void {
+    this.events.push(e);
+  }
+
+  log(text: string, style: LogStyle = 'normal'): void {
+    this.events.push({ t: 'message', text, style });
+  }
+
+  sfx(name: string): void {
+    this.events.push({ t: 'sfx', name });
+  }
+
+  /** 積まれたイベントを取り出して空にする */
+  drainEvents(): GameEvent[] {
+    const e = this.events;
+    this.events = [];
+    return e;
+  }
+
+  // ------------------------------------------------------------ セーブ
+
+  /** 保存の直前に、実行中の状態を RunState へ書き戻す */
+  syncForSave(): RunState {
+    this.run.rng = this.rng.serialize();
+    return this.run;
+  }
+}
+
+/** プレイヤーの向きを変えるだけの補助 */
+export function faceTo(a: Actor, dir: Dir): void {
+  a.dir = dir;
+}
