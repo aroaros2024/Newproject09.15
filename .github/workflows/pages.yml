@@ -1,0 +1,63 @@
+# GitHub Pages へ公開する。
+#
+# dist/ はリポジトリにも入れてあるが、ここでは毎回ソースから
+# 組み直したものを配る。手元でビルドし忘れた状態が公開されると、
+# 「動かない」の原因が git の履歴から追えなくなるため。
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [claude/mystery-dungeon-game-bshmw3]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 公開は 1 本ずつ。走っている途中のものは止めない
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: 依存を入れる（tsc だけ）
+        run: npm ci
+
+      - name: テスト
+        run: npm test
+
+      - name: ビルド
+        run: npm run build
+
+      - name: 配るものだけ集める
+        run: |
+          mkdir -p _site
+          cp index.html _site/
+          cp -r dist _site/
+          cp -r docs _site/
+          # Jekyll を通さない（_ 始まりのファイルが消えるのを防ぐ）
+          touch _site/.nojekyll
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

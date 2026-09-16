@@ -39,6 +39,29 @@ npm run serve     # http://localhost:8000 を開く
 
 ---
 
+## 遊びかた
+
+ビルド済みの `dist/` も入れてあるので、Node も TypeScript も無しで遊べます。
+**ES Modules を使っているので `file://` で直接開くと動きません。**
+必ず静的サーバー経由で開いてください。
+
+```bash
+git clone https://github.com/aroaros2024/Newproject09.15.git
+cd Newproject09.15
+python3 -m http.server 8000
+# → http://localhost:8000
+```
+
+Node があるなら `npm start`（ビルド＋サーバー）でも同じです。
+ソースを触るときは `npm run watch` を別ターミナルで回すと、
+保存のたびに再ビルドされます。
+
+`claude/mystery-dungeon-game-bshmw3` ブランチへ push すると、
+GitHub Actions がテスト → ビルド → GitHub Pages への公開まで行います
+（`.github/workflows/pages.yml`）。
+
+---
+
 ## 操作方法
 
 シレン6 のボタン配置をキーボードへ写像しています。
