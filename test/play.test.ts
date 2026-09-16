@@ -381,3 +381,41 @@ test('脱出の巻物で村へ戻れる', async () => {
   assert.ok(world.finished, '脱出できていない');
   assert.equal(world.finished!.kind, 'escape');
 });
+
+test('休憩は危ないことが起きたら必ず止まる', async () => {
+  const { restTurns } = await import('../src/game/turn.js');
+  // 全快していれば 1 ターンも休まない
+  {
+    const world = startRun('d1', newTown(), { seed: 1212 });
+    assert.equal(restTurns(world, 100), 0, '全快なのに休んでいる');
+  }
+  // 階が変わったら止まる
+  {
+    const world = startRun('d2', newTown(), { seed: 1213 });
+    world.player.hp = 1;
+    const startDepth = world.run.depth;
+    restTurns(world, 5000);
+    world.drainEvents();
+    assert.ok(
+      world.run.depth === startDepth || world.finished,
+      '階をまたいで休み続けている',
+    );
+  }
+  // 状態異常になったら止まる
+  {
+    const { applyStatus } = await import('../src/game/status.js');
+    const world = startRun('d1', newTown(), { seed: 1214 });
+    world.player.hp = 1;
+    world.player.maxHp = 500;
+    applyStatus(world, world.player, 'poisoned', 50);
+    assert.equal(restTurns(world, 100), 0, '状態異常なのに休んでいる');
+  }
+  // 空腹なら止まる
+  {
+    const world = startRun('d1', newTown(), { seed: 1215 });
+    world.player.hp = 1;
+    world.player.maxHp = 500;
+    world.player.foodX10 = 0;
+    assert.ok(restTurns(world, 100) <= 1, '空腹なのに休み続けている');
+  }
+});

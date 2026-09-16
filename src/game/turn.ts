@@ -288,18 +288,29 @@ function updateShopAnger(world: World): void {
   }
 }
 
-/** 足踏みで一定ターン休む（HP 回復のための「休憩」） */
+/**
+ * 足踏みで一定ターン休む（HP 回復のための「休憩」）。
+ *
+ * 危ないことが起きたら必ず止める。ここで止め損ねると、
+ * 「気づいたら死んでいた」という一番やってはいけない事故になる。
+ */
 export function restTurns(world: World, maxTurns: number): number {
+  const startDepth = world.run.depth;
   let n = 0;
   for (; n < maxTurns; n++) {
     if (world.finished) break;
     const before = world.player.hp;
+    const beforeItems = world.player.inventory.length;
     stepTurn(world, { type: 'wait' });
-    if (world.player.hp >= world.player.maxHp) break;
-    if (world.player.hp < before) break; // 攻撃されたら止める
-    if (world.player.foodX10 <= 0) break;
-    // 見える敵が現れたら止める
-    if (visibleEnemyNear(world)) break;
+
+    if (world.finished) break;
+    if (world.run.depth !== startDepth) break; // 風や落とし穴で階が変わった
+    if (world.player.hp >= world.player.maxHp) break; // 全快した
+    if (world.player.hp < before) break; // 攻撃された
+    if (world.player.foodX10 <= 0) break; // 空腹で削られ始めた
+    if (world.player.inventory.length !== beforeItems) break; // 盗まれた
+    if (world.player.statuses.some((st) => st.turns !== 0 && st.id !== 'quick')) break;
+    if (visibleEnemyNear(world)) break; // 敵が見えた
   }
   return n;
 }
