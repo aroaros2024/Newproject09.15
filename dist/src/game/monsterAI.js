@@ -9,7 +9,7 @@ import { DIR_VEC, chebyshev, dirTo, isOnRay, oppositeDir, samePoint, step, } fro
 import { canSee } from '../dungeon/fov.js';
 import { at, canMoveDiagonally, canEnter, distanceField, roomOf } from '../dungeon/tilemap.js';
 import { resolveAttack } from './combat.js';
-import { applyConfusion } from './actions.js';
+import { applyConfusion, onEnterTile } from './actions.js';
 import { useSkill } from './monsterSkills.js';
 import { canAttack, canMove, isIncapacitated } from './status.js';
 /** 1 ターンぶんの共有データ（距離場のキャッシュ） */
@@ -61,6 +61,11 @@ function stepTo(world, m, dir) {
     m.pos = step(m.pos, dir);
     m.dir = dir;
     world.emit({ t: 'move', actorId: m.id, from, to: { ...m.pos } });
+    // 敵もワナを踏み、溶岩で焼ける。踏んだ結果倒れることもある
+    if (onEnterTile(world, m)) {
+        m.alive = false;
+        world.removeActor(m);
+    }
     return true;
 }
 /** 距離場の勾配を下って 1 歩進む。動けたら true */

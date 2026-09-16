@@ -16,6 +16,7 @@ import { ALL_ITEMS, allMonsters, getItem, getDungeon } from '../data/registry.js
 import { DUNGEON_ORDER } from '../data/dungeons.js';
 import { makeItem } from './inventory.js';
 import { mergeInto } from './itemEffects.js';
+import { losesItemsOnDeath } from './death.js';
 import { SELL_RATE } from './rules.js';
 import type { World } from './world.js';
 
@@ -244,7 +245,7 @@ export function finishRun(
 ): ReturnResult {
   const p = world.player;
   const d = world.dungeon;
-  const keepItems = kind !== 'death' || d.id === 'd1';
+  const keepItems = kind !== 'death' || !losesItemsOnDeath(d.id);
 
   let lost = 0;
   if (keepItems) {

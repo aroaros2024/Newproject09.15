@@ -6,7 +6,7 @@ import { Cmd } from '../../core/input.js';
 import { clearRun, saveRun } from '../../core/save.js';
 import { getItem, getTrap } from '../../data/registry.js';
 import { at } from '../../dungeon/tilemap.js';
-import { equippedBracelet, isEquipped } from '../../game/inventory.js';
+import { equippedBracelet, isEquipped, mergeStacks, sortInventory, } from '../../game/inventory.js';
 import { isContainer, needsDirection, needsItemTarget, payDebt, shopDebt, throwGitan, } from '../../game/itemActions.js';
 import { itemName, kindLabel, useVerb } from '../../game/naming.js';
 import { SELL_RATE } from '../../game/rules.js';
@@ -398,7 +398,7 @@ export class DungeonScreen {
     }
     openItemMenu() {
         const menu = new ListMenu({
-            title: `持ち物　${this.world.player.inventory.length} / 20`,
+            title: `持ち物　${this.world.player.inventory.length} / 20　　［F］整理`,
             entries: [],
             rect: {
                 x: MENU_LAYOUT.items.x, y: MENU_LAYOUT.items.y,
@@ -409,7 +409,22 @@ export class DungeonScreen {
             showDesc: true,
             emptyText: '何も 持っていない',
         });
-        menu.setEntries(this.inventoryEntries((item) => this.openItemContext(item)));
+        const refresh = () => {
+            menu.setEntries(this.inventoryEntries((item) => this.openItemContext(item)));
+        };
+        refresh();
+        // 同じ道具が散らばっていたら「まとめる」を出す
+        menu.onKey = (input) => {
+            if (!input.justPressed(Cmd.Y))
+                return false;
+            const merged = mergeStacks(this.world.player);
+            sortInventory(this.world.player);
+            this.world.log(merged > 0 ? `${merged}個の 山を まとめた。` : '持ち物を 整理した。', 'system');
+            this.pumpEvents();
+            this.app.audio.play('confirm');
+            refresh();
+            return true;
+        };
         this.menus.push(menu);
     }
     /** 持ち物を選んだあとの「使う／投げる／置く…」 */

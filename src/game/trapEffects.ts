@@ -3,7 +3,7 @@
  */
 
 import { type Dir, chebyshev } from '../core/geom.js';
-import type { Actor, ItemInstance, MonsterActor } from '../core/types.js';
+import type { Actor, ItemInstance } from '../core/types.js';
 import { getItem, getTrap } from '../data/registry.js';
 import { at, neighbors8 } from '../dungeon/tilemap.js';
 import { dealDamage, loseStr } from './combat.js';
@@ -274,11 +274,4 @@ const TRAP_EFFECTS: Record<string, TrapHandler> = {
 export function applyTrapEffect(world: World, a: Actor, trapId: string): void {
   const handler = TRAP_EFFECTS[getTrap(trapId).effect];
   if (handler) handler(world, a);
-}
-
-/** モンスターにもワナを踏ませる */
-export function monsterStepsOnTrap(world: World, m: MonsterActor): void {
-  const tile = at(world.map, m.pos.x, m.pos.y);
-  if (!tile?.trap || tile.trap.used) return;
-  world.pendingTrap = { actor: m, trapId: tile.trap.defId };
 }

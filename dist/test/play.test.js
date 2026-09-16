@@ -389,4 +389,60 @@ test('休憩は危ないことが起きたら必ず止まる', async () => {
         assert.ok(restTurns(world, 100) <= 1, '空腹なのに休み続けている');
     }
 });
+test('モンスターもワナを踏む', async () => {
+    const { at } = await import('../src/dungeon/tilemap.js');
+    let triggered = false;
+    let tried = 0;
+    for (let seed = 0; seed < 60 && !triggered; seed++) {
+        const world = startRun('d4', newTown(), { seed: 3000 + seed * 71 });
+        const p = world.player;
+        // プレイヤーの東へ 3 マス分、床が続いている場所を探す
+        const row = [1, 2, 3].map((d) => ({ x: p.pos.x + d, y: p.pos.y }));
+        if (!row.every((q) => at(world.map, q.x, q.y)?.kind === 'floor'))
+            continue;
+        if (row.some((q) => world.actorAt(q)))
+            continue;
+        // 2 マス先にワナを置き、3 マス先に敵を置く。敵はこちらへ来る途中で踏む
+        const trapTile = at(world.map, row[1].x, row[1].y);
+        trapTile.trap = { defId: 'spike', revealed: false, used: false };
+        const m = world.run.monsters[0];
+        if (!m)
+            continue;
+        m.pos = { ...row[2] };
+        m.asleep = false;
+        m.lastSeen = { ...p.pos };
+        tried++;
+        const before = world.run.monsters.length;
+        for (let i = 0; i < 4 && !triggered; i++) {
+            stepTurn(world, { type: 'wait' });
+            world.drainEvents();
+            // 落とし穴を踏んだ敵は消える。ワナは使用済みになる
+            if (world.run.monsters.length < before || trapTile.trap?.used)
+                triggered = true;
+        }
+    }
+    assert.ok(tried > 0, 'ワナを置ける配置が見つからなかった');
+    assert.ok(triggered, `${tried} 回試しても敵がワナを踏まなかった`);
+});
+test('持ち物をまとめると同じ道具が 1 つの山になる', async () => {
+    const { mergeStacks, makeItem, addToInventory } = await import('../src/game/inventory.js');
+    const world = startRun('d2', newTown(), { seed: 4141 });
+    const p = world.player;
+    p.inventory = [];
+    for (let i = 0; i < 3; i++) {
+        addToInventory(p, makeItem('stone', world.rng, { count: 2 }, () => world.nextUid()));
+    }
+    // addToInventory は既に山へ足すので、わざと別々の実体にしてから試す
+    p.inventory = [
+        makeItem('stone', world.rng, { count: 2 }, () => world.nextUid()),
+        makeItem('woodArrow', world.rng, { count: 5 }, () => world.nextUid()),
+        makeItem('stone', world.rng, { count: 3 }, () => world.nextUid()),
+    ];
+    const merged = mergeStacks(p);
+    assert.ok(merged > 0, 'まとめられていない');
+    const stones = p.inventory.filter((i) => i.defId === 'stone');
+    assert.equal(stones.length, 1, '石が 1 つの山になっていない');
+    assert.equal(stones[0].count, 5, `石の個数が ${stones[0].count}`);
+    assert.equal(p.inventory.filter((i) => i.defId === 'woodArrow').length, 1);
+});
 //# sourceMappingURL=play.test.js.map

@@ -267,11 +267,4 @@ export function applyTrapEffect(world, a, trapId) {
     if (handler)
         handler(world, a);
 }
-/** モンスターにもワナを踏ませる */
-export function monsterStepsOnTrap(world, m) {
-    const tile = at(world.map, m.pos.x, m.pos.y);
-    if (!tile?.trap || tile.trap.used)
-        return;
-    world.pendingTrap = { actor: m, trapId: tile.trap.defId };
-}
 //# sourceMappingURL=trapEffects.js.map
