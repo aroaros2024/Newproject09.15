@@ -17,7 +17,7 @@ import { DUNGEON_ORDER } from '../data/dungeons.js';
 import { keptItems, makeItem } from './inventory.js';
 import { mergeInto } from './itemEffects.js';
 import { losesItemsOnDeath } from './death.js';
-import { BASE_KEEP_SLOTS, MAX_KEEP_SLOTS, SELL_RATE } from './rules.js';
+import { BASE_KEEP_SLOTS, MAX_KEEP_SLOTS, SELL_RATE, stonesForRun } from './rules.js';
 import type { World } from './world.js';
 
 /** 倉庫に預けられる数 */
@@ -304,6 +304,8 @@ export interface ReturnResult {
   unlocked: string | null;
   /** クリア報酬のメッセージ */
   rewardMessage: string | null;
+  /** この冒険で手に入った石 */
+  stones: number;
 }
 
 /**
@@ -356,7 +358,19 @@ export function finishRun(
   // 自分でつけた名前（「まちがえた」など）は、次の冒険にも持ち越す
   town.nicknames = { ...(town.nicknames ?? {}), ...world.run.identify.nicknames };
 
-  town.bestDepth[d.id] = Math.max(town.bestDepth[d.id] ?? 0, world.run.stats.maxDepth);
+  // 石は倒れても貰える。ただし、初めて踏んだ階を満額にしてあるので、
+  // 同じ階を往復するより 1 階でも深く潜る方が得になる
+  const prevBest = town.bestDepth[d.id] ?? 0;
+  const stones = stonesForRun({
+    depth: world.run.stats.maxDepth,
+    prevBest,
+    dungeonDepth: d.depth,
+    cleared: kind === 'clear',
+    firstClear: kind === 'clear' && !town.cleared.includes(d.id),
+  });
+  town.stones = (town.stones ?? 0) + stones;
+
+  town.bestDepth[d.id] = Math.max(prevBest, world.run.stats.maxDepth);
   town.totalRuns++;
 
   // 図鑑。出会った敵と、手にした／識別したアイテムを記録する
@@ -394,7 +408,7 @@ export function finishRun(
   town.history.push(record);
   if (town.history.length > 50) town.history.shift();
 
-  return { record, lost, unlocked, rewardMessage };
+  return { record, lost, unlocked, rewardMessage, stones };
 }
 
 /** 持ち物と壺の中身をひとまとめにする */

@@ -43,6 +43,7 @@ export function defaultTown(playerName = 'ナギ'): TownState {
     knownItems: {},
     nicknames: {},
     keepSlots: BASE_KEEP_SLOTS,
+    stones: 0,
     seenMonsters: {},
     history: [],
     totalRuns: 0,
@@ -142,6 +143,7 @@ function validateTown(t: Partial<TownState>): TownState {
     keepSlots: Number.isFinite(t.keepSlots)
       ? Math.max(BASE_KEEP_SLOTS, Math.min(MAX_KEEP_SLOTS, Math.floor(t.keepSlots as number)))
       : BASE_KEEP_SLOTS,
+    stones: Number.isFinite(t.stones) ? Math.max(0, Math.floor(t.stones as number)) : 0,
     seenMonsters: typeof t.seenMonsters === 'object' && t.seenMonsters ? t.seenMonsters : {},
     history: Array.isArray(t.history) ? t.history.slice(-50) : [],
     totalRuns: Number.isFinite(t.totalRuns) ? Math.max(0, Math.floor(t.totalRuns as number)) : 0,

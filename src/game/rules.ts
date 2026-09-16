@@ -19,6 +19,68 @@ export const MAX_LEVEL = 99;
 export const MAX_HP_CAP = 999;
 export const MAX_STR_CAP = 99;
 
+// ---------------------------------------------------------------------------
+// ガチャの石
+// ---------------------------------------------------------------------------
+
+/** ガチャ 1 回の値段 */
+export const GACHA_COST = 100;
+/** 10 連の値段（1 回ぶん安い） */
+export const GACHA_COST_10 = 900;
+
+/** 石の全体倍率。ここだけ触れば配布量をまとめて調整できる */
+const STONE_SCALE = 3;
+/** 一度踏んだ階を踏み直した時の取り分 */
+const REPEAT_RATE = 0.25;
+
+/**
+ * その階までの「深さの価値」。
+ *
+ * 1 階あたりの価値を深いほど重くしてある。単純な比例だと、
+ * 浅い階を何度も往復するのが最も効率の良い稼ぎ方になってしまい、
+ * 深く潜る理由が無くなる。
+ */
+export function depthValue(depth: number): number {
+  let v = 0;
+  for (let f = 1; f <= Math.max(0, Math.floor(depth)); f++) {
+    v += f <= 5 ? 1 : f <= 10 ? 2 : f <= 20 ? 3 : f <= 40 ? 4 : 5;
+  }
+  return v;
+}
+
+export interface StoneAward {
+  /** この冒険の到達階 */
+  depth: number;
+  /** そのダンジョンでの、これまでの自己最高到達階 */
+  prevBest: number;
+  /** ダンジョンの最深部 */
+  dungeonDepth: number;
+  cleared: boolean;
+  firstClear: boolean;
+}
+
+/**
+ * 1 回の冒険で手に入る石。
+ *
+ * 倒れても貰える（負けても前に進む）。ただし、
+ *  ・初めて踏んだ階は満額、踏み直した階は 1/4
+ *  ・深い階ほど 1 階あたりが重い
+ *  ・クリアすると、そのダンジョンの深さに応じた報奨が乗る
+ *  ・初クリアはその 3 倍
+ * としてあるので、同じ階を往復するより、1 階でも深く潜る方が得になる。
+ */
+export function stonesForRun(a: StoneAward): number {
+  const reached = Math.max(0, Math.floor(a.depth));
+  const best = Math.max(0, Math.min(Math.floor(a.prevBest), reached));
+  const fresh = depthValue(reached) - depthValue(best);
+  const repeat = depthValue(best) * REPEAT_RATE;
+  let bonus = 0;
+  if (a.cleared) {
+    bonus = depthValue(a.dungeonDepth) * 0.5 * (a.firstClear ? 3 : 1);
+  }
+  return Math.max(1, Math.round((fresh + repeat + bonus) * STONE_SCALE));
+}
+
 /** 保持枠（倒れても失わない道具の数）。最初は 3、加護で最大 5 */
 export const BASE_KEEP_SLOTS = 3;
 export const MAX_KEEP_SLOTS = 5;

@@ -593,7 +593,7 @@ export class DungeonScreen implements Screen {
     } else {
       entries.push({
         label: SHORTCUT_LABEL,
-        desc: '数字キー 1〜3 で すぐ 使えるようになります。並べ替えても ずれません。',
+        desc: '数字キー 1〜9 で 使えるようにする。',
         onSelect: () => {
           this.menus.push(new ListMenu({
             title: 'どの 番号に 割り当てますか？',
@@ -627,10 +627,10 @@ export class DungeonScreen implements Screen {
       right: slots === 0 ? 'なし' : `${keptItems(p).length}/${slots}`,
       disabled: slots === 0 && !kept,
       desc: slots === 0
-        ? 'ここでは 村の加護が 通じない。何ひとつ 守れない。'
+        ? 'このダンジョンでは 保持できない。'
         : kept
-          ? 'この道具は 倒れても 持ち帰れます。'
-          : '倒れても 失わなくなります（持てる数は 増えません）。',
+          ? '倒れても 持ち帰る。'
+          : '倒れても 失わない。持てる数は 増えない。',
       onSelect: () => {
         if (kept) {
           removeKept(p, item.uid);
@@ -831,7 +831,7 @@ export class DungeonScreen implements Screen {
         entries.push({
           label: `${name}を 拾う`,
           disabled: isInventoryFull(p),
-          desc: isInventoryFull(p) ? '持ち物が いっぱいです。' : undefined,
+          desc: isInventoryFull(p) ? '持ち物が いっぱい。' : undefined,
           onSelect: () => {
             this.act({ type: 'pickup' });
             return true;
@@ -842,7 +842,7 @@ export class DungeonScreen implements Screen {
           entries.push({
             label: `${name}と 入れ替える`,
             color: UI.cursorEdge,
-            desc: '手持ちから 1 つ 置いて、足元の物と 交換します。',
+            desc: '手持ちの 1 つと 足元の物を 交換する。',
             onSelect: () => {
               this.openSwapMenu(floorItem.item);
               return false;

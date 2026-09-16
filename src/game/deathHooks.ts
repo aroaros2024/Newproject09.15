@@ -50,7 +50,7 @@ export function recordBossDefeat(world: World, m: MonsterActor): void {
   const spot = world.findDropSpot(m.pos, 4) ?? m.pos;
   const boss = world.spawnAt?.(next.monsterId, spot);
   if (!boss) return;
-  world.log('取り巻きが 霧のように 消えていく。', 'system');
+  world.log('取り巻きが 消えた。', 'system');
   world.log('しかし 相手は まだ 倒れていなかった！', 'bad');
   world.emit({ t: 'bossAppear', actorId: boss.id });
   world.sfx('bossAppear');

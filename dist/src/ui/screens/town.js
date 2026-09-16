@@ -591,7 +591,7 @@ export class TownScreen {
                 label: '預ける',
                 right: `${town.gitan} G`,
                 disabled: town.gitan <= 0,
-                desc: '預けたギタンは、ダンジョンで倒れても失われません。',
+                desc: '預けたぶんは 倒れても 失わない。',
                 onSelect: () => {
                     this.qty = new QuantityPicker('いくら 預けますか？', 1, town.gitan, town.gitan, (n) => {
                         const got = depositGitan(town, n);
@@ -607,7 +607,7 @@ export class TownScreen {
                 label: '引き出す',
                 right: `${town.bankGitan} G`,
                 disabled: town.bankGitan <= 0,
-                desc: '引き出したギタンは、次の冒険に持っていきます（倒れると失います）。',
+                desc: '引き出したぶんは 冒険に持っていく。倒れると失う。',
                 onSelect: () => {
                     this.qty = new QuantityPicker('いくら 引き出しますか？', 1, town.bankGitan, town.bankGitan, (n) => {
                         const got = withdrawGitan(town, n);

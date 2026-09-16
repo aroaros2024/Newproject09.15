@@ -845,6 +845,8 @@ export interface TownState {
   nicknames?: Record<string, string>;
   /** 保持枠の数。最初は 3、ガチャの加護で最大 5 まで増える */
   keepSlots?: number;
+  /** ガチャの石。冒険のたびに貰える（倒れても貰える） */
+  stones?: number;
   seenMonsters: Record<string, boolean>;
   /** 冒険の記録 */
   history: AdventureRecord[];

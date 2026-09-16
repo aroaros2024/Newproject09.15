@@ -427,9 +427,9 @@ export function whyCannotRest(world) {
     if (p.hp >= p.maxHp)
         return 'HP は 満タンだ。';
     if (p.foodX10 <= 0)
-        return 'おなかが 減りすぎて 休めない。';
+        return '空腹で 回復しない。';
     if (world.hasStatus(p, 'poisoned') || world.hasStatus(p, 'deadlyPoisoned')) {
-        return '毒が 回っていて 休んでも 回復しない。';
+        return '毒で 回復しない。';
     }
     if (hostileNear(world))
         return '敵が 近くにいて 休めない。';
