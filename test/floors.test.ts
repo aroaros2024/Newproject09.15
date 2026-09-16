@@ -125,3 +125,77 @@ test('もっと不思議のダンジョンは 99F まで作れる', () => {
     assert.ok(world.run.monsters.length > 0, `ex ${depth}F にモンスターがいない`);
   }
 });
+
+test('ラストダンジョンは、ボスを 2 形態とも倒すとクリアできる', async () => {
+  const { stepTurn } = await import('../src/game/turn.js');
+  const town = newTown();
+  const world = startRun('dl', town, { seed: 777777 });
+  enterFloor(world, 30);
+  world.drainEvents();
+  // ここで見たいのは形態変化の仕組みなので、取り巻きに倒されないようにする
+  world.player.maxHp = 9999;
+  world.player.hp = 9999;
+
+  // 階段の上に立つ
+  world.player.pos = { ...world.map.stairs };
+
+  // 第 1 形態を倒す
+  let boss = world.run.monsters.find((m) => world.defOf(m).isBoss);
+  assert.ok(boss, '第 1 形態がいない');
+  assert.equal(boss!.defId, 'bossTowerFirst');
+  boss!.hp = 0;
+  boss!.alive = false;
+  stepTurn(world, { type: 'wait' });
+  world.drainEvents();
+
+  // まだ降りられない
+  assert.equal(world.bossesCleared(), false);
+  stepTurn(world, { type: 'stairs' });
+  world.drainEvents();
+  assert.equal(world.finished, null, '第 2 形態が残っているのにクリアした');
+
+  // 第 2 形態を倒す
+  boss = world.run.monsters.find((m) => world.defOf(m).isBoss);
+  assert.ok(boss, '第 2 形態が現れていない');
+  assert.equal(boss!.defId, 'bossTowerFinal');
+  boss!.hp = 0;
+  boss!.alive = false;
+  stepTurn(world, { type: 'wait' });
+  world.drainEvents();
+  assert.equal(world.bossesCleared(), true, 'ボスを倒したのに階段が開かない');
+
+  // 降りるとクリア
+  world.player.pos = { ...world.map.stairs };
+  stepTurn(world, { type: 'stairs' });
+  world.drainEvents();
+  assert.ok(world.finished, '踏破していない');
+  assert.equal(world.finished!.kind, 'clear');
+});
+
+test('もっと不思議のダンジョンは 99F のボスを倒すと踏破になる', async () => {
+  const { stepTurn } = await import('../src/game/turn.js');
+  const world = startRun('ex', newTown(), { seed: 424242 });
+  enterFloor(world, 99);
+  world.drainEvents();
+  world.player.maxHp = 9999;
+  world.player.hp = 9999;
+  const boss = world.run.monsters.find((m) => world.defOf(m).isBoss);
+  assert.ok(boss, '99F にボスがいない');
+  assert.equal(boss!.defId, 'bossAbyss');
+
+  // ボスを無視して降りられない
+  world.player.pos = { ...world.map.stairs };
+  stepTurn(world, { type: 'stairs' });
+  world.drainEvents();
+  assert.equal(world.finished, null, 'ボスを倒さずに踏破できた');
+
+  boss!.hp = 0;
+  boss!.alive = false;
+  stepTurn(world, { type: 'wait' });
+  world.drainEvents();
+  world.player.pos = { ...world.map.stairs };
+  stepTurn(world, { type: 'stairs' });
+  world.drainEvents();
+  assert.ok(world.finished, '99F を踏破できない');
+  assert.equal(world.finished!.kind, 'clear');
+});
