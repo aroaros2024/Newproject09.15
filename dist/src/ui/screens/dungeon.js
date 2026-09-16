@@ -500,8 +500,12 @@ export class DungeonScreen {
             entries.push({
                 label: useVerb(def),
                 onSelect: () => {
+                    // false を返して、閉じるのは startUseItem に任せる。
+                    // true を返すと、対象を選ぶ物（識別・封印・回数回復の巻物など）で
+                    // 積んだばかりの「何に使いますか？」を、その場で閉じてしまう。
+                    // ＝「読む」を押しても何も起きない、という状態になる
                     this.startUseItem(item);
-                    return true;
+                    return false;
                 },
             });
         }

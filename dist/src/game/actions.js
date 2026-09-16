@@ -111,8 +111,11 @@ function playerMove(world, rawDir) {
     const target = world.actorAt(step(p.pos, dir));
     if (target && world.isHostile(p, target))
         return playerAttack(world, dir);
-    // 仲間とは位置を入れ替える
-    if (target && target.kind === 'ally') {
+    // 仲間・怒っていない店主とは位置を入れ替える。
+    // 店主は攻撃対象でも素通りでもないので、入口に立たれると
+    // 店に入れないまま詰んでしまう
+    if (target && (target.kind === 'ally'
+        || (target.kind === 'shopkeeper' && !target.angry))) {
         const tmp = { ...p.pos };
         p.pos = { ...target.pos };
         target.pos = tmp;

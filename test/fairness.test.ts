@@ -251,3 +251,52 @@ test('ワナは踏んだ時だけ作動する', () => {
   assert.ok(standing >= 20, `検査できた場面が ${standing} 件しかない`);
   assert.equal(refired, 0, `足踏みで ${refired} 回 再作動した`);
 });
+
+test('店の出入口は 店主に塞がれない', () => {
+  let shops = 0;
+  let blocked = 0;
+  for (const id of ['d2', 'd3', 'd4']) {
+    for (let seed = 0; seed < 60; seed++) {
+      const world = startRun(id, newTown(), { seed: 8000 + seed });
+      for (let depth = 2; depth <= 8; depth++) {
+        enterFloor(world, depth);
+        world.drainEvents();
+        const room = world.map.rooms.find((r) => r.shop);
+        if (!room) continue;
+        const keeper = world.run.monsters.find((m) => m.kind === 'shopkeeper');
+        if (!keeper) continue;
+        shops++;
+        for (const d of room.doors) {
+          const dist = Math.abs(keeper.pos.x - d.x) + Math.abs(keeper.pos.y - d.y);
+          if (dist <= 1) { blocked++; break; }
+        }
+      }
+    }
+  }
+  assert.ok(shops >= 20, `検査できた店が ${shops} 件しかない`);
+  assert.equal(blocked, 0, `${blocked}/${shops} 件で 店主が 出入口を 塞いでいた`);
+});
+
+test('怒っていない店主とは 位置を入れ替えられる', () => {
+  // 入口に立たれた時の逃げ道。攻撃対象でも素通りでもないので、
+  // 入れ替えられないと店に入れないまま詰む
+  const world = startRun('d2', newTown(), { seed: 21 });
+  const p = world.player;
+  const vecs = [
+    [0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1],
+  ];
+  let dir = -1;
+  let spot: { x: number; y: number } | null = null;
+  for (let d = 0; d < 8; d++) {
+    const q = { x: p.pos.x + vecs[d][0], y: p.pos.y + vecs[d][1] };
+    if (at(world.map, q.x, q.y)?.kind === 'floor' && !world.actorAt(q)) { dir = d; spot = q; break; }
+  }
+  assert.ok(dir >= 0 && spot, '隣に歩ける床が無い');
+  const keeper = makeMonster(world, 'shopkeeper', spot!, 'shopkeeper');
+  world.addMonster(keeper);
+  const before = { ...p.pos };
+  stepTurn(world, { type: 'move', dir: dir as never });
+  world.drainEvents();
+  assert.deepEqual(p.pos, spot, '店主と入れ替われない');
+  assert.deepEqual(keeper.pos, before, '店主が元の位置に来ていない');
+});

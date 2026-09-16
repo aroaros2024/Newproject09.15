@@ -384,4 +384,22 @@ test('掘り進みの杖は、歩いて行ける道しか作らない', () => {
         assert.ok(r.ok, `seed ${seed}: 掘ったあとに歩いて行けない床が残った`);
     }
 });
+test('対象を選ぶ巻物は、対象の一覧が出てから効く', () => {
+    // メニュー側が「読む」で即座に閉じていたため、積んだばかりの
+    // 「何に使いますか？」がその場で消え、何も起きなかった
+    const world = startRun('d2', newTown(), { seed: 31 });
+    const p = world.player;
+    p.inventory.length = 0;
+    const scroll = makeItem('identifyScroll', world.rng, {}, () => world.nextUid());
+    const herb = makeItem('sleepHerb', world.rng, {}, () => world.nextUid());
+    addToInventory(p, scroll);
+    addToInventory(p, herb);
+    assert.equal(needsItemTarget(getItem(scroll.defId)), true, '対象を取る巻物のはず');
+    // 対象を渡さないと識別は起きない
+    assert.notEqual(world.run.identify.known.sleepHerb, true);
+    useItem(world, scroll.uid, herb.uid);
+    world.drainEvents();
+    assert.equal(world.run.identify.known.sleepHerb, true, '対象を渡しても識別されない');
+    assert.equal(p.inventory.some((i) => i.uid === scroll.uid), false, '巻物が消費されていない');
+});
 //# sourceMappingURL=items.test.js.map

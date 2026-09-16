@@ -11,7 +11,7 @@ import { getItem, getMonster, tryGetMonster } from '../data/registry.js';
 import { makeGitan, makeItem } from '../game/inventory.js';
 import { gitanAmount, monsterHouseRate } from '../game/rules.js';
 import type { World } from '../game/world.js';
-import { at, allRoomFloors, roomCells } from './tilemap.js';
+import { at, allRoomFloors, neighbors8, roomCells } from './tilemap.js';
 
 // ---------------------------------------------------------------------------
 // 抽選
@@ -333,9 +333,21 @@ function makeShop(world: World): Room | null {
     if (t) t.shop = true;
   }
 
-  // 店主は出入口の内側に立つ
+  // 店主は出入口のそば。ただし出入口を塞ぐ位置には立たせない。
+  // 出入口の真正面に立たれると、店に入る道が無くなる
   const door = room.doors[0];
-  const free = cells.filter((p) => !samePoint(p, world.player.pos));
+  const blocking = new Set(
+    room.doors.map((d) => `${d.x},${d.y}`),
+  );
+  for (const d of room.doors) {
+    for (const q of neighbors8(world.map, d)) {
+      // 出入口と 4 方向で接するマス＝そこに立つと通り抜けられなくなる
+      if (Math.abs(q.x - d.x) + Math.abs(q.y - d.y) === 1) blocking.add(`${q.x},${q.y}`);
+    }
+  }
+  const free = cells.filter(
+    (p) => !samePoint(p, world.player.pos) && !blocking.has(`${p.x},${p.y}`),
+  );
   const inside = (free.length > 0 ? free : cells)
     .slice()
     .sort((a, b) => chebyshev(a, door) - chebyshev(b, door))[0];
