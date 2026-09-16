@@ -3,3 +3,9 @@ node_modules/
 .DS_Store
 .vscode/
 *.tsbuildinfo
+
+# dist/ は「ビルドせずにすぐ遊べる」ようにあえて追跡しているが、
+# 中身は tsc の出力（.js / .js.map）だけに限る。
+# 検証用の使い捨てスクリプトを置いても取り込まれないようにしておく。
+dist/**/*.mjs
+dist/**/*.cjs
