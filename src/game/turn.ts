@@ -19,6 +19,7 @@ import type {
   Action, ActionResult, Actor, MonsterActor, PlayerActor, SpeedType,
 } from '../core/types.js';
 import { naturalSpawn, triggerMonsterHouse } from '../dungeon/spawn.js';
+import { getItem } from '../data/registry.js';
 import { onEnterTile, performPlayerAction } from './actions.js';
 import { killActor } from './combat.js';
 import { AiContext, takeAllyTurn, takeMonsterTurn } from './monsterAI.js';
@@ -230,7 +231,28 @@ function checkMonsterHouse(world: World): void {
   if (!tile || tile.roomId < 0) return;
   const room = world.map.rooms.find((r) => r.id === tile.roomId);
   if (!room || !room.monsterHouse || room.houseTriggered) return;
+  world.tally('house');
   triggerMonsterHouse(world, room);
+}
+
+/**
+ * 到達値を記録する。
+ *
+ * 「いちばん強く鍛えた装備」「一度に持ったギタン」のような値は、
+ * 上がる経路が多すぎて個別に数えられない。毎ターン 1 度だけ見て、
+ * 最大値を控える形にしておけば数え漏れない。
+ */
+function recordPeaks(world: World): void {
+  const p = world.player;
+  world.tallyMax('gitan', p.gitan);
+  world.tallyMax('killsInRun', world.run.stats.kills);
+  for (const item of p.inventory) {
+    const def = getItem(item.defId);
+    if (def.kind !== 'weapon' && def.kind !== 'shield') continue;
+    // 呪われた -3 を「到達」に数えないよう、修正値は正のぶんだけ見る
+    if (item.plus > 0) world.tallyMax('plus', item.plus);
+    world.tallyMax('runes', item.runes.length);
+  }
 }
 
 /** ターンの終わりの処理 */
@@ -242,6 +264,10 @@ function endOfTurn(world: World): void {
   // 置く・投げる・売る・壺に入れる・封印される、といった経路をすべて
   // 個別に直すのは無理があるので、毎ターンここで一度だけ辻褄を合わせる
   syncBraceletBonus(world, world.player);
+
+  // 到達値。鍛える・合成する・拾う・呪われる……と経路が多すぎるので、
+  // 腕輪と同じ理由でここに集める
+  recordPeaks(world);
 
   // 状態異常。火傷や猛毒で敵が倒れた場合も、通常の撃破と同じ経路を通して
   // 経験値・ドロップ・盗まれた道具の返却が起きるようにする
@@ -326,6 +352,7 @@ function updateShopAnger(world: World): void {
   if (tile?.shop) return; // まだ店の中
   // 店を出た
   room.shop.angry = true;
+  world.tally('steal');
   const keeper = world.run.monsters.find((m) => m.id === room.shop!.ownerId);
   if (keeper) keeper.angry = true;
   const debt = p.inventory

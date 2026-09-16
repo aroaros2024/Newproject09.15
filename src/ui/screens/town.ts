@@ -6,7 +6,7 @@ import { Cmd } from '../../core/input.js';
 import type { IdentifyState, ItemInstance, PartnerRecord } from '../../core/types.js';
 import { ALL_ITEMS, allMonsters, getItem } from '../../data/registry.js';
 import {
-  BENTOU_PRICE, SMITH_PRICE, buyFromTown, depositItem, dungeonList,
+  BENTOU_PRICE, SMITH_PRICE, bumpTown, buyFromTown, depositItem, dungeonList,
   depositGitan, sellToTown, shopStock, smithTemper, smithUncurse, sortStorage,
   storageFull, townIdentify, withdrawGitan, withdrawItem,
 } from '../../game/town.js';
@@ -1065,6 +1065,7 @@ export class TownScreen implements Screen {
               return false;
             }
             town.gitan -= BENTOU_PRICE;
+            bumpTown(town, 'bentou');
             const item = makeBentou(() => town.nextUid++);
             depositItem(town, item);
             this.say('弁当を 倉庫へ 入れました。');

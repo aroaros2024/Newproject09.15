@@ -61,6 +61,14 @@ export function missionProgress(town: TownState, def: MissionDef): {
       const rate = Math.min(have.monsters / c.monsters, have.items / c.items);
       return { progress: Math.min(100, Math.floor(rate * 100)), goal: 100 };
     }
+    case 'every': {
+      // 「3 つのうち 2 つ達成」と見せる。中身の細かい進み具合は出さない
+      const done = c.conds.filter((sub) => {
+        const r = missionProgress(town, { ...def, cond: sub });
+        return r.progress >= r.goal;
+      }).length;
+      return { progress: done, goal: c.conds.length };
+    }
   }
 }
 

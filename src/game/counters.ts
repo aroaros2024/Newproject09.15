@@ -30,7 +30,15 @@ export type MissionKey =
   | 'kill' | 'trap' | 'equip' | 'use' | 'act'
   | 'walk' | 'pickup' | 'descend'
   | 'cure:curse' | 'synthesis' | 'makeAlly' | 'buy' | 'bank' | 'keep'
-  | 'shortcut' | 'potPut' | 'shopBuy';
+  | 'shortcut' | 'potPut' | 'shopBuy'
+  /** モンスターハウスに踏み込んだ */
+  | 'house'
+  /** 店で 代金を 払わずに 出た */
+  | 'steal'
+  /** 食事処で 弁当を 買った */
+  | 'bentou'
+  /** 倉庫から 道具を 取り出した */
+  | 'withdraw';
 
 /**
  * 「最大値」で覚えるものの型。
@@ -38,7 +46,19 @@ export type MissionKey =
  * レベルのような到達値は足してはいけない。`tally('level', 30)` を
  * 冒険のたびに足すと、2 周目で「レベル 30 到達」が勝手に達成される。
  */
-export type MaxKey = 'level' | 'depth';
+export type MaxKey =
+  /** プレイヤーのレベル */
+  | 'level'
+  /** 最も強く鍛えた装備の修正値 */
+  | 'plus'
+  /** 1 つの装備に埋めた印の数 */
+  | 'runes'
+  /** 1 回の冒険での撃破数 */
+  | 'killsInRun'
+  /** 一度に持ったギタン */
+  | 'gitan'
+  /** 1 回の冒険で降りた階数 */
+  | 'depth';
 
 /** 最大値キーの接頭辞。合流のときにここで足し算と最大値を分ける */
 export const MAX_PREFIX = 'max:';

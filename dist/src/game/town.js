@@ -119,6 +119,7 @@ export function withdrawItem(town, uid) {
     const i = town.storage.findIndex((it) => it.uid === uid);
     if (i < 0)
         return null;
+    bumpTown(town, 'withdraw');
     return town.storage.splice(i, 1)[0];
 }
 /** 倉庫のアイテムの並べ替え */
@@ -164,8 +165,10 @@ export function shopStock(town) {
     // クリアが進むと良い品も並ぶ
     if (town.cleared.length >= 1)
         pool.push('ironSword', 'ironShield', 'sleepStaff');
+    // 分身の巻物はダンジョンでは 1 周 0.04〜0.20 個しか出ない。
+    // 仲間を連れる遊びが運任せにならないよう、村でも買えるようにする
     if (town.cleared.length >= 2)
-        pool.push('steelSword', 'steelShield', 'greatIdentify');
+        pool.push('steelSword', 'steelShield', 'greatIdentify', 'cloneScroll');
     if (town.cleared.length >= 3)
         pool.push('synthesisPot', 'blessWeapon', 'blessShield');
     if (town.cleared.length >= 4)
