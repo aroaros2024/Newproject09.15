@@ -6,7 +6,8 @@ import { at } from '../src/dungeon/tilemap.js';
 import { makeMonster } from '../src/dungeon/spawn.js';
 import { addKept, addToInventory, keptItems, makeItem } from '../src/game/inventory.js';
 import { BASE_KEEP_SLOTS } from '../src/game/rules.js';
-import { finishRun } from '../src/game/town.js';
+import { finishRun, keepSlotsFor } from '../src/game/town.js';
+import { getDungeon } from '../src/data/registry.js';
 import { samePoint } from '../src/core/geom.js';
 import { enterFloor, startRun } from '../src/game/run.js';
 import { restTurns, stepTurn, whyCannotRest } from '../src/game/turn.js';
@@ -24,7 +25,7 @@ import { applyStatus } from '../src/game/status.js';
 function newTown(): TownState {
   return {
     playerName: 'ナギ', storage: [], bankGitan: 0, gitan: 0,
-    cleared: [], unlocked: ['d1', 'd2', 'd3', 'd4', 'dl', 'ex'], bestDepth: {},
+    cleared: [], unlocked: ['d1', 'd2', 'd3', 'd4', 'dl', 'ex', 'exPure'], bestDepth: {},
     seenItems: {}, seenMonsters: {}, history: [], totalRuns: 0, nextUid: 1,
   };
 }
@@ -360,4 +361,27 @@ test('保持した道具を手放すと、枠も空く', () => {
   stepTurn(world, { type: 'place', uid: item.uid });
   world.drainEvents();
   assert.equal(keptItems(p).length, 0, '置いたのに枠を占めたまま');
+});
+
+test('真・もっと不思議では、保持枠が 0 になる', () => {
+  // 「何の加護も無い 99 階」なので、保持枠そのものが通じない
+  const town = newTown();
+  town.keepSlots = 5;
+  assert.equal(keepSlotsFor(town, getDungeon('exPure')), 0, '加護なしなのに枠がある');
+  assert.equal(keepSlotsFor(town, getDungeon('ex')), 5, '加護ありなのに枠が増えていない');
+  assert.equal(keepSlotsFor(town, getDungeon('d2')), 5);
+
+  // 枠が 0 のダンジョンでは、倒れたら何も残らない
+  const world = startRun('exPure', town, { seed: 91 });
+  const p = world.player;
+  p.inventory.length = 0;
+  const herb = makeItem('greatHerb', world.rng, {}, () => world.nextUid());
+  addToInventory(p, herb);
+  // 何かの拍子に保持枠へ入っていたとしても、帰還時に数え直して切り捨てる
+  p.keptUids = [herb.uid];
+  finishRun(world, town, 'death', 'テスト');
+  assert.equal(
+    town.storage.some((i) => i.defId === 'greatHerb'), false,
+    '加護の無いダンジョンなのに 持ち帰れてしまった',
+  );
 });

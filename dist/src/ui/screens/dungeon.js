@@ -8,8 +8,9 @@ import { getItem, getTrap } from '../../data/registry.js';
 import { at } from '../../dungeon/tilemap.js';
 import { SHORTCUT_SLOTS, addKept, assignShortcut, equippedBracelet, isEquipped, isInventoryFull, isKept, keptItems, mergeStacks, removeKept, shortcutOf, shortcutSlots, sortInventory, } from '../../game/inventory.js';
 import { isContainer, needsDirection, needsItemTarget, payDebt, shopDebt, throwGitan, } from '../../game/itemActions.js';
+import { keepSlotsFor } from '../../game/town.js';
 import { itemName, kindLabel, useVerb } from '../../game/naming.js';
-import { BASE_KEEP_SLOTS, MAX_KEEP_SLOTS, SELL_RATE } from '../../game/rules.js';
+import { SELL_RATE } from '../../game/rules.js';
 import { onStairs, restTurns, stepTurn, whyCannotRest } from '../../game/turn.js';
 import { drawText, drawOverlay } from '../draw.js';
 import { Camera, DungeonRenderer } from '../renderer.js';
@@ -583,13 +584,17 @@ export class DungeonScreen {
         }
         // 保持枠（倒れても失わない）
         const kept = isKept(p, item.uid);
+        const slots = this.keepSlots();
         entries.push({
             label: kept ? '保持を やめる' : '保持する',
-            color: kept ? undefined : UI.good,
-            right: `${keptItems(p).length}/${this.keepSlots()}`,
-            desc: kept
-                ? 'この道具は 倒れても 持ち帰れます。'
-                : `倒れても 失わなくなります（持てる数は 増えません）。`,
+            color: kept || slots === 0 ? undefined : UI.good,
+            right: slots === 0 ? 'なし' : `${keptItems(p).length}/${slots}`,
+            disabled: slots === 0 && !kept,
+            desc: slots === 0
+                ? 'ここでは 村の加護が 通じない。何ひとつ 守れない。'
+                : kept
+                    ? 'この道具は 倒れても 持ち帰れます。'
+                    : '倒れても 失わなくなります（持てる数は 増えません）。',
             onSelect: () => {
                 if (kept) {
                     removeKept(p, item.uid);
@@ -752,15 +757,9 @@ export class DungeonScreen {
             showDesc: true,
         }));
     }
-    /**
-     * 保持枠の数。
-     * 加護の効かないダンジョン（真・もっと不思議）では、基本の 3 のまま。
-     */
+    /** 保持枠の数。数える場所は town.ts の 1 箇所だけにしてある */
     keepSlots() {
-        if (this.world.dungeon.allowBoosts === false)
-            return BASE_KEEP_SLOTS;
-        const n = this.app.town.keepSlots ?? BASE_KEEP_SLOTS;
-        return Math.max(BASE_KEEP_SLOTS, Math.min(MAX_KEEP_SLOTS, n));
+        return keepSlotsFor(this.app.town, this.world.dungeon);
     }
     openFeetMenu() {
         const world = this.world;

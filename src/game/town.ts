@@ -17,7 +17,7 @@ import { DUNGEON_ORDER } from '../data/dungeons.js';
 import { keptItems, makeItem } from './inventory.js';
 import { mergeInto } from './itemEffects.js';
 import { losesItemsOnDeath } from './death.js';
-import { SELL_RATE } from './rules.js';
+import { BASE_KEEP_SLOTS, MAX_KEEP_SLOTS, SELL_RATE } from './rules.js';
 import type { World } from './world.js';
 
 /** 倉庫に預けられる数 */
@@ -74,6 +74,21 @@ export function unlockNext(town: TownState, clearedId: string): string | null {
 // ---------------------------------------------------------------------------
 
 export const storageFull = (town: TownState): boolean => town.storage.length >= STORAGE_LIMIT;
+
+/**
+ * そのダンジョンで使える保持枠の数。
+ *
+ * 保持枠そのものが村の加護なので、加護の通じないダンジョン
+ * （真・もっと不思議）では 0。何ひとつ守れない。
+ *
+ * 画面と帰還処理が別々に数えると「保持したはずなのに失う」が起きるので、
+ * 数えるのはここ 1 箇所だけにする。
+ */
+export function keepSlotsFor(town: TownState, d: DungeonDef): number {
+  if (d.allowBoosts === false) return 0;
+  const n = town.keepSlots ?? BASE_KEEP_SLOTS;
+  return Math.max(BASE_KEEP_SLOTS, Math.min(MAX_KEEP_SLOTS, n));
+}
 
 /**
  * 倉庫へ預ける。
@@ -318,7 +333,7 @@ export function finishRun(
   } else {
     // 倒れて持ち物を失う時でも、保持枠に入れておいた物だけは届く。
     // 「何を守るか」を選ばせるための枠なので、ここが要
-    const saved = keptItems(p);
+    const saved = keptItems(p).slice(0, keepSlotsFor(town, d));
     for (const item of saved) {
       item.shopPrice = 0;
       if (world.run.identify.known[item.defId]) learnItem(town, item.defId);
