@@ -138,8 +138,11 @@ export function removeFromInventory(p, uid) {
 /**
  * まとめられるアイテムを 1 個だけ取り出す。
  * 残りがあれば山に残し、最後の 1 個なら持ち物から取り除く。
+ *
+ * 分けた 1 個には必ず新しい uid を振る。山と同じ uid のまま床に置くと、
+ * findItem() がどちらを指すか決まらなくなる。
  */
-export function splitOne(p, uid) {
+export function splitOne(p, uid, nextUid) {
     const item = findItem(p, uid);
     if (!item)
         return null;
@@ -149,7 +152,7 @@ export function splitOne(p, uid) {
     item.count--;
     return {
         ...item,
-        uid: item.uid + 0.5, // 一時的な実体。床に置く直前に採番し直す
+        uid: nextUid(),
         count: 1,
         runes: [...item.runes],
         contents: [],

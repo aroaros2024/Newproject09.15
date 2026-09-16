@@ -11,7 +11,7 @@ import { getItem, getTrap } from '../../data/registry.js';
 import { at } from '../../dungeon/tilemap.js';
 import { equippedBracelet, isEquipped } from '../../game/inventory.js';
 import {
-  isContainer, needsDirection, needsItemTarget, payDebt, shopDebt,
+  isContainer, needsDirection, needsItemTarget, payDebt, shopDebt, throwGitan,
 } from '../../game/itemActions.js';
 import { itemName, kindLabel, useVerb } from '../../game/naming.js';
 import { SELL_RATE } from '../../game/rules.js';
@@ -721,6 +721,31 @@ export class DungeonScreen implements Screen {
           this.pumpEvents();
           world.log(`${n}ターン 休んだ。`, 'system');
           this.pumpEvents();
+          return true;
+        },
+      },
+      {
+        label: 'ギタンを 投げる',
+        right: `${world.player.gitan} G`,
+        disabled: world.player.gitan <= 0,
+        desc: '所持金を 投げつける。額が大きいほど よく効く。当たると 消える。',
+        onSelect: () => {
+          const max = world.player.gitan;
+          this.qtyPicker = new QuantityPicker(
+            '何ギタン 投げますか？', 1, max, Math.min(max, 100),
+            (n) => {
+              this.dirPicker = new DirectionPicker(
+                `${n}ギタンを どの向きへ？`, world.player.dir,
+                (dir) => {
+                  throwGitan(world, n, dir as Dir);
+                  this.pumpEvents();
+                  this.menus.closeAll();
+                },
+                () => { /* 取り消し */ },
+              );
+            },
+            () => { /* 取り消し */ },
+          );
           return true;
         },
       },

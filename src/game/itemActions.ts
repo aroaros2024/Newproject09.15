@@ -19,7 +19,7 @@ import {
 } from './inventory.js';
 import { itemName, shortItemName } from './naming.js';
 import { applyEquipBonus, hasBracelet } from './bracelets.js';
-import { THROW_HIT, SELL_RATE, hitRate } from './rules.js';
+import { THROW_HIT, SELL_RATE, gitanThrowDamage, hitRate } from './rules.js';
 import type { World } from './world.js';
 
 const OK: ActionResult = { tookTurn: true };
@@ -295,9 +295,10 @@ export function throwItem(world: World, uid: number, dir: Dir): ActionResult {
   const def = getItem(item.defId);
   p.dir = dir;
 
-  // 1 個だけ投げる
-  const flying = splitOne(p, uid) ?? item;
-  if (flying !== item) flying.uid = world.nextUid();
+  // 石や矢は山から 1 個だけ分けて投げる。ギタンは山ごと投げる
+  const flying = def.kind === 'gitan'
+    ? (removeFromInventory(p, uid) ?? item)
+    : (splitOne(p, uid, () => world.nextUid()) ?? item);
 
   // 遠投の腕輪と遠投の印を着けていると、敵を貫通して飛ぶ
   const pierces = def.throwEffect === 'arrowPierce'
@@ -340,8 +341,15 @@ export function throwItem(world: World, uid: number, dir: Dir): ActionResult {
         for (const inner of flying.contents) world.dropItem(inner, victim.pos);
         flying.contents = [];
       }
-      const dmg = throwDamage(world, flying, p);
+      const dmg = def.kind === 'gitan'
+        ? gitanThrowDamage(flying.count)
+        : throwDamage(world, flying, p);
       dealDamage(world, p, victim, dmg, 'physical');
+      // 当たったギタンは消える（拾い直せない）
+      if (def.kind === 'gitan') {
+        world.log(`${flying.count}ギタンは 砕け散った。`, 'item');
+        return OK;
+      }
 
       // 当たった時の特殊効果
       const effectId = def.throwEffect ?? (def as { effect?: string }).effect;
@@ -380,17 +388,23 @@ export function throwItem(world: World, uid: number, dir: Dir): ActionResult {
   return OK;
 }
 
-/** ギタンを投げる */
+/**
+ * ギタンを投げる。
+ *
+ * ギタンは持ち物ではなく所持金なので、投げる分だけその場で実体を作り、
+ * 通常の投擲と同じ経路に載せる。持ち物へ一度入れてから投げると、
+ * 外れて床に落ちたときに二重計上になってしまう。
+ */
 export function throwGitan(world: World, amount: number, dir: Dir): ActionResult {
   const p = world.player;
-  if (p.gitan < amount || amount <= 0) return NO('そんなに ギタンを 持っていない');
-  p.gitan -= amount;
-  const item = makeItem('gitan', world.rng, { count: amount }, () => world.nextUid());
-  const dummyUid = world.nextUid();
-  item.uid = dummyUid;
-  p.inventory.push(item);
-  const result = throwItem(world, dummyUid, dir);
-  return result;
+  const n = Math.floor(amount);
+  if (n <= 0) return NO('投げる額を 指定していない');
+  if (p.gitan < n) return NO('そんなに ギタンを 持っていない');
+  p.gitan -= n;
+  const flying = makeItem('gitan', world.rng, { count: n, plusKnown: true }, () => world.nextUid());
+  // 持ち物を経由せず、直接持たせてから投げる
+  p.inventory.push(flying);
+  return throwItem(world, flying.uid, dir);
 }
 
 // ---------------------------------------------------------------------------

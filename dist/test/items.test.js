@@ -319,4 +319,50 @@ test('合成の壺は満杯になると合成される', () => {
     assert.equal(pot.contents.length, 1, '合成されて 1 つになっていない');
     assert.ok(pot.contents[0].plus >= 2, '修正値が足されていない');
 });
+test('山から 1 個だけ投げても、uid が重複しない', () => {
+    const world = startRun('d2', newTown(), { seed: 8001 });
+    const stack = makeItem('stone', world.rng, { count: 5 }, () => world.nextUid());
+    addToInventory(world.player, stack);
+    throwItem(world, stack.uid, 2);
+    world.drainEvents();
+    // 山は 4 個に減り、投げた 1 個は別の uid を持つ
+    const left = world.player.inventory.find((i) => i.defId === 'stone');
+    assert.equal(left?.count, 4, '山が減っていない');
+    const onFloor = world.run.floorItems.filter((f) => f.item.defId === 'stone');
+    for (const f of onFloor) {
+        assert.notEqual(f.item.uid, left.uid, '床の石と手持ちの山が同じ uid');
+        assert.ok(Number.isInteger(f.item.uid), `uid が整数でない: ${f.item.uid}`);
+    }
+    // 持ち物と床で uid が衝突していない
+    const uids = new Set(world.player.inventory.map((i) => i.uid));
+    for (const f of world.run.floorItems) {
+        assert.ok(!uids.has(f.item.uid), `uid ${f.item.uid} が持ち物と床で重複`);
+    }
+});
+test('ギタンは山ごと投げられ、所持金が二重に増えない', async () => {
+    const { throwGitan } = await import('../src/game/itemActions.js');
+    const world = startRun('d2', newTown(), { seed: 8002 });
+    const p = world.player;
+    p.gitan = 500;
+    // フロア生成で既に落ちているギタンがあるので、増分で測る
+    const gitanOnFloor = () => world.run.floorItems
+        .filter((f) => f.item.defId === 'gitan')
+        .reduce((sum, f) => sum + f.item.count, 0);
+    const before = gitanOnFloor();
+    throwGitan(world, 300, 2);
+    world.drainEvents();
+    assert.equal(p.gitan, 200, '所持金が減っていない');
+    assert.ok(!p.inventory.some((i) => i.defId === 'gitan'), 'ギタンが持ち物に残っている');
+    const added = gitanOnFloor() - before;
+    // 当たれば消え、外れれば床に 300 落ちる。どちらでも所持金は 200 のまま
+    assert.ok(added === 0 || added === 300, `床のギタンの増分が ${added}`);
+});
+test('持っている以上のギタンは投げられない', async () => {
+    const { throwGitan } = await import('../src/game/itemActions.js');
+    const world = startRun('d2', newTown(), { seed: 8003 });
+    world.player.gitan = 50;
+    const r = throwGitan(world, 100, 2);
+    assert.equal(r.tookTurn, false);
+    assert.equal(world.player.gitan, 50);
+});
 //# sourceMappingURL=items.test.js.map
