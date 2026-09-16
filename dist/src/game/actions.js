@@ -9,6 +9,8 @@ import { at, canMoveDiagonally, canEnter, isOpen } from '../dungeon/tilemap.js';
 import { attackInDirection, dealDamage } from './combat.js';
 import { addToInventory, equippedBracelet, equippedShield, equippedWeapon, findItem, isEquipped, isInventoryFull, removeFromInventory, } from './inventory.js';
 import { itemName, shortItemName } from './naming.js';
+import { hasBracelet } from './bracelets.js';
+import { buyItem, equipItem, sellItem, takeOutOfPot, throwItem, unequipItem, useItem, } from './itemActions.js';
 import { CONFUSE_MISDIRECT_RATE } from './rules.js';
 import { canAttack, canMove, isIncapacitated, STATUS_NAME } from './status.js';
 const OK = { tookTurn: true };
@@ -69,8 +71,22 @@ export function performPlayerAction(world, action) {
         case 'pickup': return playerPickup(world);
         case 'place': return playerPlace(world, action.uid);
         case 'stairs': return playerStairs(world);
-        default:
-            return NOPE('未対応の行動');
+        case 'use': return useItem(world, action.uid, action.targetUid, action.dir);
+        case 'equip': return equipItem(world, action.uid);
+        case 'unequip': return unequipItem(world, action.uid);
+        case 'throw': return throwItem(world, action.uid, applyConfusion(world, p, action.dir));
+        case 'takeOut': return takeOutOfPot(world, action.potUid, action.index);
+        case 'putIn': return useItem(world, action.potUid, action.uid);
+        case 'buy': return buyItem(world);
+        case 'sell': return sellItem(world, action.uid);
+        case 'setTactic': {
+            for (const ally of world.run.allies)
+                ally.tactic = action.tactic;
+            world.log('仲間に 指示を 出した。', 'system');
+            return NOPE('作戦を変えた');
+        }
+        case 'none':
+            return NOPE('何もしない');
     }
 }
 function playerMove(world, rawDir) {
@@ -84,7 +100,11 @@ function playerMove(world, rawDir) {
         }
         return OK;
     }
-    const dir = applyConfusion(world, p, rawDir);
+    let dir = applyConfusion(world, p, rawDir);
+    // 呪われた「まがりの腕輪」はまっすぐ歩かせてくれない
+    if (hasBracelet(world, p, 'crookedCurse') && world.rng.percent(30)) {
+        dir = ((dir + (world.rng.chance(0.5) ? 1 : 7)) % 8);
+    }
     p.dir = dir;
     // 移動先に敵がいれば、移動ではなく攻撃になる
     const target = world.actorAt(step(p.pos, dir));
@@ -148,6 +168,11 @@ function playerPickup(world) {
     }
     if (!addToInventory(p, f.item))
         return NOPE('持ち物がいっぱい');
+    // 識別の腕輪を着けていると拾った時点で分かる
+    if (hasBracelet(world, p, 'autoIdentify')) {
+        world.run.identify.known[f.item.defId] = true;
+        f.item.plusKnown = true;
+    }
     world.removeFloorItem(f);
     world.run.stats.itemsFound++;
     world.log(`${itemName(f.item, world.run.identify)}を 拾った。`, 'item');

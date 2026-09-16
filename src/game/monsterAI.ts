@@ -52,6 +52,8 @@ function canStep(world: World, m: MonsterActor, dir: Dir): boolean {
   if (other && other !== m) return false;
   // 店の床には敵を入れない（商品を踏み荒らさないため）
   if (m.kind === 'monster' && at(world.map, to.x, to.y)?.shop) return false;
+  // 聖域の巻物が敷かれたマスには乗れない
+  if (m.kind !== 'ally' && world.sanctuaries.some((p) => samePoint(p, to))) return false;
   return true;
 }
 

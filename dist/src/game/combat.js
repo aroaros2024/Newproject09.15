@@ -273,6 +273,11 @@ export function dealDamage(world, src, target, amount, kind = 'physical') {
         world.log(`${world.nameOf(target)}は 無敵だ！ ダメージを 受けない。`, 'good');
         return false;
     }
+    if (kind === 'fire' && target.kind === 'player'
+        && world.braceletEffectOf(target) === 'wardBlast') {
+        world.log('腕輪が 爆風を 防いだ！', 'good');
+        return false;
+    }
     if (kind === 'fire' && target.kind === 'player') {
         const water = equipRuneLevel(equippedShield(world.player), 'antiFire');
         if (water > 0)

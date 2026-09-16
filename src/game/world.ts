@@ -40,6 +40,12 @@ export class World {
    * spawn 側から注入する（循環参照を避けるため）。
    */
   monsterFactory: ((pos: Point) => MonsterActor | null) | null = null;
+  /** 聖域の巻物が敷かれているマス。敵はここに入れない */
+  sanctuaries: Point[] = [];
+  /** 身代わりの杖で狙われるようになった敵の id */
+  decoyId: number | null = null;
+  /** 倉庫の壺に入れられ、帰還時に倉庫へ送られるアイテム */
+  pendingWarehouse: ItemInstance[] = [];
 
   constructor(run: RunState, dungeon: DungeonDef) {
     this.run = run;
@@ -202,7 +208,20 @@ export class World {
   /** プレイヤーの移動タイプ（浮遊・水グモの腕輪で変わる） */
   playerMoveType(): 'ground' | 'fly' | 'water' {
     if (this.hasStatus(this.player, 'levitate')) return 'fly';
+    const effect = this.braceletEffectOf(this.player);
+    if (effect === 'levitate') return 'fly';
+    if (effect === 'waterWalk') return 'water';
     return 'ground';
+  }
+
+  /**
+   * 今効いている腕輪の効果 id。
+   * bracelets.ts に実体があるが、World からも引けるよう関数を注入する。
+   */
+  braceletEffectLookup: ((p: PlayerActor) => string | null) | null = null;
+
+  braceletEffectOf(p: PlayerActor): string | null {
+    return this.braceletEffectLookup ? this.braceletEffectLookup(p) : null;
   }
 
   // ------------------------------------------------------------ 状態異常

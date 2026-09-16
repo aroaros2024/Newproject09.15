@@ -19,6 +19,7 @@ import {
   START_FOOD_X10, START_HP, START_LEVEL, START_STR, WIND_DEFAULT_TURNS,
 } from './rules.js';
 import { World } from './world.js';
+import { activeBraceletEffect } from './bracelets.js';
 
 /**
  * World に「アイテム／モンスターを作る関数」を注入する。
@@ -28,6 +29,7 @@ import { World } from './world.js';
  */
 export function attachFactories(world: World): void {
   world.itemFactory = (defId) => makeSpecificItem(world, defId, world.run.depth);
+  world.braceletEffectLookup = (p) => activeBraceletEffect(world, p);
   world.monsterFactory = (pos) => {
     const id = pickMonsterId(world.dungeon, world.run.depth, world.rng);
     if (!id) return null;

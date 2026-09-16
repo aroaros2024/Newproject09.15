@@ -33,6 +33,12 @@ export class World {
      * spawn 側から注入する（循環参照を避けるため）。
      */
     monsterFactory = null;
+    /** 聖域の巻物が敷かれているマス。敵はここに入れない */
+    sanctuaries = [];
+    /** 身代わりの杖で狙われるようになった敵の id */
+    decoyId = null;
+    /** 倉庫の壺に入れられ、帰還時に倉庫へ送られるアイテム */
+    pendingWarehouse = [];
     constructor(run, dungeon) {
         this.run = run;
         this.dungeon = dungeon;
@@ -185,7 +191,20 @@ export class World {
     playerMoveType() {
         if (this.hasStatus(this.player, 'levitate'))
             return 'fly';
+        const effect = this.braceletEffectOf(this.player);
+        if (effect === 'levitate')
+            return 'fly';
+        if (effect === 'waterWalk')
+            return 'water';
         return 'ground';
+    }
+    /**
+     * 今効いている腕輪の効果 id。
+     * bracelets.ts に実体があるが、World からも引けるよう関数を注入する。
+     */
+    braceletEffectLookup = null;
+    braceletEffectOf(p) {
+        return this.braceletEffectLookup ? this.braceletEffectLookup(p) : null;
     }
     // ------------------------------------------------------------ 状態異常
     hasStatus(a, id) {

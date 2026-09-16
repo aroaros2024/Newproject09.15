@@ -646,7 +646,8 @@ export type Action =
   | { type: 'wait' }
   | { type: 'pickup' }
   | { type: 'place'; uid: number }
-  | { type: 'use'; uid: number }
+  /** 道具を使う。identify の巻物のように対象を選ぶものは targetUid を渡す */
+  | { type: 'use'; uid: number; targetUid?: number; dir?: Dir }
   | { type: 'equip'; uid: number }
   | { type: 'unequip'; uid: number }
   | { type: 'throw'; uid: number; dir: Dir }
