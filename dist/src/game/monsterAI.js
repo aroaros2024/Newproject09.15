@@ -200,9 +200,13 @@ export function takeMonsterTurn(world, m, ctx) {
     const sees = perceives(world, m, target);
     if (sees)
         m.lastSeen = { ...target.pos };
-    // 特技（射程条件はハンドラ側が見る）
-    if (sees && useSkill(world, m, target))
+    // 特技（射程条件はハンドラ側が見る）。
+    // 化けたまま特技を撃つと、アイテムの絵のまま攻撃してくる怪現象になるので、
+    // 撃つ前に正体を現す
+    if (sees && useSkill(world, m, target)) {
+        revealMimic(world, m);
         return;
+    }
     // 盗んだ敵は階段へ逃げる
     if (def.ai === 'thief' && (m.heldItems.length > 0 || m.heldGitan > 0)) {
         if (!stepTowardStairs(world, m))
@@ -218,10 +222,7 @@ export function takeMonsterTurn(world, m, ctx) {
         case 'mimic':
             // 化けている間は動かない。隣に来られたら襲いかかる
             if (chebyshev(m.pos, target.pos) <= 1) {
-                if (m.disguise) {
-                    world.log(`${world.nameOf(m)}だった！`, 'bad');
-                    m.disguise = null;
-                }
+                revealMimic(world, m);
                 attackIfPossible(world, m, target);
             }
             return;
@@ -289,6 +290,13 @@ export function takeMonsterTurn(world, m, ctx) {
                 wanderStep(world, m);
     }
 }
+/** 化けている敵の正体を明かす。何度呼んでも 1 度しかメッセージは出ない */
+export function revealMimic(world, m) {
+    if (!m.disguise)
+        return;
+    m.disguise = null;
+    world.log(`${world.nameOf(m)}だった！`, 'bad');
+}
 function attackIfPossible(world, m, target) {
     if (!canAttack(m))
         return false;
@@ -298,7 +306,14 @@ function attackIfPossible(world, m, target) {
     const dir = applyConfusion(world, m, d);
     m.dir = dir;
     const actual = world.actorAt(step(m.pos, dir));
-    if (actual && world.isHostile(m, actual)) {
+    // 身代わりの杖を当てられた敵は、仲間だったはずの敵からも殴られる。
+    // ここを見落とすと、敵が身代わりに群がったまま永久に空振りし続け、
+    // フロア全体が無害になってしまう
+    const isDecoy = actual !== null
+        && world.decoyId !== null
+        && actual.id === world.decoyId
+        && actual.id !== m.id;
+    if (actual && (world.isHostile(m, actual) || isDecoy)) {
         resolveAttack(world, m, actual);
     }
     else {

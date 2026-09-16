@@ -216,8 +216,11 @@ function placeRoom(
 
   // 部屋が区画を埋め尽くすと「4 分割された画面」に見えてしまうので上限を設ける。
   // 区画が広くても部屋はほどほどの大きさに留め、残りを通路の余地にする。
-  const capW = opts.maze ? minW + 2 : Math.min(availW, ROOM_MAX_W);
-  const capH = opts.maze ? minH + 2 : Math.min(availH, ROOM_MAX_H);
+  // 迷路でも上限は区画の空きで頭打ちにする。ここを超えると部屋が区画から
+  // はみ出し、外周の掘れない壁に食い込んだり、同じマスが 2 部屋の
+  // 出入口として登録されたりする
+  const capW = Math.min(availW, opts.maze ? minW + 2 : ROOM_MAX_W);
+  const capH = Math.min(availH, opts.maze ? minH + 2 : ROOM_MAX_H);
   const w = rng.range(minW, Math.max(minW, capW));
   const h = rng.range(minH, Math.max(minH, capH));
   const x = rng.range(b.x + 1, b.x + b.w - 1 - w);

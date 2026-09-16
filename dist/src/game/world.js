@@ -44,8 +44,18 @@ export class World {
     sanctuaries = [];
     /** 身代わりの杖で狙われるようになった敵の id */
     decoyId = null;
-    /** 倉庫の壺に入れられ、帰還時に倉庫へ送られるアイテム */
-    pendingWarehouse = [];
+    /**
+     * 倉庫の壺に入れられ、帰還時に倉庫へ送られるアイテム。
+     * 中断セーブを跨いでも消えないよう、実体は RunState に置いてある。
+     */
+    get pendingWarehouse() {
+        // 古い中断セーブから復元した場合に備えて、無ければここで作る
+        this.run.pendingWarehouse ??= [];
+        return this.run.pendingWarehouse;
+    }
+    set pendingWarehouse(list) {
+        this.run.pendingWarehouse = list;
+    }
     constructor(run, dungeon) {
         this.run = run;
         this.dungeon = dungeon;

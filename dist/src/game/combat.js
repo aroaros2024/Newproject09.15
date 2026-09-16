@@ -348,6 +348,11 @@ export function killActor(world, src, target) {
 }
 /** 倒した時のドロップ */
 function dropOnDeath(world, m) {
+    // 化けていたアイテムは床に残す（見えていた物が消えると不条理になる）
+    if (m.disguise) {
+        world.dropItem(m.disguise, m.pos);
+        m.disguise = null;
+    }
     // 盗んだ物は必ず落とす
     for (const it of m.heldItems)
         world.dropItem(it, m.pos);

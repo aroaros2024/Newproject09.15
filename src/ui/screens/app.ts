@@ -28,6 +28,8 @@ export interface App {
   persist(): void;
   /** 設定を反映し直す（音量・アニメ速度） */
   applySettings(): void;
+  /** 「はじめから」。記録をすべて消して読み込み直す */
+  resetAll(): void;
   /** 今の画面 */
   readonly current: Screen | null;
 }

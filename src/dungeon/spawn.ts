@@ -213,6 +213,8 @@ export function placePlayer(world: World): Point {
     (p) => !samePoint(p, world.map.stairs)
       && !world.floorItemAt(p)
       && !at(world.map, p.x, p.y)?.shop
+      // ワナの上に降ろすと、避けようのない一撃から階が始まってしまう
+      && !at(world.map, p.x, p.y)?.trap
       && !world.actorAt(p),
   );
   if (floors.length === 0) {
@@ -333,6 +335,9 @@ export function shopPriceOf(item: ItemInstance): number {
 // ---------------------------------------------------------------------------
 
 /** モンスターハウスを発動させる */
+/** どんなフロアでも、モンスターハウスで一度に湧く数の絶対上限 */
+const HOUSE_MONSTER_HARD_CAP = 40;
+
 export function triggerMonsterHouse(world: World, room: Room): void {
   const kind = room.monsterHouse;
   if (!kind || room.houseTriggered) return;
@@ -346,12 +351,16 @@ export function triggerMonsterHouse(world: World, room: Room): void {
   world.rng.shuffle(cells);
 
   const density = kind === 'big' ? 0.55 : 0.4;
-  const count = Math.max(4, Math.floor(cells.length * density));
+  // 大部屋は 800 マス近くあるので、割合だけで決めると数百体が一度に湧き、
+  // 1 ターン目で確殺されるうえターン処理も止まる。
+  // そのフロアの上限の 2 倍までを「モンスターハウスの上限」とする
+  const houseCap = Math.min(HOUSE_MONSTER_HARD_CAP, world.dungeon.gen.maxMonsters * 2);
+  const count = Math.max(4, Math.min(houseCap, Math.floor(cells.length * density)));
   const depth = world.run.depth;
 
   if (kind === 'item' || kind === 'gitan') {
     // アイテム／ギタンで埋め尽くす。敵は少なめ
-    for (const p of cells.slice(0, Math.floor(cells.length * 0.6))) {
+    for (const p of cells.slice(0, Math.min(60, Math.floor(cells.length * 0.6)))) {
       if (world.floorItemAt(p)) continue;
       const item = kind === 'gitan'
         ? makeGitan(gitanAmount(depth, world.rng), world.rng, () => world.nextUid())

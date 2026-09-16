@@ -222,10 +222,11 @@ export function onEnterTile(world, a) {
     const tile = at(world.map, a.pos.x, a.pos.y);
     if (!tile)
         return false;
+    // その相手が実際にどう動くか。溶岩の主は自分の溶岩では焼けない
+    const move = a.kind === 'player' ? world.playerMoveType() : world.defOf(a).moveType;
     // 浮遊していれば床の影響を受けない
-    const floating = world.hasStatus(a, 'levitate')
-        || (a.kind !== 'player' && (world.defOf(a).moveType === 'fly'));
-    if (tile.kind === 'lava' && !floating) {
+    const floating = world.hasStatus(a, 'levitate') || move === 'fly';
+    if (tile.kind === 'lava' && !floating && move !== 'lava') {
         const dmg = Math.max(5, Math.floor(a.maxHp * 0.1));
         world.log(`${world.nameOf(a)}は 溶岩に 焼かれた！`, 'bad');
         if (dealDamage(world, null, a, dmg, 'fire'))

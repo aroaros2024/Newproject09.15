@@ -93,7 +93,9 @@ export class DungeonScreen implements Screen {
       this.renderer.invalidateTerrain();
       this.camera.setTarget(world.player.pos, world.map, SCREEN_W, SCREEN_H);
       this.camera.snap();
-      this.fx.reset();
+      // ここで fx.reset() を呼ぶと、floorChange を処理した時に張られた
+      // モンスターハウス／ボスのバナーと入力ロックまで消えてしまう。
+      // 演出のリセットは fx 側が floorChange を受け取った時に済んでいる
       this.app.input.latchDirection();
     }
 
@@ -162,6 +164,17 @@ export class DungeonScreen implements Screen {
     // 演出待ちの間は入力を取らない（階層移動の暗転など）
     if (this.fx.isHolding()) return;
 
+    // メニューから出した全体図。閉じるまでは他の操作を受け付けない
+    // （真っ暗な地図の裏で歩けてしまうのを防ぐ）
+    if (this.showFullMapOnce) {
+      if (input.justPressed(Cmd.B) || input.justPressed(Cmd.X)
+        || input.justPressed(Cmd.A) || input.justPressed(Cmd.Map)) {
+        this.showFullMapOnce = false;
+        this.app.audio.play('cancel');
+      }
+      return;
+    }
+
     // 全画面の重ね表示
     if (this.overlay !== 'none') {
       if (this.overlay === 'log') {
@@ -198,10 +211,15 @@ export class DungeonScreen implements Screen {
       return;
     }
 
-    // メッセージ送り中は A で早送り
+    // メッセージ送り中は A で早送り。
+    // 早送りに使った A をそのまま残すと、同じフレームで攻撃にもなって
+    // 1 ターン消費してしまうので、ここで押下を食べておく
     if (this.app.log.isTyping()) {
       this.app.log.fastForward = input.isDown(Cmd.A);
-      if (input.justPressed(Cmd.A)) this.app.log.skipTyping();
+      if (input.justPressed(Cmd.A)) {
+        this.app.log.skipTyping();
+        input.consume(Cmd.A);
+      }
     } else {
       this.app.log.fastForward = false;
     }
@@ -1095,9 +1113,6 @@ export class DungeonScreen implements Screen {
         allies: world.run.allies,
         items: world.run.floorItems,
       });
-      if (this.showFullMapOnce && this.app.input.justPressed(Cmd.B)) {
-        this.showFullMapOnce = false;
-      }
     }
 
     if (this.overlay === 'log') {

@@ -391,6 +391,17 @@ export class InputManager {
     return this.cmds.get(cmd)?.edge === true;
   }
 
+  /**
+   * 押下エッジを消費する。
+   *
+   * 同じフレームで 2 つの意味に取られたくない時に使う
+   * （例: メッセージの早送りに使った A が、そのまま攻撃にもなる）。
+   */
+  consume(cmd: Cmd): void {
+    const s = this.cmds.get(cmd);
+    if (s) s.edge = false;
+  }
+
   heldMs(cmd: Cmd): number {
     const s = this.cmds.get(cmd);
     return s ? this.now - s.pressedAt : 0;

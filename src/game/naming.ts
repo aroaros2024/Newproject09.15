@@ -10,6 +10,9 @@ import { getItem, tryGetRune, UNIDENTIFIED_KINDS } from '../data/registry.js';
 import { runeList } from './runes.js';
 import { KIND_SUFFIX } from '../data/names.js';
 
+/** 中身を抱えたままにする壺。これ以外は「あと何回使えるか」で数える */
+const POT_HOLDS_CONTENTS = new Set(['storage', 'backpack', 'unbreakable', 'synthesis']);
+
 /** そのカテゴリは未識別の対象か */
 export const isUnidentifiableKind = (def: ItemDef): boolean =>
   UNIDENTIFIED_KINDS.includes(def.kind) && !def.alwaysIdentified;
@@ -109,7 +112,10 @@ export function itemName(
     }
     if (def.kind === 'pot') {
       const cap = (def as { capacity: number }).capacity;
-      base += `[${item.contents.length}/${cap}]`;
+      // 中身を持たない壺（識別・強化など）は「あと何回使えるか」を出す
+      base += POT_HOLDS_CONTENTS.has((def as { effect: string }).effect)
+        ? `[${item.contents.length}/${cap}]`
+        : `[${item.charges > 0 ? item.charges : cap}]`;
     }
   }
 

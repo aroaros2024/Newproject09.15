@@ -758,6 +758,12 @@ export interface RunState {
    * 敵のターンを回す（シレンの倍速と同じ手触りにするため）。
    */
   playerActAgain: boolean;
+  /**
+   * 倉庫の壺に入れて、帰還時に村の倉庫へ送られるアイテム。
+   * World 側の一時変数として持つと、中断セーブから再開したときに
+   * 丸ごと消えてしまう（プレイヤーからは「壺に入れた物が消滅した」に見える）。
+   */
+  pendingWarehouse: ItemInstance[];
   /** すでに倒したボス */
   defeatedBosses: string[];
   /**

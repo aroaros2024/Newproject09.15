@@ -100,6 +100,9 @@ export const MONSTER_SKILLS = {
     split: (world, m, t) => {
         if (!adjacent(m, t))
             return false;
+        // 身代わりに向かって無限に分裂されると、フロアが敵で埋まる
+        if (t.id === world.decoyId)
+            return false;
         if (world.run.monsters.length >= world.dungeon.gen.maxMonsters + 6)
             return false;
         const spot = freeNeighbor(world, m.pos);

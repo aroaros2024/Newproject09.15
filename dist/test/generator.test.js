@@ -213,4 +213,26 @@ test('行き止まりの通路が過剰に出ない', () => {
     const perFloor = totalDeadEnds / n;
     assert.ok(perFloor < 3, `1 フロアあたりの行き止まりが多すぎる: ${perFloor.toFixed(1)}`);
 });
+test('迷路フロアでも部屋が区画からはみ出さない', () => {
+    const params = {
+        ...BASE, gridCols: [3, 4], gridRows: [2, 3], emptyCellRate: 18,
+    };
+    for (let seed = 0; seed < 400; seed++) {
+        const map = generateFloor(params, seed, { maze: true });
+        for (const r of map.rooms) {
+            assert.ok(r.rect.x >= 1 && r.rect.y >= 1, `seed ${seed}: 部屋 ${r.id} が外周に食い込んでいる ${JSON.stringify(r.rect)}`);
+            assert.ok(r.rect.x + r.rect.w <= map.width - 1 && r.rect.y + r.rect.h <= map.height - 1, `seed ${seed}: 部屋 ${r.id} が外周に食い込んでいる ${JSON.stringify(r.rect)}`);
+            assert.ok(r.doors.length >= 1, `seed ${seed}: 部屋 ${r.id} に出入口が無い`);
+        }
+        // 同じマスが 2 つの部屋の出入口になっていないか
+        const seen = new Set();
+        for (const r of map.rooms) {
+            for (const d of r.doors) {
+                const k = d.y * map.width + d.x;
+                assert.equal(seen.has(k), false, `seed ${seed}: (${d.x},${d.y}) が複数の部屋の出入口になっている`);
+                seen.add(k);
+            }
+        }
+    }
+});
 //# sourceMappingURL=generator.test.js.map

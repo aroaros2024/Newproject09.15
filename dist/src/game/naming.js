@@ -7,6 +7,8 @@
 import { getItem, tryGetRune, UNIDENTIFIED_KINDS } from '../data/registry.js';
 import { runeList } from './runes.js';
 import { KIND_SUFFIX } from '../data/names.js';
+/** 中身を抱えたままにする壺。これ以外は「あと何回使えるか」で数える */
+const POT_HOLDS_CONTENTS = new Set(['storage', 'backpack', 'unbreakable', 'synthesis']);
 /** そのカテゴリは未識別の対象か */
 export const isUnidentifiableKind = (def) => UNIDENTIFIED_KINDS.includes(def.kind) && !def.alwaysIdentified;
 /** 種類が判明しているか */
@@ -91,7 +93,10 @@ export function itemName(item, id, opts = {}) {
         }
         if (def.kind === 'pot') {
             const cap = def.capacity;
-            base += `[${item.contents.length}/${cap}]`;
+            // 中身を持たない壺（識別・強化など）は「あと何回使えるか」を出す
+            base += POT_HOLDS_CONTENTS.has(def.effect)
+                ? `[${item.contents.length}/${cap}]`
+                : `[${item.charges > 0 ? item.charges : cap}]`;
         }
     }
     // 呪い（識別済みの時だけ見える）

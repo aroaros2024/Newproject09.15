@@ -2,7 +2,7 @@
  * タイトル画面。
  */
 
-import { clearAll, hasRun } from '../../core/save.js';
+import { hasRun } from '../../core/save.js';
 import { type Ctx, drawText } from '../draw.js';
 import { ConfirmDialog, ListMenu, type MenuEntry } from '../menu.js';
 import { SCREEN_H, SCREEN_W, UI } from '../theme.js';
@@ -61,8 +61,7 @@ export class TitleScreen implements Screen {
           message: 'これまでの記録が すべて 消えます。よろしいですか？',
           danger: true,
           onYes: () => {
-            clearAll();
-            window.location.reload();
+            this.app.resetAll();
           },
         });
         return false;

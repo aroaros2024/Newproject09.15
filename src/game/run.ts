@@ -4,7 +4,8 @@
 
 import { Rng, hashSeed } from '../core/rng.js';
 import type {
-  IdentifyState, ItemInstance, PlayerActor, RunState, TownState,
+  IdentifyState, ItemInstance, MonsterActor, MoveType, Point,
+  PlayerActor, RunState, TownState,
 } from '../core/types.js';
 import { ALIAS_POOLS, DEFAULT_PLAYER_NAME } from '../data/names.js';
 import { LOANER_GEAR } from '../data/dungeons.js';
@@ -14,7 +15,7 @@ import { generateFloor } from '../dungeon/generator.js';
 import {
   makeMonster, makeSpecificItem, naturalSpawn, pickMonsterId, placePlayer, populateFloor,
 } from '../dungeon/spawn.js';
-import { createMap } from '../dungeon/tilemap.js';
+import { canEnter, createMap } from '../dungeon/tilemap.js';
 import { makeItem } from './inventory.js';
 import {
   START_FOOD_X10, START_HP, START_LEVEL, START_STR, WIND_DEFAULT_TURNS,
@@ -137,6 +138,7 @@ export function startRun(
     nextActorId: 1,
     windLeft: dungeon.windTurns > 0 ? dungeon.windTurns : WIND_DEFAULT_TURNS,
     playerActAgain: false,
+    pendingWarehouse: [],
     defeatedBosses: [],
     encountered: { monsters: [], items: [] },
     stats: {
@@ -251,17 +253,26 @@ export function enterFloor(world: World, depth: number): void {
   const maze = !bigRoom && !round && world.rng.percent(6);
 
   world.run.map = generateFloor(d.gen, floorSeed, { bigRoom, round, maze });
-  populateFloor(world);
 
   // 仲間は連れて降りる
   const survivors = world.run.allies.filter((a) => a.alive);
   world.run.allies = survivors;
 
+  // 敵を撒く前に立ち位置を決める。randomSpawnTile は
+  // 「プレイヤーから何マス離れているか」で場所を選ぶので、
+  // あとから置くと前の階の座標を基準にしてしまい、
+  // 降りた目の前に敵が湧く
   world.run.player.pos = placePlayer(world);
-  for (const ally of survivors) {
-    const spot = world.findDropSpot(world.run.player.pos, 3);
-    ally.pos = spot ?? world.run.player.pos;
-  }
+
+  // 階の切り替えは、この階で起きることより先に知らせる。
+  // floorChange は演出をリセットするので、ボスの登場や
+  // モンスターハウスの通知より後に流すと、それらが消えてしまう
+  world.emit({ t: 'floorChange', depth });
+  world.log(`${d.name} ${depth}F`, 'system');
+  world.emit({ t: 'bgm', track: depth === d.depth && d.bosses.length > 0 ? 'boss' : d.bgm });
+
+  populateFloor(world);
+  placeAllies(world, survivors);
 
   // 前の階に置いた聖域と、身代わりの指定は持ち越さない
   world.sanctuaries = [];
@@ -270,14 +281,49 @@ export function enterFloor(world: World, depth: number): void {
   world.run.windLeft = d.windTurns > 0 ? d.windTurns : 0;
   refreshFov(world);
 
-  world.emit({ t: 'floorChange', depth });
-  world.log(`${d.name} ${depth}F`, 'system');
-  world.emit({ t: 'bgm', track: depth === d.depth && d.bosses.length > 0 ? 'boss' : d.bgm });
-
   // 入った瞬間のモンスターハウス（プレイヤーがその部屋にいる場合）
   checkMonsterHouseAt(world);
 
   showFloorGuide(world, depth);
+}
+
+/**
+ * 仲間を階段のまわりに並べる。
+ *
+ * findDropSpot はアイテムを置ける場所しか見ないので、それで決めると
+ * 仲間が全員プレイヤーと同じマスに重なる（見た目も当たり判定も壊れる）。
+ * ここでは「誰もいない・入れるマス」を近い順に 1 体ずつ割り当てる。
+ */
+function placeAllies(world: World, allies: MonsterActor[]): void {
+  const origin = world.run.player.pos;
+  const taken = new Set<number>([origin.y * world.map.width + origin.x]);
+  for (const m of world.run.monsters) taken.add(m.pos.y * world.map.width + m.pos.x);
+
+  for (const ally of allies) {
+    const spot = nearestFreeTile(world, origin, taken, world.defOf(ally).moveType);
+    ally.pos = spot ?? { ...origin };
+    if (spot) taken.add(spot.y * world.map.width + spot.x);
+  }
+}
+
+/** origin から近い順に、まだ誰も立っていない入れるマスを探す */
+function nearestFreeTile(
+  world: World, origin: Point, taken: Set<number>, moveType: MoveType,
+): Point | null {
+  for (let r = 1; r <= 6; r++) {
+    const ring: Point[] = [];
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+        const p = { x: origin.x + dx, y: origin.y + dy };
+        if (taken.has(p.y * world.map.width + p.x)) continue;
+        if (!canEnter(world.map, p.x, p.y, moveType)) continue;
+        ring.push(p);
+      }
+    }
+    if (ring.length > 0) return world.rng.pick(ring);
+  }
+  return null;
 }
 
 /**

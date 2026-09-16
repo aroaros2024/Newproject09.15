@@ -143,9 +143,21 @@ function usePot(world, pot, target) {
         return NO('入れる物を 選んでいない');
     if (target.uid === pot.uid)
         return NO('自分自身は 入れられない');
-    if (getItem(target.defId).kind === 'pot') {
+    const targetDef = getItem(target.defId);
+    if (targetDef.kind === 'pot') {
         world.log('壺に 壺は 入らない。');
         return NO('壺に壺は入らない');
+    }
+    // 呪われた装備は手から離れない。壺は抜け道にしない
+    if (isEquipped(p, target.uid) && target.cursed) {
+        world.log('呪われていて 手から 離れない！', 'bad');
+        return OK;
+    }
+    // 合成の壺は装備しか合成できない。黙って消えると被害が大きいので断る
+    const equipKind = targetDef.kind === 'weapon' || targetDef.kind === 'shield';
+    if (def.effect === 'synthesis' && !equipKind) {
+        world.log('合成の壺には 武器か 盾しか 入らない。');
+        return NO('合成できない');
     }
     if (pot.contents.length >= def.capacity) {
         world.log(`${itemName(pot, world.run.identify)}は いっぱいだ。`);
@@ -178,10 +190,18 @@ function usePot(world, pot, target) {
             runEffect(world, 'cashPot', pot, p, target);
             break;
         default: {
-            // 識別・変化・祝福・強化・弱化・おはらい: 加工して戻す
+            // 識別・変化・祝福・強化・弱化・おはらい: 加工して戻す。
+            // 中身は手元に返るので contents では減らせない。
+            // 容量ぶんだけ使える「回数」として数え、使い切ったら壺は割れる
             runEffect(world, def.effect, pot, p, target);
             if (!addToInventory(p, target))
                 world.dropItem(target, p.pos);
+            pot.charges = (pot.charges > 0 ? pot.charges : def.capacity) - 1;
+            if (pot.charges <= 0) {
+                world.log(`${itemName(pot, world.run.identify)}は 割れてしまった。`, 'item');
+                world.sfx('break');
+                consume(world, pot);
+            }
             break;
         }
     }

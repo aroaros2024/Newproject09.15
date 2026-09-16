@@ -6,7 +6,7 @@
  */
 import { audio } from './core/audio.js';
 import { input } from './core/input.js';
-import { clearRun, loadRun, loadSettings, loadTown, saveRun, saveSettings, saveTown, } from './core/save.js';
+import { clearAll, clearRun, loadRun, loadSettings, loadTown, saveRun, saveSettings, saveTown, } from './core/save.js';
 import { getDungeon, validateData } from './data/registry.js';
 import { attachFactories, startRun } from './game/run.js';
 import { finishRun } from './game/town.js';
@@ -107,6 +107,9 @@ class Game {
     enterDungeon(world) {
         this.log.clear();
         const screen = new DungeonScreen(this, world, (kind, reason) => this.endRun(world, kind, reason), () => {
+            // 中断。自動保存を止めないと、村やタイトルにいる間も
+            // 古い world を書き続けてしまう
+            this.stopAutoSave();
             this.dungeonScreen = null;
             this.goTo(this.makeTitle());
         });
@@ -173,9 +176,21 @@ class Game {
         void animScale;
     }
     persist() {
+        // 「はじめから」で消したあとは二度と書き戻さない。
+        // beforeunload の persist() が走ると、消したはずの記録が復活する
+        if (this.wiped)
+            return;
         saveSettings(this.settings);
         saveTown(this.town);
     }
+    /** 「はじめから」。記録を消し、以後の保存を止めてから読み込み直す */
+    resetAll() {
+        this.wiped = true;
+        this.stopAutoSave();
+        clearAll();
+        window.location.reload();
+    }
+    wiped = false;
     // ------------------------------------------------------------ ループ
     onResize = () => {
         const dpr = Math.min(2, window.devicePixelRatio || 1);
