@@ -518,7 +518,7 @@ export interface PlayerActor extends ActorBase {
    *
    * 持てる数は増えない。増えるのは「倒れても失わない」という保証だけ。
    * 何を守るかを選ぶこと自体が持ち物の駆け引きになる。
-   * 枠の数は村側（TownState.keepSlots）が持つ。
+   * 枠の数は加護（gacha.ts の activeBoosts）が決める。
    */
   keptUids: number[];
   /**
@@ -815,6 +815,14 @@ export interface RunState {
    * 一度目の結果をここに残し、二度目はそれをそのまま返す。
    */
   settled?: ReturnResult;
+  /**
+   * 連れて行っている相棒。
+   *
+   * 村の記録そのものではなく写しを持つ。冒険中に村の値を書き換えると、
+   * 中断セーブから再開したときに同じ経験値をもう一度入れてしまう。
+   * 得た経験値はここに溜め、finishRun で村へ 1 度だけ移す。
+   */
+  partner?: RunPartner;
   /** すでに倒したボス */
   defeatedBosses: string[];
   /**
@@ -837,6 +845,28 @@ export interface RunStats {
 }
 
 /** 村（永続データ） */
+/** 冒険に連れて行っている相棒 */
+export interface RunPartner {
+  id: string;
+  /** 冒険中のアクター id */
+  actorId: number;
+  /** 村での育ち具合（この冒険のあいだは変わらない） */
+  level: number;
+  /** この冒険で得た経験値。村へ移すのは finishRun の 1 箇所だけ */
+  exp: number;
+}
+
+/** 相棒の育ち具合。村に残る */
+export interface PartnerRecord {
+  id: string;
+  level: number;
+  exp: number;
+  /** 同じ相棒をもう一度引いた回数。レベルの上限が伸びる */
+  dupes: number;
+  /** 自分でつけた名前。無ければ既定の名前 */
+  nickname?: string;
+}
+
 export interface TownState {
   playerName: string;
   /** 倉庫 */
@@ -862,8 +892,6 @@ export interface TownState {
    */
   knownItems?: Record<string, boolean>;
   nicknames?: Record<string, string>;
-  /** 保持枠の数。最初は 3、ガチャの加護で最大 5 まで増える */
-  keepSlots?: number;
   /** ガチャの石。冒険のたびに貰える（倒れても貰える） */
   stones?: number;
   /**
@@ -873,6 +901,28 @@ export interface TownState {
   tally?: Record<string, number>;
   /** 受け取り済みのミッション id */
   claimed?: string[];
+  /**
+   * ガチャで引き当てた景品の枚数。景品 id → 枚数。
+   *
+   * 加護の効き目はここから計算する。値を直接持たないのは、
+   * 「保持枠 +1 を 2 枚引いた」と「保持枠が 5 になっている」を
+   * 別々に持つと、必ずどちらかがズレるため。
+   */
+  gachaOwned?: Record<string, number>;
+  /** ガチャを引いた回数。天井（10 連の SR 以上確定）の判定に使う */
+  gachaPulls?: number;
+  /** 手に入れた相棒。id → 育ち具合 */
+  partners?: Record<string, PartnerRecord>;
+  /** 連れて行く相棒の id。null なら連れて行かない */
+  activePartner?: string | null;
+
+  /**
+   * 相棒の育ち具合。
+   *
+   * dupes（同じ相棒を引き直した回数）がレベルの上限を決める。
+   * 引くたびに強くなるのではなく、「一緒に潜れる上限が上がる」形にしてある。
+   * 強さは冒険で育てるもので、石で買うものではない。
+   */
   seenMonsters: Record<string, boolean>;
   /** 冒険の記録 */
   history: AdventureRecord[];

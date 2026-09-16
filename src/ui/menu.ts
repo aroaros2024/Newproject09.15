@@ -53,7 +53,7 @@ export interface MenuEntry {
 }
 
 export interface ListMenuOptions {
-  title: string;
+  title: Live<string>;
   entries: MenuEntry[];
   rect: Rect;
   /** 1 画面に出す行数 */
@@ -75,7 +75,7 @@ export interface ListMenuOptions {
 export type MenuResult = 'open' | 'close';
 
 export class ListMenu {
-  readonly title: string;
+  readonly title: Live<string>;
   entries: MenuEntry[];
   rect: Rect;
   rows: number;
@@ -160,7 +160,7 @@ export class ListMenu {
   draw(g: Ctx, time: number, frame: string = UI.frame): void {
     const r = this.rect;
     drawPanel(g, r, { frame });
-    drawText(g, this.title, r.x + 18, r.y + 30, {
+    drawText(g, liveValue(this.title) ?? '', r.x + 18, r.y + 30, {
       size: 18, bold: true, color: UI.cursorEdge,
     });
     g.save();

@@ -24,6 +24,8 @@ import {
 import { World } from './world.js';
 import { activeBraceletEffect } from './bracelets.js';
 import { onMonsterDefeated } from './deathHooks.js';
+import { activeBoosts } from './gacha.js';
+import { spawnPartner } from './partner.js';
 
 /**
  * World に「アイテム／モンスターを作る関数」を注入する。
@@ -186,7 +188,22 @@ export function startRun(
     player.inventory.push(riceBall);
   }
 
+  // 加護。効かないダンジョン（真・もっと不思議）では全部 0 になる
+  const boosts = activeBoosts(town, dungeon.allowBoosts);
+  for (const kind of boosts.known) {
+    for (const def of itemsOfKind(kind)) run.identify.known[def.id] = true;
+  }
+  if (boosts.food > 0) {
+    player.maxFoodX10 += boosts.food * 10;
+    player.foodX10 = player.maxFoodX10;
+  }
+  if (dungeon.allowBring && boosts.gitan > 0) player.gitan += boosts.gitan;
+
   enterFloor(world, 1);
+
+  // 相棒は地形ができてから置く
+  if (boosts.partner) spawnPartner(world, boosts.partner);
+
   return world;
 }
 

@@ -10,6 +10,7 @@ import { BASE_HIT, BLIND_ACC_PENALTY, CRIT_RATE_CAP, CRIT_RUNE_STEP, EXP_TABLE, 
 import { equipRuneLevel } from './runes.js';
 import { equippedBracelet, equippedShield, equippedWeapon } from './inventory.js';
 import { applyStatus, removeStatus, wakeOnDamage } from './status.js';
+import { PARTNER_SHARE, gainPartnerExp, partnerActor, refreshPartnerLevel, } from './partner.js';
 // ---------------------------------------------------------------------------
 // 攻撃力・防御力
 // ---------------------------------------------------------------------------
@@ -346,6 +347,11 @@ export function killActor(world, src, target) {
         if (target.kind === 'monster')
             world.tally(`kill:${target.defId}`);
         gainExp(world, world.player, target.exp);
+        // 相棒も一緒に育つ。自分で倒せば満額、プレイヤーが倒せば half
+        const partner = partnerActor(world, world.run.partner);
+        if (partner && partner.alive && target.kind === 'monster') {
+            gainPartnerExp(world, src === partner ? target.exp : target.exp * PARTNER_SHARE);
+        }
         // 守銭の印
         const gitanRune = equipRuneLevel(equippedWeapon(world.player), 'gitanHit');
         if (gitanRune > 0) {
@@ -429,6 +435,8 @@ export function levelUp(world, p) {
     p.str = p.maxStr; // レベルアップでちからが全回復する
     world.log(`${p.name}は レベル ${p.level}に 上がった！`, 'good');
     world.tallyMax('level', p.level);
+    // 相棒はプレイヤーのレベルに追随する（村で育てた上限まで）
+    refreshPartnerLevel(world, p);
     world.emit({ t: 'levelUp', actorId: p.id });
     world.sfx('levelUp');
 }

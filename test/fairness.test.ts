@@ -5,7 +5,7 @@ import { chebyshev } from '../src/core/geom.js';
 import { at } from '../src/dungeon/tilemap.js';
 import { makeMonster } from '../src/dungeon/spawn.js';
 import { addKept, addToInventory, keptItems, makeItem } from '../src/game/inventory.js';
-import { BASE_KEEP_SLOTS } from '../src/game/rules.js';
+import { BASE_KEEP_SLOTS, MAX_KEEP_SLOTS } from '../src/game/rules.js';
 import { finishRun, keepSlotsFor } from '../src/game/town.js';
 import { getDungeon } from '../src/data/registry.js';
 import { samePoint } from '../src/core/geom.js';
@@ -366,10 +366,16 @@ test('保持した道具を手放すと、枠も空く', () => {
 test('真・もっと不思議では、保持枠が 0 になる', () => {
   // 「何の加護も無い 99 階」なので、保持枠そのものが通じない
   const town = newTown();
-  town.keepSlots = 5;
+  // 枠は村の数値ではなく、ガチャで引いた加護の枚数から出る。
+  // 数値を別に持つと「引いた枚数」と「いまの枠」が必ずズレる
+  assert.equal(keepSlotsFor(town, getDungeon('d2')), BASE_KEEP_SLOTS, '最初から増えている');
+  town.gachaOwned = { 'b:keep': 2 };
   assert.equal(keepSlotsFor(town, getDungeon('exPure')), 0, '加護なしなのに枠がある');
   assert.equal(keepSlotsFor(town, getDungeon('ex')), 5, '加護ありなのに枠が増えていない');
   assert.equal(keepSlotsFor(town, getDungeon('d2')), 5);
+  // 上限を超えて引いても、枠は 5 で止まる
+  town.gachaOwned = { 'b:keep': 9 };
+  assert.equal(keepSlotsFor(town, getDungeon('d2')), MAX_KEEP_SLOTS, '上限を超えた');
 
   // 枠が 0 のダンジョンでは、倒れたら何も残らない
   const world = startRun('exPure', town, { seed: 91 });

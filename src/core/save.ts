@@ -6,10 +6,12 @@
  * 読み込みは必ず検証してから返し、駄目なら既定値に落とす。
  */
 
-import type { RunState, Settings, TownState } from './types.js';
+import type { PartnerRecord, RunPartner, RunState, Settings, TownState } from './types.js';
 import { SAVE_VERSION } from './types.js';
-import { BASE_KEEP_SLOTS, MAX_KEEP_SLOTS } from '../game/rules.js';
 import { sanitizeTally } from '../game/counters.js';
+import { tryGetPrize } from '../data/gacha.js';
+import { tryGetPartner } from '../data/partners.js';
+import { partnerLevelCap } from '../game/partner.js';
 
 const PREFIX = 'fushigi-dungeon';
 const KEY_TOWN = `${PREFIX}:town`;
@@ -43,10 +45,13 @@ export function defaultTown(playerName = 'ナギ'): TownState {
     seenItems: {},
     knownItems: {},
     nicknames: {},
-    keepSlots: BASE_KEEP_SLOTS,
     stones: 0,
     tally: {},
     claimed: [],
+    gachaOwned: {},
+    gachaPulls: 0,
+    partners: {},
+    activePartner: null,
     seenMonsters: {},
     history: [],
     totalRuns: 0,
@@ -143,12 +148,14 @@ function validateTown(t: Partial<TownState>): TownState {
     seenItems: typeof t.seenItems === 'object' && t.seenItems ? t.seenItems : {},
     knownItems: typeof t.knownItems === 'object' && t.knownItems ? t.knownItems : {},
     nicknames: typeof t.nicknames === 'object' && t.nicknames ? t.nicknames : {},
-    keepSlots: Number.isFinite(t.keepSlots)
-      ? Math.max(BASE_KEEP_SLOTS, Math.min(MAX_KEEP_SLOTS, Math.floor(t.keepSlots as number)))
-      : BASE_KEEP_SLOTS,
     stones: Number.isFinite(t.stones) ? Math.max(0, Math.floor(t.stones as number)) : 0,
     tally: sanitizeTally(t.tally),
     claimed: Array.isArray(t.claimed) ? t.claimed.filter((x) => typeof x === 'string') : [],
+    gachaOwned: sanitizeOwned(t.gachaOwned),
+    gachaPulls: Number.isFinite(t.gachaPulls)
+      ? Math.max(0, Math.floor(t.gachaPulls as number)) : 0,
+    partners: sanitizePartners(t.partners),
+    activePartner: typeof t.activePartner === 'string' ? t.activePartner : null,
     seenMonsters: typeof t.seenMonsters === 'object' && t.seenMonsters ? t.seenMonsters : {},
     history: Array.isArray(t.history) ? t.history.slice(-50) : [],
     totalRuns: Number.isFinite(t.totalRuns) ? Math.max(0, Math.floor(t.totalRuns as number)) : 0,
@@ -156,6 +163,51 @@ function validateTown(t: Partial<TownState>): TownState {
   };
   if (!out.unlocked.includes('d1')) out.unlocked.push('d1');
   renumberStorage(out);
+  return out;
+}
+
+/**
+ * ガチャの所持枚数。実在しない景品と壊れた値を捨てる。
+ *
+ * 加護の効き目はここから計算するので、ここが壊れていると
+ * 保持枠が 0 になったり、無限に増えたりする。
+ */
+function sanitizeOwned(raw: unknown): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return out;
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (!tryGetPrize(k)) continue;
+    if (typeof v !== 'number' || !Number.isFinite(v) || v <= 0) continue;
+    out[k] = Math.min(OWNED_CAP, Math.floor(v));
+  }
+  return out;
+}
+
+/** 1 つの景品を何枚まで数えるか。壊れたセーブの無限大よけ */
+const OWNED_CAP = 9999;
+
+/** 相棒の記録。実在しない相棒と壊れた値を捨てる */
+function sanitizePartners(raw: unknown): Record<string, PartnerRecord> {
+  const out: Record<string, PartnerRecord> = {};
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return out;
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (!tryGetPartner(k)) continue;
+    if (typeof v !== 'object' || v === null) continue;
+    const r = v as Partial<PartnerRecord>;
+    const dupes = Number.isFinite(r.dupes) ? Math.max(0, Math.floor(r.dupes as number)) : 0;
+    const rec: PartnerRecord = {
+      id: k,
+      level: 1,
+      exp: Number.isFinite(r.exp) ? Math.max(0, Math.floor(r.exp as number)) : 0,
+      dupes,
+    };
+    const level = Number.isFinite(r.level) ? Math.floor(r.level as number) : 1;
+    rec.level = Math.max(1, Math.min(partnerLevelCap(rec), level));
+    if (typeof r.nickname === 'string' && r.nickname.length > 0) {
+      rec.nickname = r.nickname.slice(0, 8);
+    }
+    out[k] = rec;
+  }
   return out;
 }
 
@@ -198,6 +250,14 @@ export function loadRun(): RunState | null {
   // 古い中断データには無い項目を埋める（loadRun は検証しかしないので、ここだけ）
   data.tally = sanitizeTally(data.tally);
   data.pendingRejoin ??= [];
+  // 相棒の記録が壊れていたら、連れていないことにする（冒険は続けられる）
+  const rp = data.partner as Partial<RunPartner> | undefined;
+  if (rp && (!tryGetPartner(rp.id ?? '')
+    || !Number.isFinite(rp.actorId) || !Number.isFinite(rp.level))) {
+    delete data.partner;
+  } else if (rp) {
+    rp.exp = Number.isFinite(rp.exp) ? Math.max(0, Math.floor(rp.exp as number)) : 0;
+  }
   return data;
 }
 

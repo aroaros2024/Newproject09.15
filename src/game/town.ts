@@ -17,9 +17,11 @@ import { ALL_ITEMS, allMonsters, getItem, getDungeon } from '../data/registry.js
 import { DUNGEON_ORDER } from '../data/dungeons.js';
 import { keptItems, makeItem } from './inventory.js';
 import { type MissionKey, addTally, mergeTally } from './counters.js';
+import { activeBoosts } from './gacha.js';
+import { mergePartnerExp } from './partner.js';
 import { mergeInto } from './itemEffects.js';
 import { losesItemsOnDeath } from './death.js';
-import { BASE_KEEP_SLOTS, MAX_KEEP_SLOTS, SELL_RATE, stonesForRun } from './rules.js';
+import { SELL_RATE, stonesForRun } from './rules.js';
 import type { World } from './world.js';
 
 /** 倉庫に預けられる数 */
@@ -98,9 +100,7 @@ export function bumpTown(town: TownState, key: MissionKey, n = 1): void {
  * 数えるのはここ 1 箇所だけにする。
  */
 export function keepSlotsFor(town: TownState, d: DungeonDef): number {
-  if (d.allowBoosts === false) return 0;
-  const n = town.keepSlots ?? BASE_KEEP_SLOTS;
-  return Math.max(BASE_KEEP_SLOTS, Math.min(MAX_KEEP_SLOTS, n));
+  return activeBoosts(town, d.allowBoosts).keepSlots;
 }
 
 /**
@@ -379,6 +379,15 @@ export function finishRun(
   town.tally ??= {};
   mergeTally(town.tally, world.run.tally ?? {});
   world.run.tally = {};
+
+  // 相棒が冒険で得た経験値も、ここで 1 度だけ村へ移す。
+  // 冒険中に村の記録を書き換えると、中断から再開したときに二重に入る
+  const rp = world.run.partner;
+  const rec = rp ? town.partners?.[rp.id] : undefined;
+  if (rp && rec) {
+    mergePartnerExp(rec, rp.exp);
+    rp.exp = 0;
+  }
 
   // 石は倒れても貰える。ただし、初めて踏んだ階を満額にしてあるので、
   // 同じ階を往復するより 1 階でも深く潜る方が得になる

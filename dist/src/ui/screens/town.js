@@ -6,6 +6,15 @@ import { ALL_ITEMS, allMonsters, getItem } from '../../data/registry.js';
 import { BENTOU_PRICE, SMITH_PRICE, buyFromTown, depositItem, dungeonList, depositGitan, sellToTown, shopStock, smithTemper, smithUncurse, sortStorage, storageFull, townIdentify, withdrawGitan, withdrawItem, } from '../../game/town.js';
 import { isUnidentifiableKind, itemName, kindLabel } from '../../game/naming.js';
 import { collectionRate } from '../../game/town.js';
+import { RARITY_COLOR, RARITY_LABEL, RARITY_RATE, prizesOf, } from '../../data/gacha.js';
+import { tryGetPartner } from '../../data/partners.js';
+import { canPull, ownedCount, ownedPartners, pull } from '../../game/gacha.js';
+import { partnerExpToNext, partnerLevelCap, partnerName } from '../../game/partner.js';
+import { GACHA_COST, GACHA_COST_10 } from '../../game/rules.js';
+import { GachaAnim } from '../gachaAnim.js';
+import { Rng } from '../../core/rng.js';
+import { makeItem } from '../../game/inventory.js';
+import { learnItem } from '../../game/town.js';
 import { claimAll, claimMission, claimableCount, visibleMissions } from '../../game/missions.js';
 import { SELL_RATE } from '../../game/rules.js';
 import { drawPanel, drawText, drawOverlay } from '../draw.js';
@@ -43,6 +52,7 @@ export class TownScreen {
         return this.app.town.knownItems?.[item.defId] ? def.desc : 'まだ 正体が 分からない。';
     }
     time = 0;
+    anim = null;
     constructor(app, onEnterDungeon, onTitle) {
         this.app = app;
         this.onEnterDungeon = onEnterDungeon;
@@ -134,6 +144,27 @@ export class TownScreen {
                 },
             },
             {
+                label: 'ガチャ',
+                right: () => `${this.app.town.stones ?? 0} 石`,
+                desc: `石を 払って 引く（1 回 ${GACHA_COST} 石／10 連 ${GACHA_COST_10} 石）。`,
+                onSelect: () => {
+                    this.openGacha();
+                    return false;
+                },
+            },
+            {
+                label: '相棒',
+                right: () => {
+                    const list = ownedPartners(this.app.town);
+                    return list.length > 0 ? `${list.length} 体` : 'まだ いない';
+                },
+                desc: '連れて行く 相棒を 決める。名前も 変えられる。',
+                onSelect: () => {
+                    this.openPartners();
+                    return false;
+                },
+            },
+            {
                 label: '図鑑',
                 right: () => {
                     const r = collectionRate(this.app.town);
@@ -174,6 +205,184 @@ export class TownScreen {
         }));
     }
     /** 図鑑。出会ったモンスターと道具を並べる */
+    // ------------------------------------------------------------ ガチャ
+    /** 倉庫へ届ける。いっぱいなら false（その景品は消える） */
+    deliver = (itemId, count) => {
+        const town = this.app.town;
+        let ok = true;
+        for (let i = 0; i < count; i++) {
+            const item = makeItem(itemId, new Rng(`gacha:${town.nextUid}:${i}`), { plusKnown: true }, () => town.nextUid++);
+            item.cursed = false;
+            // ガチャで出た物は名前が見えているので、村もその名前を覚える
+            learnItem(town, itemId);
+            if (!depositItem(town, item))
+                ok = false;
+        }
+        return ok;
+    };
+    openGacha() {
+        const town = this.app.town;
+        const entries = [
+            {
+                label: '1 回 引く',
+                right: `${GACHA_COST} 石`,
+                color: () => (canPull(this.app.town, 1) ? UI.cursorEdge : undefined),
+                disabled: !canPull(town, 1),
+                desc: '石が 足りないと 引けません。',
+                onSelect: () => {
+                    this.rollGacha(1);
+                    return false;
+                },
+            },
+            {
+                label: '10 回 引く',
+                right: `${GACHA_COST_10} 石`,
+                color: () => (canPull(this.app.town, 10) ? UI.cursorEdge : undefined),
+                disabled: !canPull(town, 10),
+                desc: '1 回ぶん 安い。SR 以上が 出なければ、10 回目は SR 以上になります。',
+                onSelect: () => {
+                    this.rollGacha(10);
+                    return false;
+                },
+            },
+            {
+                label: '出るもの',
+                desc: '景品と 確率を 見る。',
+                onSelect: () => {
+                    this.openGachaOdds();
+                    return false;
+                },
+            },
+        ];
+        this.menus.push(new ListMenu({
+            title: () => `ガチャ　所持 ${this.app.town.stones ?? 0} 石`,
+            entries,
+            rect: { x: 360, y: 200, w: 520, h: 230 },
+            showDesc: true,
+        }));
+    }
+    rollGacha(n) {
+        const results = pull(this.app.town, n, this.deliver);
+        if (results.length === 0) {
+            this.say('石が 足りない。');
+            return;
+        }
+        this.app.persist();
+        this.anim = new GachaAnim(results, () => {
+            this.anim = null;
+            // 引いた結果でメニューの「引ける／引けない」が変わる
+            this.menus.pop();
+            this.openGacha();
+        });
+    }
+    openGachaOdds() {
+        const entries = [];
+        for (const rarity of ['ssr', 'sr', 'r', 'n']) {
+            const list = prizesOf(rarity);
+            const total = list.reduce((a, p) => a + p.weight, 0);
+            entries.push({
+                label: `${RARITY_LABEL[rarity]}　${RARITY_RATE[rarity]}%`,
+                color: RARITY_COLOR[rarity],
+                disabled: true,
+                desc: `${RARITY_LABEL[rarity]} の 中の 内訳。`,
+            });
+            for (const p of list) {
+                const owned = ownedCount(this.app.town, p.id);
+                entries.push({
+                    label: `　${p.name}`,
+                    right: `${(RARITY_RATE[rarity] * p.weight / total).toFixed(2)}%`,
+                    color: owned > 0 ? undefined : UI.textDim,
+                    desc: owned > 0
+                        ? `${owned} 枚 持っている${p.cap !== undefined ? `（${p.cap} 枚まで 効く）` : ''}。`
+                        : 'まだ 出ていない。',
+                });
+            }
+        }
+        this.menus.push(new ListMenu({
+            title: '出るもの',
+            entries,
+            rect: { x: 300, y: 60, w: 580, h: 520 },
+            rows: 12,
+            showDesc: true,
+        }));
+    }
+    // ------------------------------------------------------------ 相棒
+    openPartners() {
+        const town = this.app.town;
+        const list = ownedPartners(town);
+        const entries = [];
+        entries.push({
+            label: '連れて行かない',
+            color: () => (this.app.town.activePartner ? undefined : UI.good),
+            desc: '1 人で 潜る。',
+            onSelect: () => {
+                town.activePartner = null;
+                this.app.persist();
+                this.say('相棒を 連れて行かないことにした。');
+                return false;
+            },
+        });
+        for (const rec of list) {
+            const def = tryGetPartner(rec.id);
+            const cap = partnerLevelCap(rec);
+            entries.push({
+                label: () => partnerName(rec),
+                sprite: def.baseId,
+                right: () => `Lv ${rec.level} / ${cap}`,
+                color: () => (this.app.town.activePartner === rec.id ? UI.good : undefined),
+                desc: () => [
+                    def.desc,
+                    `絆 ${rec.dupes}（同じ 相棒を 引くと 上限が 伸びる）`,
+                    rec.level >= cap ? '上限' : `次の レベルまで ${partnerExpToNext(rec.level) - rec.exp}`,
+                ].join('　'),
+                onSelect: () => {
+                    this.partnerMenu(rec);
+                    return false;
+                },
+            });
+        }
+        this.menus.push(new ListMenu({
+            title: '相棒',
+            entries,
+            rect: { x: 340, y: 120, w: 560, h: 440 },
+            rows: 9,
+            showDesc: true,
+            emptyText: 'まだ 相棒が いない',
+        }));
+    }
+    partnerMenu(rec) {
+        const town = this.app.town;
+        this.menus.push(new ListMenu({
+            title: partnerName(rec),
+            entries: [
+                {
+                    label: '連れて行く',
+                    disabled: town.activePartner === rec.id,
+                    desc: '次の 冒険から 最初に 付いてくる。',
+                    onSelect: () => {
+                        town.activePartner = rec.id;
+                        this.app.persist();
+                        this.say(`${partnerName(rec)}を 連れて行く。`);
+                        this.menus.pop();
+                        this.menus.pop();
+                        this.openPartners();
+                        return false;
+                    },
+                },
+                {
+                    label: '名前を 変える',
+                    right: partnerName(rec),
+                    desc: '8 文字まで。',
+                    onSelect: () => {
+                        this.renamePartner(rec);
+                        return false;
+                    },
+                },
+            ],
+            rect: { x: 420, y: 250, w: 420, h: 170 },
+            showDesc: true,
+        }));
+    }
     // ------------------------------------------------------------ ミッション
     openMissions() {
         const town = this.app.town;
@@ -295,6 +504,14 @@ export class TownScreen {
         }));
     }
     /** 名前の変更。候補から選ぶか、自分で打ち込む */
+    renamePartner(rec) {
+        const typed = window.prompt('相棒の 名前（8 文字まで）', partnerName(rec));
+        if (!typed || typed.trim().length === 0)
+            return;
+        rec.nickname = typed.trim().slice(0, 8);
+        this.app.persist();
+        this.say(`${rec.nickname} と 呼ぶことにした。`);
+    }
     changeName() {
         const presets = ['ナギ', 'シズカ', 'カゲロウ', 'ツムギ', 'ハヤテ', 'ミコト', 'リク', 'アオイ'];
         const entries = presets.map((name) => ({
@@ -725,6 +942,14 @@ export class TownScreen {
         if (this.noticeLife > 0)
             this.noticeLife -= dt;
         const input = this.app.input;
+        // ガチャの演出中は他の入力を通さない
+        if (this.anim) {
+            this.anim.update(dt);
+            if (input.justPressed(Cmd.A) || input.justPressed(Cmd.B) || input.justPressed(Cmd.X)) {
+                this.anim.advance();
+            }
+            return;
+        }
         if (this.qty) {
             if (this.qty.handleInput(input))
                 this.qty = null;
@@ -819,6 +1044,8 @@ export class TownScreen {
             drawOverlay(g, SCREEN_W, SCREEN_H, 0.45);
             this.qty.draw(g, SCREEN_W, SCREEN_H);
         }
+        // ガチャの演出は全部の上に出す
+        this.anim?.draw(g, now);
         void this.time;
     }
     drawRecords(g) {

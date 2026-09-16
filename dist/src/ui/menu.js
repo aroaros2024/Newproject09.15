@@ -95,7 +95,7 @@ export class ListMenu {
     draw(g, time, frame = UI.frame) {
         const r = this.rect;
         drawPanel(g, r, { frame });
-        drawText(g, this.title, r.x + 18, r.y + 30, {
+        drawText(g, liveValue(this.title) ?? '', r.x + 18, r.y + 30, {
             size: 18, bold: true, color: UI.cursorEdge,
         });
         g.save();

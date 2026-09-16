@@ -6,8 +6,10 @@
  * 読み込みは必ず検証してから返し、駄目なら既定値に落とす。
  */
 import { SAVE_VERSION } from './types.js';
-import { BASE_KEEP_SLOTS, MAX_KEEP_SLOTS } from '../game/rules.js';
 import { sanitizeTally } from '../game/counters.js';
+import { tryGetPrize } from '../data/gacha.js';
+import { tryGetPartner } from '../data/partners.js';
+import { partnerLevelCap } from '../game/partner.js';
 const PREFIX = 'fushigi-dungeon';
 const KEY_TOWN = `${PREFIX}:town`;
 const KEY_RUN = `${PREFIX}:run`;
@@ -38,10 +40,13 @@ export function defaultTown(playerName = 'ナギ') {
         seenItems: {},
         knownItems: {},
         nicknames: {},
-        keepSlots: BASE_KEEP_SLOTS,
         stones: 0,
         tally: {},
         claimed: [],
+        gachaOwned: {},
+        gachaPulls: 0,
+        partners: {},
+        activePartner: null,
         seenMonsters: {},
         history: [],
         totalRuns: 0,
@@ -135,12 +140,14 @@ function validateTown(t) {
         seenItems: typeof t.seenItems === 'object' && t.seenItems ? t.seenItems : {},
         knownItems: typeof t.knownItems === 'object' && t.knownItems ? t.knownItems : {},
         nicknames: typeof t.nicknames === 'object' && t.nicknames ? t.nicknames : {},
-        keepSlots: Number.isFinite(t.keepSlots)
-            ? Math.max(BASE_KEEP_SLOTS, Math.min(MAX_KEEP_SLOTS, Math.floor(t.keepSlots)))
-            : BASE_KEEP_SLOTS,
         stones: Number.isFinite(t.stones) ? Math.max(0, Math.floor(t.stones)) : 0,
         tally: sanitizeTally(t.tally),
         claimed: Array.isArray(t.claimed) ? t.claimed.filter((x) => typeof x === 'string') : [],
+        gachaOwned: sanitizeOwned(t.gachaOwned),
+        gachaPulls: Number.isFinite(t.gachaPulls)
+            ? Math.max(0, Math.floor(t.gachaPulls)) : 0,
+        partners: sanitizePartners(t.partners),
+        activePartner: typeof t.activePartner === 'string' ? t.activePartner : null,
         seenMonsters: typeof t.seenMonsters === 'object' && t.seenMonsters ? t.seenMonsters : {},
         history: Array.isArray(t.history) ? t.history.slice(-50) : [],
         totalRuns: Number.isFinite(t.totalRuns) ? Math.max(0, Math.floor(t.totalRuns)) : 0,
@@ -149,6 +156,54 @@ function validateTown(t) {
     if (!out.unlocked.includes('d1'))
         out.unlocked.push('d1');
     renumberStorage(out);
+    return out;
+}
+/**
+ * ガチャの所持枚数。実在しない景品と壊れた値を捨てる。
+ *
+ * 加護の効き目はここから計算するので、ここが壊れていると
+ * 保持枠が 0 になったり、無限に増えたりする。
+ */
+function sanitizeOwned(raw) {
+    const out = {};
+    if (typeof raw !== 'object' || raw === null || Array.isArray(raw))
+        return out;
+    for (const [k, v] of Object.entries(raw)) {
+        if (!tryGetPrize(k))
+            continue;
+        if (typeof v !== 'number' || !Number.isFinite(v) || v <= 0)
+            continue;
+        out[k] = Math.min(OWNED_CAP, Math.floor(v));
+    }
+    return out;
+}
+/** 1 つの景品を何枚まで数えるか。壊れたセーブの無限大よけ */
+const OWNED_CAP = 9999;
+/** 相棒の記録。実在しない相棒と壊れた値を捨てる */
+function sanitizePartners(raw) {
+    const out = {};
+    if (typeof raw !== 'object' || raw === null || Array.isArray(raw))
+        return out;
+    for (const [k, v] of Object.entries(raw)) {
+        if (!tryGetPartner(k))
+            continue;
+        if (typeof v !== 'object' || v === null)
+            continue;
+        const r = v;
+        const dupes = Number.isFinite(r.dupes) ? Math.max(0, Math.floor(r.dupes)) : 0;
+        const rec = {
+            id: k,
+            level: 1,
+            exp: Number.isFinite(r.exp) ? Math.max(0, Math.floor(r.exp)) : 0,
+            dupes,
+        };
+        const level = Number.isFinite(r.level) ? Math.floor(r.level) : 1;
+        rec.level = Math.max(1, Math.min(partnerLevelCap(rec), level));
+        if (typeof r.nickname === 'string' && r.nickname.length > 0) {
+            rec.nickname = r.nickname.slice(0, 8);
+        }
+        out[k] = rec;
+    }
     return out;
 }
 /**
@@ -195,6 +250,15 @@ export function loadRun() {
     // 古い中断データには無い項目を埋める（loadRun は検証しかしないので、ここだけ）
     data.tally = sanitizeTally(data.tally);
     data.pendingRejoin ??= [];
+    // 相棒の記録が壊れていたら、連れていないことにする（冒険は続けられる）
+    const rp = data.partner;
+    if (rp && (!tryGetPartner(rp.id ?? '')
+        || !Number.isFinite(rp.actorId) || !Number.isFinite(rp.level))) {
+        delete data.partner;
+    }
+    else if (rp) {
+        rp.exp = Number.isFinite(rp.exp) ? Math.max(0, Math.floor(rp.exp)) : 0;
+    }
     return data;
 }
 export const hasRun = () => loadRun() !== null;
