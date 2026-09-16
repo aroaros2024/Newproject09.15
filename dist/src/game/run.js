@@ -3,7 +3,7 @@
  */
 import { Rng, hashSeed } from '../core/rng.js';
 import { ALIAS_POOLS, DEFAULT_PLAYER_NAME } from '../data/names.js';
-import { UNIDENTIFIED_KINDS, getDungeon, itemsOfKind } from '../data/registry.js';
+import { UNIDENTIFIED_KINDS, getDungeon, getItem, itemsOfKind } from '../data/registry.js';
 import { computeFov } from '../dungeon/fov.js';
 import { generateFloor } from '../dungeon/generator.js';
 import { makeMonster, makeSpecificItem, naturalSpawn, pickMonsterId, placePlayer, populateFloor, } from '../dungeon/spawn.js';
@@ -131,13 +131,71 @@ export function startRun(dungeonId, town, opts = {}) {
         }
         player.gitan = town.gitan;
     }
-    // 何も持たずに潜るダンジョンでも、最初の 1 歩が詰まないように保険を配る
-    if (!dungeon.allowBring) {
+    if (dungeon.allowBring) {
+        // 丸腰で出発させない。武器も盾も無ければ村が貸してくれる
+        lendStartingGear(world);
+    }
+    else {
+        // 何も持ち込めないダンジョンでも、最初の数歩が詰まないよう食料だけは配る
         const riceBall = makeItem('riceBall', world.rng, {}, () => world.nextUid());
         player.inventory.push(riceBall);
     }
     enterFloor(world, 1);
     return world;
+}
+/**
+ * 武器・盾を持っていなければ、村の貸し出し装備を持たせて装備させる。
+ *
+ * 丸腰（攻撃力 8 / 防御力 0）で 1F の敵に当たると、3 発で倒れてしまう。
+ * チュートリアルで理不尽に死なせないための保険。
+ */
+function lendStartingGear(world) {
+    const p = world.player;
+    const has = (kind) => p.inventory.some((i) => getItem(i.defId).kind === kind);
+    if (!has('weapon')) {
+        const stick = makeItem('woodStick', world.rng, { plusKnown: true }, () => world.nextUid());
+        p.inventory.push(stick);
+        p.weaponUid = stick.uid;
+    }
+    if (!has('shield')) {
+        const shield = makeItem('woodShield', world.rng, { plusKnown: true }, () => world.nextUid());
+        p.inventory.push(shield);
+        p.shieldUid = shield.uid;
+    }
+    // 手持ちの装備があるなら、いちばん強いものを自動で装備しておく
+    if (p.weaponUid === null)
+        equipBest(world, 'weapon');
+    if (p.shieldUid === null)
+        equipBest(world, 'shield');
+    // 最初の冒険では、薬草とおにぎりも持たせる
+    if (p.inventory.filter((i) => getItem(i.defId).kind !== 'weapon'
+        && getItem(i.defId).kind !== 'shield').length === 0) {
+        p.inventory.push(makeItem('healHerb', world.rng, {}, () => world.nextUid()));
+        p.inventory.push(makeItem('riceBall', world.rng, {}, () => world.nextUid()));
+    }
+}
+function equipBest(world, kind) {
+    const p = world.player;
+    let best = null;
+    let bestPower = -Infinity;
+    for (const item of p.inventory) {
+        const def = getItem(item.defId);
+        if (def.kind !== kind)
+            continue;
+        if (item.cursed)
+            continue;
+        const power = (def.kind === 'weapon' ? def.atk : def.kind === 'shield' ? def.def : 0) + item.plus;
+        if (power > bestPower) {
+            bestPower = power;
+            best = item;
+        }
+    }
+    if (!best)
+        return;
+    if (kind === 'weapon')
+        p.weaponUid = best.uid;
+    else
+        p.shieldUid = best.uid;
 }
 /**
  * 指定の階へ入る。地形を作り直し、中身を配置してプレイヤーを置く。

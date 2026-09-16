@@ -131,8 +131,8 @@ const D1 = {
     theme: THEME_CAVE,
     bgm: 'cave',
     gen: gen({
-        width: 40, height: 28, gridCols: [2, 3], gridRows: [2, 2],
-        emptyCellRate: 10, items: [3, 5], traps: [0, 1], monsters: [2, 4],
+        width: 44, height: 30, gridCols: [3, 3], gridRows: [2, 2],
+        emptyCellRate: 8, items: [4, 6], traps: [0, 1], monsters: [2, 3],
         spawnInterval: 60, maxMonsters: 8,
     }),
     monsters: [

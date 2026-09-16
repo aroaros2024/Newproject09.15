@@ -153,8 +153,6 @@ export class InputManager {
     }
     onBlur = () => this.releaseAll();
     releaseAll() {
-        for (const s of this.keys.values())
-            s.released = true;
         this.keys.clear();
         this.cmds.clear();
         this.axes.clear();
@@ -164,8 +162,21 @@ export class InputManager {
     newState() {
         return {
             pressedAt: this.now, lastRepeatAt: this.now,
-            repeatCount: 0, edge: true, released: false,
+            repeatCount: 0, edge: true, releasedPending: false,
         };
+    }
+    /**
+     * キーを離す。まだ押下エッジを観測していなければ、
+     * 次の update() まで状態を残して「押して離した」ことを伝える。
+     */
+    releaseState(map, key) {
+        const s = map.get(key);
+        if (!s)
+            return;
+        if (s.edge)
+            s.releasedPending = true;
+        else
+            map.delete(key);
     }
     onKeyDown = (e) => {
         // ブラウザのショートカットと衝突するので、修飾キー付きは受け取らない
@@ -220,7 +231,7 @@ export class InputManager {
         this.keys.delete(code);
         const axis = KEY_TO_AXIS[code];
         if (axis) {
-            this.axes.delete(axis);
+            this.releaseState(this.axes, axis);
             this.dirLatched = false;
             return;
         }
@@ -228,10 +239,10 @@ export class InputManager {
             return;
         for (const cmd of DUAL_KEYS[code] ?? [KEY_TO_CMD[code]]) {
             if (cmd)
-                this.cmds.delete(cmd);
+                this.releaseState(this.cmds, cmd);
         }
         if (code === 'Period')
-            this.cmds.delete(Cmd.Stairs);
+            this.releaseState(this.cmds, Cmd.Stairs);
     };
     /** 単発入力の斜め判定のために、直前の方向を覚えておく */
     notePendingDir() {
@@ -240,17 +251,40 @@ export class InputManager {
             this.pendingDir = { dir, at: this.now };
     }
     // ------------------------------------------------------------ 毎フレーム
-    update(nowMs) {
+    /**
+     * フレームの先頭で呼ぶ。時刻を進め、ゲームパッドを読む。
+     *
+     * 押下エッジはここでは消さない。消すのは endFrame()。
+     * ここで消すと、直前のフレームからこのフレームまでの間に届いた keydown を
+     * 誰も観測できないまま捨ててしまう（＝キーがまったく効かなくなる）。
+     */
+    beginFrame(nowMs) {
         this.now = nowMs;
-        for (const s of this.keys.values())
-            s.edge = false;
-        for (const s of this.cmds.values())
-            s.edge = false;
-        for (const s of this.axes.values())
-            s.edge = false;
+        this.pollGamepad();
+    }
+    /** フレームの末尾で呼ぶ。観測し終えた押下エッジを消す */
+    endFrame() {
+        this.expireEdges(this.keys);
+        this.expireEdges(this.cmds);
+        this.expireEdges(this.axes);
         this.diagonalEdge = null;
         this.shortcutEdge = null;
-        this.pollGamepad();
+    }
+    /**
+     * 押下エッジを 1 フレームで消す。
+     * 既に離されていたものは、エッジを見せ終えた時点で取り除く。
+     */
+    expireEdges(map) {
+        for (const [key, s] of [...map]) {
+            if (s.edge) {
+                s.edge = false;
+                if (s.releasedPending)
+                    map.delete(key);
+            }
+            else if (s.releasedPending) {
+                map.delete(key);
+            }
+        }
     }
     prevPad = new Set();
     pollGamepad() {
@@ -305,10 +339,12 @@ export class InputManager {
         for (const k of this.prevPad) {
             if (active.has(k))
                 continue;
-            if (k === 'U' || k === 'D' || k === 'L' || k === 'R')
-                this.axes.delete(k);
-            else
-                this.cmds.delete(k);
+            if (k === 'U' || k === 'D' || k === 'L' || k === 'R') {
+                this.releaseState(this.axes, k);
+            }
+            else {
+                this.releaseState(this.cmds, k);
+            }
         }
         this.prevPad = active;
     }

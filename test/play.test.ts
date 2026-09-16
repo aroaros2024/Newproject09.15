@@ -162,13 +162,14 @@ test('持ち込み可のダンジョンではレベルと道具を引き継げ�
   assert.equal(world.player.level, 30);
   assert.equal(world.player.maxHp, 200);
   assert.equal(world.player.gitan, 3000);
-  assert.equal(world.player.inventory.length, 1);
-  assert.equal(world.player.inventory[0].defId, 'ironSword');
+  // 持ち込んだ武器に加えて、盾が無いので貸し出しの木の盾が付く
+  assert.ok(world.player.inventory.some((i) => i.defId === 'ironSword'));
   // 倉庫の実体をそのまま持ち込まない（片方を壊してももう片方に響かない）
-  assert.notEqual(world.player.inventory[0], bring[0], '倉庫の実体を共有している');
-  world.player.inventory[0].plus = 99;
+  const brought = world.player.inventory.find((i) => i.defId === 'ironSword')!;
+  assert.notEqual(brought, bring[0], '倉庫の実体を共有している');
+  brought.plus = 99;
   assert.equal(bring[0].plus, 3, '倉庫側まで書き換わっている');
-  world.player.inventory[0].runes.push('flame');
+  brought.runes.push('flame');
   assert.deepEqual(bring[0].runes, ['crit'], '印の配列を共有している');
 });
 
@@ -211,8 +212,46 @@ test('経験値表からレベルが正しく上がる', () => {
 
 test('素手の攻撃力はちからと等しい', () => {
   const world = startRun('d1', newTown(), { seed: 2 });
+  // 村の貸し出し装備を外して素手にする
+  world.player.weaponUid = null;
+  world.player.shieldUid = null;
   assert.equal(attackPower(world, world.player), 8);
   assert.equal(defensePower(world, world.player), 0);
+});
+
+test('丸腰では出発させない（村が木の棒と木の盾を貸してくれる）', () => {
+  const world = startRun('d1', newTown(), { seed: 3 });
+  const p = world.player;
+  assert.notEqual(p.weaponUid, null, '武器を持たずに出発している');
+  assert.notEqual(p.shieldUid, null, '盾を持たずに出発している');
+  // 1F の敵の攻撃を 3 発で倒されない程度の守りはある
+  assert.ok(attackPower(world, p) > 8, '攻撃力が素手のまま');
+  assert.ok(defensePower(world, p) > 0, '防御力が 0 のまま');
+  assert.ok(p.inventory.some((i) => i.defId === 'healHerb'), '薬草が渡されていない');
+  assert.ok(p.inventory.some((i) => i.defId === 'riceBall'), 'おにぎりが渡されていない');
+});
+
+test('持ち込んだ装備があれば貸し出し装備は付かない', () => {
+  const town = newTown();
+  const bring = [{
+    uid: 1, defId: 'steelSword', count: 1, plus: 0, runes: [], charges: 0,
+    contents: [], cursed: false, plusKnown: true, shopPrice: 0, sealed: false,
+  }];
+  const world = startRun('d2', town, { seed: 4, bring });
+  const ids = world.player.inventory.map((i) => i.defId);
+  assert.ok(ids.includes('steelSword'));
+  assert.ok(!ids.includes('woodStick'), '武器を持っているのに木の棒を渡している');
+  // 盾は持っていないので貸してもらえる
+  assert.ok(ids.includes('woodShield'));
+  // 持ち込んだ武器が自動で装備される
+  const weapon = world.player.inventory.find((i) => i.defId === 'steelSword');
+  assert.equal(world.player.weaponUid, weapon!.uid, '持ち込んだ武器が装備されていない');
+});
+
+test('もっと不思議のダンジョンでは貸し出し装備も無い', () => {
+  const world = startRun('ex', newTown(), { seed: 5 });
+  assert.equal(world.player.weaponUid, null, 'ex で武器を持たされている');
+  assert.equal(world.player.shieldUid, null, 'ex で盾を持たされている');
 });
 
 test('風が吹くダンジョンでは長居すると次の階へ飛ばされる', () => {

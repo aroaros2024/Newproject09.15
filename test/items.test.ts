@@ -111,6 +111,9 @@ test('すべての装備を装備できる', () => {
 test('装備は攻撃力・防御力に反映される', () => {
   const world = startRun('d2', newTown(), { seed: 111 });
   const p = world.player;
+  // 貸し出し装備を外して素の状態から測る
+  p.weaponUid = null;
+  p.shieldUid = null;
   const baseAtk = attackPower(world, p);
   const sword = makeItem('ironSword', world.rng, { plus: 3, runes: [] }, () => world.nextUid());
   addToInventory(p, sword);
