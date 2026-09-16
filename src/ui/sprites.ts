@@ -335,3 +335,38 @@ export function validateSprite(id: string, s: PixelSprite): string[] {
   });
   return [...new Set(errs)];
 }
+
+// ---------------------------------------------------------------------------
+// スプライトの登録簿
+// ---------------------------------------------------------------------------
+
+/**
+ * id → ドット絵の登録簿。
+ *
+ * ドット絵のデータは src/ui/sprites/ 以下に分かれて置かれ、起動時にここへ
+ * まとめて登録される。描画側は getSprite() だけを見るので、
+ * まだ絵が用意できていない id があっても（図形での代替に落ちるだけで）
+ * ゲームは動き続ける。
+ */
+const registry = new Map<string, PixelSprite>();
+
+export function registerSprites(map: Record<string, PixelSprite>): void {
+  for (const [id, sprite] of Object.entries(map)) registry.set(id, sprite);
+}
+
+export function getSprite(id: string, fallback?: string): PixelSprite | null {
+  return registry.get(id) ?? (fallback ? registry.get(fallback) ?? null : null);
+}
+
+export const hasSprite = (id: string): boolean => registry.has(id);
+
+export const spriteCount = (): number => registry.size;
+
+export const spriteIds = (): string[] => [...registry.keys()];
+
+/** 登録されている全スプライトの整合性を検査する（開発時の取りこぼし検出） */
+export function validateAllSprites(): string[] {
+  const errors: string[] = [];
+  for (const [id, sprite] of registry) errors.push(...validateSprite(id, sprite));
+  return errors;
+}
