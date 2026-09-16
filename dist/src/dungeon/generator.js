@@ -13,7 +13,7 @@
  */
 import { Rng } from '../core/rng.js';
 import { clamp, rectCenter } from '../core/geom.js';
-import { at, connectivityReport, createMap, fillRect, inBounds, isOpen, setKind, } from './tilemap.js';
+import { at, connectivityReport, createMap, fillRect, inBounds, isOpen, reachabilityReport, setKind, } from './tilemap.js';
 /** 生成の失敗が続いた時に何回まで作り直すか */
 const MAX_ATTEMPTS = 12;
 /** 部屋 1 つの最大サイズ。区画がこれより広くても部屋は大きくしない */
@@ -32,8 +32,12 @@ export function generateFloor(params, seed, opts = {}) {
             : buildPartitionedFloor(params, rng, opts);
         map.seed = seed;
         map.bigRoom = !!opts.bigRoom;
-        const report = connectivityReport(map);
-        if (report.connected && map.rooms.length > 0)
+        // 壁でないマスが繋がっているだけでなく、
+        // 「地上を歩いて」全部の床へ行けることまで確かめる。
+        // 水路に囲まれた床が残ると、そこへ落ちたプレイヤーが詰む。
+        const connected = connectivityReport(map).connected;
+        const walkable = reachabilityReport(map, 'ground').ok;
+        if (connected && walkable && map.rooms.length > 0)
             return map;
         lastMap = map;
     }
@@ -394,7 +398,12 @@ function buildBigRoomFloor(params, rng, opts) {
 // ---------------------------------------------------------------------------
 /**
  * 部屋の内側にだけ液体の塊を置く。
- * 部屋の外周 1 マスは必ず床のまま残すので、部屋を横断できなくなることはない。
+ *
+ * 部屋の外周 1 マスは床のまま残すので、普通の四角い部屋なら
+ * 液体で横断できなくなることはない。ただし円形の部屋では外周が
+ * 削られているため、この前提が崩れることがある。
+ * そこで塊を 1 つ置くたびに地上の到達性を確かめ、
+ * 壊れていたら **その塊だけ元に戻す**。
  */
 function addLiquid(map, params, rng) {
     if (params.liquid === 'none' || params.waterRate <= 0)
@@ -415,6 +424,7 @@ function addLiquid(map, params, rng) {
             const cy = rng.range(inner.y, inner.y + inner.h - 1);
             const rx = rng.range(1, Math.max(1, Math.floor(inner.w / 3)));
             const ry = rng.range(1, Math.max(1, Math.floor(inner.h / 3)));
+            const changed = [];
             for (let y = cy - ry; y <= cy + ry; y++) {
                 for (let x = cx - rx; x <= cx + rx; x++) {
                     if (x < inner.x || y < inner.y)
@@ -430,8 +440,18 @@ function addLiquid(map, params, rng) {
                     if (d > 0.6 && rng.percent(40))
                         continue;
                     const t = at(map, x, y);
-                    if (t && t.kind === 'floor' && t.roomId === room.id)
+                    if (t && t.kind === 'floor' && t.roomId === room.id) {
                         t.kind = kind;
+                        changed.push({ x, y });
+                    }
+                }
+            }
+            // この塊のせいで歩いて行けない床ができたら、置かなかったことにする
+            if (changed.length > 0 && !reachabilityReport(map, 'ground').ok) {
+                for (const p of changed) {
+                    const t = at(map, p.x, p.y);
+                    if (t)
+                        t.kind = 'floor';
                 }
             }
         }

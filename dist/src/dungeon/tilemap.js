@@ -204,6 +204,45 @@ export function connectivityReport(map) {
         unreachable,
     };
 }
+/**
+ * 「実際に歩いて行けるか」で到達性を測る。
+ *
+ * connectivityReport() は壁でないマスを 4 近傍で繋いで見るだけなので、
+ * 水路や溶岩を「通れる」と数えてしまう。地上を歩くプレイヤーにとっては
+ * 水に囲まれた床は行き止まりなので、フロアの検証にはこちらを使う。
+ */
+export function reachabilityReport(map, move = 'ground') {
+    // 地上で立てるマスをすべて集める
+    const targets = [];
+    for (let y = 0; y < map.height; y++) {
+        for (let x = 0; x < map.width; x++) {
+            if (canEnter(map, x, y, move))
+                targets.push({ x, y });
+        }
+    }
+    if (targets.length === 0)
+        return { ok: true, unreachable: [] };
+    const seen = new Uint8Array(map.width * map.height);
+    const start = targets[0];
+    const stack = [start];
+    seen[idxOf(start.x, start.y, map.width)] = 1;
+    while (stack.length > 0) {
+        const p = stack.pop();
+        for (const n of neighbors8(map, p)) {
+            const i = idxOf(n.x, n.y, map.width);
+            if (seen[i])
+                continue;
+            if (!canEnter(map, n.x, n.y, move))
+                continue;
+            if (!canMoveDiagonally(map, p, n.x - p.x, n.y - p.y, move))
+                continue;
+            seen[i] = 1;
+            stack.push(n);
+        }
+    }
+    const unreachable = targets.filter((p) => !seen[idxOf(p.x, p.y, map.width)]);
+    return { ok: unreachable.length === 0, unreachable };
+}
 /** 2 点間の歩数（4 近傍 BFS）。到達不能なら -1 */
 export function walkDistance(map, from, to, move = 'ground') {
     if (from.x === to.x && from.y === to.y)

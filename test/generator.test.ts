@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { generateFloor } from '../src/dungeon/generator.js';
 import {
   at, connectivityReport, isOpen, allRoomFloors, walkDistance, renderAscii,
+  reachabilityReport,
 } from '../src/dungeon/tilemap.js';
 import type { FloorGenParams } from '../src/core/types.js';
 
@@ -96,12 +97,16 @@ test('違うシードでは違うフロアになる', () => {
   assert.ok(shapes.size >= 48, `地形の重複が多すぎる: ${shapes.size}/50`);
 });
 
-test('水路を入れても連結が壊れない', () => {
+test('水路を入れても、地上を歩いて全部の床へ行ける', () => {
   const params: FloorGenParams = { ...BASE, waterRate: 70, liquid: 'water' };
   let withWater = 0;
   for (const seed of SEEDS.slice(0, 120)) {
     const map = generateFloor(params, seed);
     assert.ok(connectivityReport(map).connected, `seed ${seed}: 水路で不通になった`);
+    assert.ok(
+      reachabilityReport(map, 'ground').ok,
+      `seed ${seed}: 水に囲まれて歩いて行けない床がある\n${renderAscii(map)}`,
+    );
     if (map.tiles.some((t) => t.kind === 'water')) withWater++;
     // 水に囲まれて渡れない床が無いこと（部屋の外周は床のまま残る仕様）
     for (const room of map.rooms) {
@@ -117,11 +122,37 @@ test('水路を入れても連結が壊れない', () => {
   assert.ok(withWater > 60, `水路がほとんど出ていない: ${withWater}/120`);
 });
 
-test('溶岩でも連結が壊れない', () => {
+test('溶岩でも、地上を歩いて全部の床へ行ける', () => {
   const params: FloorGenParams = { ...BASE, waterRate: 80, liquid: 'lava' };
   for (const seed of SEEDS.slice(0, 60)) {
     const map = generateFloor(params, seed);
     assert.ok(connectivityReport(map).connected, `seed ${seed}: 溶岩で不通になった`);
+    assert.ok(reachabilityReport(map, 'ground').ok, `seed ${seed}: 溶岩に囲まれた床がある`);
+  }
+});
+
+/**
+ * 円形の部屋は外周が削られるため、「部屋の外周 1 マスは床のまま残す」という
+ * 液体配置の前提が崩れる。実際にこれで 99 階ダンジョンの 23F が
+ * 到達不能になっていたので、組み合わせを明示的に検査する。
+ */
+test('円形の部屋と水路が同時に出ても、歩いて行けない床が生まれない', () => {
+  const params: FloorGenParams = { ...BASE, waterRate: 80, liquid: 'water' };
+  for (const seed of SEEDS.slice(0, 150)) {
+    const map = generateFloor(params, seed, { round: true });
+    const report = reachabilityReport(map, 'ground');
+    assert.ok(
+      report.ok,
+      `seed ${seed}: ${report.unreachable.length} マスへ歩いて行けない\n${renderAscii(map)}`,
+    );
+  }
+});
+
+test('大部屋に水路が出ても歩いて渡れる', () => {
+  const params: FloorGenParams = { ...BASE, waterRate: 90, liquid: 'water' };
+  for (const seed of SEEDS.slice(0, 60)) {
+    const map = generateFloor(params, seed, { bigRoom: true });
+    assert.ok(reachabilityReport(map, 'ground').ok, `seed ${seed}: 大部屋を渡れない`);
   }
 });
 
