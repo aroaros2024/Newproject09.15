@@ -64,6 +64,18 @@ export function unlockNext(town, clearedId) {
 // ---------------------------------------------------------------------------
 export const storageFull = (town) => town.storage.length >= STORAGE_LIMIT;
 /**
+ * 村での行動を数える。
+ *
+ * 冒険中のぶんは World.tally が RunState に溜め、finishRun でここへ合流する。
+ * 村での行動は冒険と関係なく起きるので、こちらは直接足してよい。
+ */
+export function bumpTown(town, key, n = 1) {
+    if (n <= 0)
+        return;
+    town.tally ??= {};
+    town.tally[key] = (town.tally[key] ?? 0) + n;
+}
+/**
  * そのダンジョンで使える保持枠の数。
  *
  * 保持枠そのものが村の加護なので、加護の通じないダンジョン
@@ -180,6 +192,7 @@ export function buyFromTown(town, item) {
     item.shopPrice = 0;
     // 名前を見て買ったのだから、ダンジョンでも名前のまま持ち込める
     learnItem(town, item.defId);
+    bumpTown(town, 'buy');
     return depositItem(town, item);
 }
 /** 村がその品目の名前を覚える */
@@ -209,8 +222,11 @@ export const townIdentify = (town) => ({
  */
 export function depositGitan(town, amount) {
     const n = Math.max(0, Math.min(Math.floor(amount), town.gitan));
+    if (n <= 0)
+        return 0;
     town.gitan -= n;
     town.bankGitan += n;
+    bumpTown(town, 'bank');
     return n;
 }
 export function withdrawGitan(town, amount) {
@@ -335,6 +351,13 @@ export function finishRun(world, town, kind, cause) {
     world.pendingWarehouse = [];
     // 自分でつけた名前（「まちがえた」など）は、次の冒険にも持ち越す
     town.nicknames = { ...(town.nicknames ?? {}), ...world.run.identify.nicknames };
+    // この冒険ぶんの数えを村へ移す。ここ 1 箇所だけで移すので、
+    // 中断セーブから再開しても二重計上にならない
+    town.tally ??= {};
+    for (const [k, v] of Object.entries(world.run.tally ?? {})) {
+        town.tally[k] = (town.tally[k] ?? 0) + v;
+    }
+    world.run.tally = {};
     // 石は倒れても貰える。ただし、初めて踏んだ階を満額にしてあるので、
     // 同じ階を往復するより 1 階でも深く潜る方が得になる
     const prevBest = town.bestDepth[d.id] ?? 0;

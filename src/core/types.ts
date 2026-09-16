@@ -801,6 +801,13 @@ export interface RunState {
    * World の一時変数にすると中断セーブで消えるので RunState に置く。
    */
   pendingRejoin?: MonsterActor[];
+  /**
+   * この冒険ぶんのミッション用カウンタ。帰還時に村へ足し込む。
+   *
+   * 村へ直接書くと、中断セーブから再開したときに同じぶんを二度数える。
+   * 冒険中はここに溜め、finishRun で一度だけ移す。
+   */
+  tally?: Record<string, number>;
   /** すでに倒したボス */
   defeatedBosses: string[];
   /**
@@ -852,6 +859,13 @@ export interface TownState {
   keepSlots?: number;
   /** ガチャの石。冒険のたびに貰える（倒れても貰える） */
   stones?: number;
+  /**
+   * ミッション用の通算カウンタ。
+   * キーの形は counters.ts の MissionKey を参照（例 kill:ratField / cure:curse）。
+   */
+  tally?: Record<string, number>;
+  /** 受け取り済みのミッション id */
+  claimed?: string[];
   seenMonsters: Record<string, boolean>;
   /** 冒険の記録 */
   history: AdventureRecord[];

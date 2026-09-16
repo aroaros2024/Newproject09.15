@@ -90,6 +90,8 @@ export function useItem(world, uid, targetUid, dir) {
     const effectId = def.effect;
     if (!effectId)
         return NO('使えない');
+    world.tally('useItem');
+    world.tally(`use:${def.kind}`);
     const verb = def.kind === 'herb' ? '飲んだ' : def.kind === 'scroll' ? '読んだ' : '振った';
     world.log(`${itemName(item, world.run.identify)}を ${verb}。`, 'item');
     world.sfx(def.kind === 'herb' ? 'drink' : def.kind === 'scroll' ? 'scroll' : 'zap');
@@ -251,6 +253,8 @@ export function equipItem(world, uid) {
     item.plusKnown = true;
     if (def.kind === 'bracelet')
         world.run.identify.known[item.defId] = true;
+    world.tally('equip');
+    world.tally(`equip:${def.kind}`);
     world.log(`${itemName(item, world.run.identify)}を 装備した。`, 'item');
     world.sfx('equip');
     if (item.cursed) {

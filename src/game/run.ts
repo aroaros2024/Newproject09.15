@@ -249,6 +249,7 @@ function equipBest(world: World, kind: 'weapon' | 'shield'): void {
  * 指定の階へ入る。地形を作り直し、中身を配置してプレイヤーを置く。
  */
 export function enterFloor(world: World, depth: number): void {
+  if (depth > world.run.depth) world.tally('descend');
   const d = world.dungeon;
   world.run.depth = depth;
   world.run.floorTurn = 0;

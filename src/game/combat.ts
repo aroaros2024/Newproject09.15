@@ -377,6 +377,8 @@ export function killActor(world: World, src: Actor | null, target: Actor): void 
 
   if (src && (src.kind === 'player' || src.kind === 'ally')) {
     world.run.stats.kills++;
+    world.tally('kill');
+    world.tally(`kill:${target.defId}`);
     gainExp(world, world.player, target.exp);
     // 守銭の印
     const gitanRune = equipRuneLevel(equippedWeapon(world.player), 'gitanHit');

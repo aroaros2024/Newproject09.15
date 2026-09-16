@@ -44,6 +44,8 @@ export function defaultTown(playerName = 'ナギ'): TownState {
     nicknames: {},
     keepSlots: BASE_KEEP_SLOTS,
     stones: 0,
+    tally: {},
+    claimed: [],
     seenMonsters: {},
     history: [],
     totalRuns: 0,
@@ -144,6 +146,8 @@ function validateTown(t: Partial<TownState>): TownState {
       ? Math.max(BASE_KEEP_SLOTS, Math.min(MAX_KEEP_SLOTS, Math.floor(t.keepSlots as number)))
       : BASE_KEEP_SLOTS,
     stones: Number.isFinite(t.stones) ? Math.max(0, Math.floor(t.stones as number)) : 0,
+    tally: typeof t.tally === 'object' && t.tally ? t.tally : {},
+    claimed: Array.isArray(t.claimed) ? t.claimed.filter((x) => typeof x === 'string') : [],
     seenMonsters: typeof t.seenMonsters === 'object' && t.seenMonsters ? t.seenMonsters : {},
     history: Array.isArray(t.history) ? t.history.slice(-50) : [],
     totalRuns: Number.isFinite(t.totalRuns) ? Math.max(0, Math.floor(t.totalRuns as number)) : 0,
@@ -190,6 +194,9 @@ export function loadRun(): RunState | null {
   // 決着（死亡・クリア）は World 側の finished が持っていて RunState には載らない。
   // 倒れた状態の中断データをそのまま読むと、生き返って冒険が続いてしまう
   if (data.player.hp <= 0 || data.player.alive === false) return null;
+  // 古い中断データには無い項目を埋める（loadRun は検証しかしないので、ここだけ）
+  data.tally ??= {};
+  data.pendingRejoin ??= [];
   return data;
 }
 

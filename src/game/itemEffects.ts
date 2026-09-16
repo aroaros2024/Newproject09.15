@@ -376,6 +376,7 @@ export const ITEM_EFFECTS: Record<string, EffectHandler> = {
       if (m) {
         // 分身は味方として振る舞う
         world.removeActor(m);
+        world.tally('makeAlly');
         m.kind = 'ally';
         m.tactic = 'follow';
         m.nameOverride = `${user.name}の分身`;
@@ -456,6 +457,7 @@ export const ITEM_EFFECTS: Record<string, EffectHandler> = {
         n++;
       }
     }
+    world.tally('uncurse', n);
     world.log(n > 0 ? `${n}個の 呪いが 解けた！` : '呪われた物は 無かった。', 'good');
     return true;
   },
@@ -756,6 +758,7 @@ export const ITEM_EFFECTS: Record<string, EffectHandler> = {
     item.contents = [base];
     world.run.identify.known[base.defId] = true;
     base.plusKnown = true;
+    world.tally('synthesis');
     world.log(`${itemName(base, world.run.identify)}が できあがった！`, 'good');
     world.sfx('synthesis');
     return true;
@@ -829,6 +832,7 @@ export const ITEM_EFFECTS: Record<string, EffectHandler> = {
     if (!target) return false;
     if (!target.cursed) return false;
     target.cursed = false;
+    world.tally('uncurse');
     world.log(`${itemName(target, world.run.identify)}の 呪いが 解けた。`, 'good');
     return true;
   },

@@ -299,6 +299,20 @@ export class World {
     sfx(name) {
         this.events.push({ t: 'sfx', name });
     }
+    /**
+     * ミッションのために数える。
+     *
+     * 数える口はここ 1 本だけにする。呼び出し側のあちこちで
+     * town の値を直接いじると、必ずどこかで数え漏れるし、
+     * 中断セーブを跨いだときに二重計上になる。
+     * ここで溜めたぶんは finishRun が村へ一度だけ移す。
+     */
+    tally(key, n = 1) {
+        if (n <= 0)
+            return;
+        this.run.tally ??= {};
+        this.run.tally[key] = (this.run.tally[key] ?? 0) + n;
+    }
     /** 積まれたイベントを取り出して空にする */
     drainEvents() {
         const e = this.events;

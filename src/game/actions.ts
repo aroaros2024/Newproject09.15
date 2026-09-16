@@ -140,6 +140,7 @@ function playerMove(world: World, rawDir: Dir): ActionResult {
     return NOPE('そちらへは 進めない');
   }
   p.steps++;
+  world.tally('walk');
   world.sfx(at(world.map, p.pos.x, p.pos.y)?.kind === 'water' ? 'stepWater' : 'step');
   return OK;
 }
@@ -341,6 +342,7 @@ function autoPickup(world: World, f: { item: ItemInstance; pos: Point }): boolea
     return true;
   }
   if (!addToInventory(p, f.item)) return false;
+  world.tally('pickup');
   if (hasBracelet(world, p, 'autoIdentify')) {
     world.run.identify.known[f.item.defId] = true;
     f.item.plusKnown = true;
@@ -384,6 +386,10 @@ export function triggerTrap(world: World, a: Actor, trapId: string): boolean {
 
   tile.trap.revealed = true;
   if (def.oneShot) tile.trap.used = true;
+  if (a.kind === 'player') {
+    world.tally('trap');
+    world.tally(`trap:${trapId}`);
+  }
   world.log(`${def.name}だ！`, 'bad');
   world.emit({ t: 'trap', pos: { ...a.pos }, trapId });
   world.sfx('trap');
