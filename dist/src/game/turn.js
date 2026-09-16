@@ -80,6 +80,9 @@ export function stepTurn(world, action) {
         a.actedThisTurn = 0;
     for (const a of world.run.allies)
         a.actedThisTurn = 0;
+    // 行動の前の居場所を控える。ワープ・落とし穴・階の移動も「移った」に数える
+    const fromPos = { ...world.player.pos };
+    const fromDepth = world.run.depth;
     const result = performPlayerAction(world, action);
     if (!result.tookTurn) {
         refreshFov(world);
@@ -88,8 +91,11 @@ export function stepTurn(world, action) {
     resolvePendingEffects(world);
     if (checkPlayerDeath(world, 'ちからつきた'))
         return result;
-    // プレイヤーが乗ったマスの効果
-    onEnterTile(world, world.player);
+    // プレイヤーが乗ったマスの効果。
+    // 動いていないなら「乗った瞬間」の処理は起こさない
+    // （置いた道具をその場で拾い直す、などを防ぐ）
+    const moved = world.run.depth !== fromDepth || !samePoint(fromPos, world.player.pos);
+    onEnterTile(world, world.player, moved);
     resolvePendingEffects(world);
     if (checkPlayerDeath(world, 'ちからつきた'))
         return result;

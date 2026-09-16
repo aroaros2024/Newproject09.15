@@ -233,7 +233,17 @@ function playerStairs(world: World): ActionResult {
  * アクターがマスに乗った時の処理（ワナ・水・溶岩）。
  * 戻り値は「そのアクターが死んだか」。
  */
-export function onEnterTile(world: World, a: Actor): boolean {
+/**
+ * 足元のマスの効果。
+ *
+ * 「乗った瞬間だけ起きること」（ワナ・自動で拾う・階段の案内）と
+ * 「乗っている間ずっと起きること」（溶岩に焼かれる）を分けて扱う。
+ * 分けないと、道具を置いたその場で拾い直す・その場で足踏みするたびに
+ * 同じワナが何度も作動する、といったことが起きる。
+ *
+ * @param moved このターンに実際にマスを移ったか
+ */
+export function onEnterTile(world: World, a: Actor, moved = true): boolean {
   const tile = at(world.map, a.pos.x, a.pos.y);
   if (!tile) return false;
 
@@ -247,6 +257,9 @@ export function onEnterTile(world: World, a: Actor): boolean {
     world.log(`${world.nameOf(a)}は 溶岩に 焼かれた！`, 'bad');
     if (dealDamage(world, null, a, dmg, 'fire')) return true;
   }
+
+  // ここから下は「乗った瞬間」だけ
+  if (!moved) return false;
 
   if (tile.trap && !tile.trap.used && !floating) {
     return triggerTrap(world, a, tile.trap.defId);

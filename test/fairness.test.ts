@@ -4,6 +4,8 @@ import type { TownState } from '../src/core/types.js';
 import { chebyshev } from '../src/core/geom.js';
 import { at } from '../src/dungeon/tilemap.js';
 import { makeMonster } from '../src/dungeon/spawn.js';
+import { addToInventory, makeItem } from '../src/game/inventory.js';
+import { samePoint } from '../src/core/geom.js';
 import { enterFloor, startRun } from '../src/game/run.js';
 import { restTurns, stepTurn, whyCannotRest } from '../src/game/turn.js';
 import { applyStatus } from '../src/game/status.js';
@@ -140,4 +142,112 @@ test('階を降りた足元にワナも階段も店も無い', () => {
   assert.equal(onTrap, 0, `${onTrap}/${floors} フロアでワナの上から始まった`);
   assert.equal(onStairs, 0, `${onStairs}/${floors} フロアで階段の上から始まった`);
   assert.equal(overlapped, 0, `${overlapped}/${floors} フロアで敵と重なって始まった`);
+});
+
+test('置いた道具を、その場で拾い直さない', () => {
+  // 足元のマスの処理が「動いたかどうか」に関係なく毎ターン走っていたため、
+  // 置いた瞬間に「足元にアイテムがある」と判定して拾い直していた
+  let placed = 0;
+  let regrabbed = 0;
+  for (const id of ['d1', 'd2', 'd3']) {
+    for (let seed = 0; seed < 40; seed++) {
+      const world = startRun(id, newTown(), { seed: 700 + seed });
+      const p = world.player;
+      if (world.floorItemAt(p.pos)) continue;
+      const item = makeItem('healHerb', world.rng, {}, () => world.nextUid());
+      addToInventory(p, item);
+      stepTurn(world, { type: 'place', uid: item.uid });
+      world.drainEvents();
+      placed++;
+      if (p.inventory.some((i) => i.uid === item.uid)) regrabbed++;
+    }
+  }
+  assert.ok(placed >= 60, `検査できた場面が ${placed} 件しかない`);
+  assert.equal(regrabbed, 0, `${regrabbed}/${placed} 件でその場で拾い直した`);
+});
+
+test('置いて、離れて、戻れば拾える', () => {
+  const world = startRun('d2', newTown(), { seed: 3 });
+  const p = world.player;
+  const item = makeItem('healHerb', world.rng, {}, () => world.nextUid());
+  addToInventory(p, item);
+
+  const vecs = [
+    [0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1],
+  ];
+  let dir = -1;
+  for (let d = 0; d < 8; d++) {
+    const q = { x: p.pos.x + vecs[d][0], y: p.pos.y + vecs[d][1] };
+    if (at(world.map, q.x, q.y)?.kind === 'floor' && !world.actorAt(q)) { dir = d; break; }
+  }
+  assert.ok(dir >= 0, '隣に歩ける床が無い');
+
+  stepTurn(world, { type: 'place', uid: item.uid });
+  world.drainEvents();
+  assert.equal(p.inventory.some((i) => i.uid === item.uid), false, '置けていない');
+
+  stepTurn(world, { type: 'move', dir: dir as never });
+  world.drainEvents();
+  stepTurn(world, { type: 'move', dir: ((dir + 4) % 8) as never });
+  world.drainEvents();
+  assert.ok(
+    p.inventory.some((i) => i.defId === 'healHerb'),
+    '置いた場所へ戻っても拾えない',
+  );
+});
+
+test('ワナは踏んだ時だけ作動する', () => {
+  // 歩いて乗れば必ず作動し、同じマスで足踏みしても二度目は作動しない
+  let walked = 0;
+  let firedOnEntry = 0;
+  const vecs = [
+    [0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1],
+  ];
+  for (let seed = 0; seed < 80; seed++) {
+    const world = startRun('d3', newTown(), { seed: 100 + seed });
+    const p = world.player;
+    p.maxHp = 500;
+    p.hp = 500;
+    let dir = -1;
+    let spot: { x: number; y: number } | null = null;
+    for (let d = 0; d < 8; d++) {
+      const q = { x: p.pos.x + vecs[d][0], y: p.pos.y + vecs[d][1] };
+      const t = at(world.map, q.x, q.y);
+      if (t?.kind === 'floor' && !world.actorAt(q) && !t.trap && !t.shop) {
+        dir = d; spot = q; break;
+      }
+    }
+    if (dir < 0 || !spot) continue;
+    at(world.map, spot.x, spot.y)!.trap = { defId: 'arrow', revealed: false, used: false };
+    stepTurn(world, { type: 'move', dir: dir as never });
+    const events = world.drainEvents();
+    if (!samePoint(p.pos, spot)) continue;
+    walked++;
+    if (events.some((e) => e.t === 'trap' && samePoint(e.pos, spot!))) firedOnEntry++;
+  }
+  assert.ok(walked >= 40, `検査できた場面が ${walked} 件しかない`);
+  assert.equal(firedOnEntry, walked, `${walked} 件中 ${firedOnEntry} 件しか作動しなかった`);
+
+  // 足踏みでは再作動しない
+  let standing = 0;
+  let refired = 0;
+  for (let seed = 0; seed < 40; seed++) {
+    const world = startRun('d3', newTown(), { seed: 500 + seed });
+    const p = world.player;
+    p.maxHp = 500;
+    p.hp = 500;
+    const here = at(world.map, p.pos.x, p.pos.y);
+    if (!here || here.kind !== 'floor') continue;
+    here.trap = { defId: 'arrow', revealed: true, used: false };
+    const home = { ...p.pos };
+    standing++;
+    for (let i = 0; i < 5; i++) {
+      stepTurn(world, { type: 'wait' });
+      const events = world.drainEvents();
+      if (events.some((e) => e.t === 'trap' && samePoint(e.pos, home))) refired++;
+      p.hp = p.maxHp;
+    }
+  }
+  assert.ok(standing >= 20, `検査できた場面が ${standing} 件しかない`);
+  assert.equal(refired, 0, `足踏みで ${refired} 回 再作動した`);
 });
