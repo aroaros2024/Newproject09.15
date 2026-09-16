@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { startRun } from '../src/game/run.js';
 import { buyFromTown, finishRun, shopStock, townIdentify, withdrawItem, } from '../src/game/town.js';
 import { addToInventory, makeItem } from '../src/game/inventory.js';
-import { itemName } from '../src/game/naming.js';
+import { isUnidentifiableKind, itemName } from '../src/game/naming.js';
+import { getItem } from '../src/data/registry.js';
 /**
  * 「村では名前が出ていた物が、ダンジョンで未識別に戻る」を防ぐ検査。
  *
@@ -27,14 +28,16 @@ function takeAll(town) {
 }
 test('村で名前を見て買った物は、ダンジョンでも名前のまま', () => {
     const town = newTown();
+    // 品揃えは覗くたびに変わるので、id を決め打ちにしない。
+    // 「正体が分かるかどうかが意味を持つ」カテゴリの物を買う
     const bought = [];
     for (const item of shopStock(town)) {
-        if (!['identifyScroll', 'lightScroll', 'healHerb'].includes(item.defId))
+        if (!isUnidentifiableKind(getItem(item.defId)))
             continue;
         if (buyFromTown(town, item))
             bought.push(item.defId);
     }
-    assert.ok(bought.length >= 2, `買えたのが ${bought.length} 個しかない`);
+    assert.ok(bought.length >= 1, `買えたのが ${bought.length} 個しかない`);
     // 村の表示
     const tid = townIdentify(town);
     for (const item of town.storage) {

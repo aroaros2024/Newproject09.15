@@ -6,7 +6,7 @@ import { Cmd } from '../../core/input.js';
 import { clearRun, saveRun } from '../../core/save.js';
 import { getItem, getTrap } from '../../data/registry.js';
 import { at } from '../../dungeon/tilemap.js';
-import { equippedBracelet, isEquipped, mergeStacks, sortInventory, } from '../../game/inventory.js';
+import { QUICK_SLOTS, assignQuickSlot, equippedBracelet, isEquipped, isInventoryFull, mergeStacks, quickSlotOf, quickSlots, sortInventory, } from '../../game/inventory.js';
 import { isContainer, needsDirection, needsItemTarget, payDebt, shopDebt, throwGitan, } from '../../game/itemActions.js';
 import { itemName, kindLabel, useVerb } from '../../game/naming.js';
 import { SELL_RATE } from '../../game/rules.js';
@@ -20,6 +20,16 @@ import { drawFullMap, drawMinimap, nextMinimapMode } from '../minimap.js';
 import { MENU_LAYOUT, SCREEN_H, SCREEN_W, TILE, UI } from '../theme.js';
 import { animScale, messageCps } from './app.js';
 import { drawHelp } from './help.js';
+/** 保持バッグに入れるコマンドの名前 */
+const QUICK_LABEL = 'ショートカットに 入れる';
+/**
+ * ショートカットから「投げる」で使う物か。
+ * 矢や石は向きを聞かずに今の向きへ飛ばす。1 手で撃てることが値打ちなので、
+ * ここで方向を聞くとショートカットの意味が無くなる。
+ */
+function isThrowable(def) {
+    return def.kind === 'misc' && def.throwEffect !== undefined;
+}
 export class DungeonScreen {
     app;
     world;
@@ -411,6 +421,9 @@ export class DungeonScreen {
             const badges = [];
             if (isEquipped(p, item.uid))
                 badges.push({ text: 'E', color: UI.equip });
+            const slot = quickSlotOf(p, item.defId);
+            if (slot >= 0)
+                badges.push({ text: `${slot + 1}`, color: UI.cursorEdge });
             if (item.cursed && item.plusKnown)
                 badges.push({ text: '呪', color: UI.curse });
             if (item.shopPrice > 0)
@@ -433,7 +446,7 @@ export class DungeonScreen {
     }
     openItemMenu() {
         const menu = new ListMenu({
-            title: `持ち物　${this.world.player.inventory.length} / 20　　［F］整理`,
+            title: `持ち物　${this.world.player.inventory.length} / 20　　［F］整理　［1〜3］ショートカット`,
             entries: [],
             rect: {
                 x: MENU_LAYOUT.items.x, y: MENU_LAYOUT.items.y,
@@ -523,6 +536,43 @@ export class DungeonScreen {
                 return false;
             },
         });
+        // 保持バッグ（数字キー 1〜3）
+        const inSlot = quickSlotOf(p, item.defId);
+        if (inSlot >= 0) {
+            entries.push({
+                label: `ショートカット ${inSlot + 1} から 外す`,
+                onSelect: () => {
+                    assignQuickSlot(p, inSlot, null);
+                    world.log(`ショートカット ${inSlot + 1} を 空けた。`, 'system');
+                    this.pumpEvents();
+                    return close();
+                },
+            });
+        }
+        else {
+            entries.push({
+                label: QUICK_LABEL,
+                desc: '数字キー 1〜3 で すぐ 使えるようになります。並べ替えても ずれません。',
+                onSelect: () => {
+                    this.menus.push(new ListMenu({
+                        title: 'どの 枠に 入れますか？',
+                        entries: quickSlots(p).map((cur, i) => ({
+                            label: `${i + 1}：${cur.item
+                                ? itemName(cur.item, world.run.identify)
+                                : cur.defId ? `${getItem(cur.defId).name}（切らしている）` : '（空き）'}`,
+                            onSelect: () => {
+                                assignQuickSlot(p, i, item.defId);
+                                world.log(`${itemName(item, world.run.identify)}を ショートカット ${i + 1} に 入れた。`, 'system');
+                                this.pumpEvents();
+                                return close();
+                            },
+                        })),
+                        rect: { x: 420, y: 260, w: 420, h: 60 + QUICK_SLOTS * 40 },
+                    }));
+                    return false;
+                },
+            });
+        }
         entries.push({
             label: '置く',
             disabled: !!world.floorItemAt(p.pos),
@@ -640,6 +690,36 @@ export class DungeonScreen {
             rowH: 32,
         }));
     }
+    /**
+     * 足元の物と入れ替える。
+     *
+     * 持ち物がいっぱいだと、目の前の物をどうやっても拾えない。
+     * 「置いてから拾う」は 2 ターンかかるうえ、置いた物の上には拾えないので、
+     * 1 手で交換できる道を用意する。
+     */
+    openSwapMenu(target) {
+        const world = this.world;
+        const p = world.player;
+        this.menus.push(new ListMenu({
+            title: `何と 入れ替えますか？（足元: ${itemName(target, world.run.identify)}）`,
+            entries: this.inventoryEntries((item) => {
+                if (isEquipped(p, item.uid) && item.cursed) {
+                    world.log('呪われていて 手から 離れない！', 'bad');
+                    this.pumpEvents();
+                    return;
+                }
+                this.act({ type: 'swap', uid: item.uid });
+                this.menus.closeAll();
+            }),
+            rect: {
+                x: MENU_LAYOUT.items.x, y: MENU_LAYOUT.items.y,
+                w: MENU_LAYOUT.items.w, h: MENU_LAYOUT.items.h,
+            },
+            rowH: MENU_LAYOUT.items.rowH,
+            rows: MENU_LAYOUT.items.rows,
+            showDesc: true,
+        }));
+    }
     openFeetMenu() {
         const world = this.world;
         const p = world.player;
@@ -661,11 +741,25 @@ export class DungeonScreen {
             else {
                 entries.push({
                     label: `${name}を 拾う`,
+                    disabled: isInventoryFull(p),
+                    desc: isInventoryFull(p) ? '持ち物が いっぱいです。' : undefined,
                     onSelect: () => {
                         this.act({ type: 'pickup' });
                         return true;
                     },
                 });
+                // 持ち物がいっぱいの時は、置く物を選んで交換できる
+                if (isInventoryFull(p)) {
+                    entries.push({
+                        label: `${name}と 入れ替える`,
+                        color: UI.cursorEdge,
+                        desc: '手持ちから 1 つ 置いて、足元の物と 交換します。',
+                        onSelect: () => {
+                            this.openSwapMenu(floorItem.item);
+                            return false;
+                        },
+                    });
+                }
             }
         }
         if (onStairs(world)) {
@@ -944,18 +1038,38 @@ export class DungeonScreen {
             onYes: go,
         });
     }
+    /**
+     * 数字キー 1〜3 の保持バッグ。
+     *
+     * 以前は「持ち物の N 番目」を直接指していたが、どこに何があるかは
+     * 覚えていられないし、並べ替えると全部ずれる。
+     * 自分で入れた 3 つだけを画面に出し、uid で指すようにした。
+     */
     useShortcut(index) {
         const p = this.world.player;
-        const slot = index === 0 ? 9 : index - 1;
-        const item = p.inventory[slot];
+        if (index < 1 || index > QUICK_SLOTS)
+            return;
+        const slot = quickSlots(p)[index - 1];
+        if (!slot.defId) {
+            this.world.log(`${index} の 枠は 空っぽだ。道具から「${QUICK_LABEL}」で 入れられる。`);
+            this.pumpEvents();
+            return;
+        }
+        const item = slot.item;
         if (!item) {
-            this.world.log('その番号に 道具が 無い。');
+            this.world.log(`${getItem(slot.defId).name}を 切らしている。`, 'warning');
             this.pumpEvents();
             return;
         }
         const def = getItem(item.defId);
         if (def.kind === 'weapon' || def.kind === 'shield' || def.kind === 'bracelet') {
             this.act({ type: isEquipped(p, item.uid) ? 'unequip' : 'equip', uid: item.uid });
+            return;
+        }
+        // 投げる物（矢・石など）は、向きを聞かずに今の向きへ投げる。
+        // ショートカットの値打ちは「1 手で撃てる」ことなので、ここで止めない
+        if (isThrowable(def)) {
+            this.act({ type: 'throw', uid: item.uid, dir: p.dir });
             return;
         }
         this.startUseItem(item);
@@ -1026,6 +1140,14 @@ export class DungeonScreen {
             turn: world.run.totalTurn,
             windy: world.dungeon.windTurns > 0 && world.run.windLeft <= 30 && world.run.windLeft > 0,
             bottom: world.atBottom,
+            quick: quickSlots(world.player).map((s) => ({
+                defId: s.defId,
+                label: s.item
+                    ? itemName(s.item, world.run.identify, { withDetail: false, withCount: false })
+                    : s.defId ? shortUnknownName(s.defId, world) : '',
+                sprite: s.item ? spriteOfItem(s.item) : (s.defId ? getItem(s.defId).sprite : null),
+                count: s.count,
+            })),
         }, frame);
         // 斜め固定・向き変更のバッジ
         const px = world.player.pos.x * TILE - this.camera.x + TILE / 2;
@@ -1077,6 +1199,15 @@ function drawBadgeAt(g, text, x, y) {
 const isUnknownKind = (kind) => kind === 'herb' || kind === 'scroll' || kind === 'staff'
     || kind === 'pot' || kind === 'bracelet';
 /** アイテムのスプライト id（個別の絵が無ければカテゴリ共通に落ちる） */
+/** 切らしている枠に出す名前。未識別なら仮名のまま */
+function shortUnknownName(defId, world) {
+    const def = getItem(defId);
+    if (!isUnknownKind(def.kind))
+        return def.name;
+    if (world.run.identify.known[defId])
+        return def.name;
+    return world.run.identify.alias[defId] ?? def.name;
+}
 function spriteOfItem(item) {
     const def = getItem(item.defId);
     // 未識別のカテゴリは見た目で中身が分からないようにする

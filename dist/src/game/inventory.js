@@ -115,6 +115,38 @@ export function addToInventory(p, item) {
     p.inventory.push(item);
     return true;
 }
+/** 保持バッグの枠数 */
+export const QUICK_SLOTS = 3;
+/** 保持バッグの中身 */
+export function quickSlots(p) {
+    const out = [];
+    for (let i = 0; i < QUICK_SLOTS; i++) {
+        const defId = p.quickIds?.[i] ?? null;
+        const item = defId === null
+            ? null
+            : (p.inventory.find((it) => it.defId === defId) ?? null);
+        out.push({ defId, item, count: item ? (item.count || 1) : 0 });
+    }
+    return out;
+}
+/** 保持バッグへ入れる。同じ種類が別の枠にあれば、そちらは空ける */
+export function assignQuickSlot(p, slot, defId) {
+    if (!p.quickIds)
+        p.quickIds = new Array(QUICK_SLOTS).fill(null);
+    if (defId !== null) {
+        for (let i = 0; i < QUICK_SLOTS; i++)
+            if (p.quickIds[i] === defId)
+                p.quickIds[i] = null;
+    }
+    if (slot >= 0 && slot < QUICK_SLOTS)
+        p.quickIds[slot] = defId;
+}
+/** その種類が入っている枠。無ければ -1 */
+export function quickSlotOf(p, defId) {
+    if (!p.quickIds)
+        return -1;
+    return p.quickIds.findIndex((x) => x === defId);
+}
 /** 持ち物から取り除く。装備していたら外す */
 export function removeFromInventory(p, uid) {
     const i = indexOfItem(p, uid);

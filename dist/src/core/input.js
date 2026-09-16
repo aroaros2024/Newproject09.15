@@ -101,8 +101,15 @@ export const REPEAT = {
     number: { delay: 300, interval: 60, fastAfter: 10, fastInterval: 25 },
     message: { delay: 200, interval: 90 },
 };
-/** 2 キー同時押しを斜めとみなす猶予(ms) */
-export const DIAG_WINDOW_MS = 40;
+/**
+ * 2 キー同時押しを斜めとみなす猶予(ms)。
+ *
+ * 40ms では人間の 2 本指の同時押しに間に合わず、斜めに失敗すると
+ * 「まっすぐ 2 歩」＝ 2 ターン消費になり、敵に 2 回殴られる。
+ * テンキー（1/3/7/9）なら猶予なしで斜めに歩けるので、
+ * きびきび動かしたい人はそちらを使える。
+ */
+export const DIAG_WINDOW_MS = 90;
 /** ゲームパッド（standard mapping）のボタン番号 → コマンド */
 const PAD_TO_CMD = {
     0: Cmd.A, 1: Cmd.B, 2: Cmd.Y, 3: Cmd.X,

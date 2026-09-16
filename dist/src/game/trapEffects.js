@@ -104,16 +104,41 @@ const TRAP_EFFECTS = {
         const factory = world.monsterFactory;
         if (!factory)
             return;
+        // 真隣に 3 体まとめて湧かせると、逃げ道も殴り返す先も無くなる。
+        // 少し離して 2 体までにして、「囲まれる前に動く」余地を残す
         let n = 0;
-        for (const p of neighbors8(world.map, a.pos)) {
-            if (n >= 3)
-                break;
-            if (world.actorAt(p))
-                continue;
-            if (at(world.map, p.x, p.y)?.kind !== 'floor')
-                continue;
-            if (factory(p))
-                n++;
+        const max = 2;
+        for (let r = 2; r <= 4 && n < max; r++) {
+            const ring = [];
+            for (let dy = -r; dy <= r; dy++) {
+                for (let dx = -r; dx <= r; dx++) {
+                    if (Math.max(Math.abs(dx), Math.abs(dy)) !== r)
+                        continue;
+                    const q = { x: a.pos.x + dx, y: a.pos.y + dy };
+                    if (world.actorAt(q))
+                        continue;
+                    if (at(world.map, q.x, q.y)?.kind !== 'floor')
+                        continue;
+                    ring.push(q);
+                }
+            }
+            for (const q of world.rng.shuffled(ring)) {
+                if (n >= max)
+                    break;
+                if (factory(q))
+                    n++;
+            }
+        }
+        // どうしても離れた場所が無ければ、隣に 1 体だけ
+        if (n === 0) {
+            for (const q of neighbors8(world.map, a.pos)) {
+                if (world.actorAt(q))
+                    continue;
+                if (at(world.map, q.x, q.y)?.kind !== 'floor')
+                    continue;
+                if (factory(q))
+                    break;
+            }
         }
     },
     trapWarp: (world, a) => {
@@ -135,9 +160,14 @@ const TRAP_EFFECTS = {
         if (pool.length === 0)
             return;
         const n = Math.min(pool.length, world.rng.range(1, 3));
+        // 足元に落とすと、拾いに戻るたびにまた作動して一生回収できない。
+        // 通路のように迂回できない場所だと完全に詰むので、周りへ散らす
+        const around = world.rng.shuffled(neighbors8(world.map, a.pos).filter((q) => at(world.map, q.x, q.y)?.kind === 'floor'));
+        let k = 0;
         for (const item of world.rng.sample(pool, n)) {
             removeFromInventory(a, item.uid);
-            world.dropItem(item, a.pos);
+            const spot = around[k++ % Math.max(1, around.length)] ?? a.pos;
+            world.dropItem(item, spot);
         }
         world.log('持ち物が 散らばった！', 'bad');
     },

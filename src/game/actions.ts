@@ -80,6 +80,7 @@ export function performPlayerAction(world: World, action: Action): ActionResult 
       return OK;
     case 'pickup': return playerPickup(world);
     case 'place': return playerPlace(world, action.uid);
+    case 'swap': return playerSwap(world, action.uid);
     case 'stairs': return playerStairs(world);
     case 'use': return useItem(world, action.uid, action.targetUid, action.dir);
     case 'equip': return equipItem(world, action.uid);
@@ -210,6 +211,43 @@ function playerPlace(world: World, uid: number): ActionResult {
   world.dropItem(item, p.pos);
   world.log(`${itemName(item, world.run.identify)}を 置いた。`, 'item');
   world.sfx('drop');
+  return OK;
+}
+
+/**
+ * 足元の物と 1 手で入れ替える。
+ *
+ * 持ち物がいっぱいだと、置く → 拾う ができない（置いた物の上には拾えない）。
+ * 目の前の物を永久に拾えなくなるので、交換だけは 1 手でできるようにする。
+ */
+function playerSwap(world: World, uid: number): ActionResult {
+  const p = world.player;
+  const mine = findItem(p, uid);
+  if (!mine) return NOPE('その道具は 持っていない');
+  if (isEquipped(p, uid) && mine.cursed) {
+    world.log('呪われていて 手から 離れない！', 'bad');
+    return OK;
+  }
+  const floor = world.floorItemAt(p.pos);
+  if (!floor) return NOPE('足元に 何も 無い');
+  if (floor.item.shopPrice > 0) return NOPE('店の 商品は 交換できない');
+  if (at(world.map, p.pos.x, p.pos.y)?.kind !== 'floor') return NOPE('ここでは 交換できない');
+
+  removeFromInventory(p, uid);
+  world.removeFloorItem(floor);
+  if (!addToInventory(p, floor.item)) {
+    // 万一入らなければ元に戻す（何も失わせない）
+    addToInventory(p, mine);
+    world.dropItem(floor.item, p.pos);
+    return NOPE('入れ替えられなかった');
+  }
+  world.dropItem(mine, p.pos);
+  world.log(
+    `${itemName(mine, world.run.identify)}を 置いて `
+    + `${itemName(floor.item, world.run.identify)}を 拾った。`,
+    'item',
+  );
+  world.sfx('pickup');
   return OK;
 }
 
@@ -357,6 +395,9 @@ export function detectAdjacentTraps(world: World, p: PlayerActor): void {
       const tile = at(world.map, p.pos.x + dx, p.pos.y + dy);
       if (tile?.trap && !tile.trap.revealed && world.rng.chance(0.5)) {
         tile.trap.revealed = true;
+        // 何のワナかを言う。見つけたのに種類が分からないと、
+        // 踏んでよいのか迂回すべきなのかを決められない
+        world.log(`${getTrap(tile.trap.defId).name}を 見つけた。`, 'system');
       }
     }
   }

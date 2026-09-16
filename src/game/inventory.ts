@@ -151,6 +151,47 @@ export function addToInventory(p: PlayerActor, item: ItemInstance): boolean {
   return true;
 }
 
+/** 保持バッグの枠数 */
+export const QUICK_SLOTS = 3;
+
+/** 保持バッグ 1 枠ぶんの見え方 */
+export interface QuickSlot {
+  /** 覚えている道具の種類。空き枠なら null */
+  defId: string | null;
+  /** いま持っている実体。切らしていれば null */
+  item: ItemInstance | null;
+  /** 手持ちの個数（切らしていれば 0） */
+  count: number;
+}
+
+/** 保持バッグの中身 */
+export function quickSlots(p: PlayerActor): QuickSlot[] {
+  const out: QuickSlot[] = [];
+  for (let i = 0; i < QUICK_SLOTS; i++) {
+    const defId = p.quickIds?.[i] ?? null;
+    const item = defId === null
+      ? null
+      : (p.inventory.find((it) => it.defId === defId) ?? null);
+    out.push({ defId, item, count: item ? (item.count || 1) : 0 });
+  }
+  return out;
+}
+
+/** 保持バッグへ入れる。同じ種類が別の枠にあれば、そちらは空ける */
+export function assignQuickSlot(p: PlayerActor, slot: number, defId: string | null): void {
+  if (!p.quickIds) p.quickIds = new Array(QUICK_SLOTS).fill(null);
+  if (defId !== null) {
+    for (let i = 0; i < QUICK_SLOTS; i++) if (p.quickIds[i] === defId) p.quickIds[i] = null;
+  }
+  if (slot >= 0 && slot < QUICK_SLOTS) p.quickIds[slot] = defId;
+}
+
+/** その種類が入っている枠。無ければ -1 */
+export function quickSlotOf(p: PlayerActor, defId: string): number {
+  if (!p.quickIds) return -1;
+  return p.quickIds.findIndex((x) => x === defId);
+}
+
 /** 持ち物から取り除く。装備していたら外す */
 export function removeFromInventory(p: PlayerActor, uid: number): ItemInstance | null {
   const i = indexOfItem(p, uid);

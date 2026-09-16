@@ -70,6 +70,8 @@ export const LAYOUT = {
   status: { x: 16, y: 592, w: 456, h: 112 } as Rect,
   /** 階層表示 */
   floor: { x: 1096, y: 600, w: 168, h: 104 } as Rect,
+  /** 保持バッグ（数字キー 1〜3） */
+  quick: { x: 488, y: 618, w: 396, h: 86 } as Rect,
 } as const;
 
 /** メニューの配置 */

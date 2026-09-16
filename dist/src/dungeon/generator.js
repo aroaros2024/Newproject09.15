@@ -150,9 +150,15 @@ function splitAxis(total, n, rng) {
 /** 区画の中に部屋を置く。狭すぎて置けなければ null */
 function placeRoom(map, cell, params, rng, id, opts) {
     const b = cell.bounds;
-    // 区画の縁から 1 マス空けて、通路が走る余地を残す
-    const availW = b.w - 2;
-    const availH = b.h - 2;
+    // 幹線通路は区画の境界の 1 つ手前（boundary - 1）を掘る。
+    // 余白を 1 マスしか取らないと、部屋の壁になるはずの列がそのまま通路になり、
+    // 部屋の一辺がまるごと開いてしまう（出入口は 1 マスしか登録されないのに、
+    // 実際には 3〜5 マス開いている＝「壁の無い部屋」）。
+    // そうなると通路へ 1 歩下がっても部屋の床に接したままで、
+    // 「引いて 1 対 1 に持ち込む」が成立しない。通路が走る列とは別に、
+    // 壁を 1 マス残す。
+    const availW = b.w - 3;
+    const availH = b.h - 3;
     const minW = Math.max(3, params.minRoomW);
     const minH = Math.max(3, params.minRoomH);
     if (availW < minW || availH < minH)
@@ -166,8 +172,8 @@ function placeRoom(map, cell, params, rng, id, opts) {
     const capH = Math.min(availH, opts.maze ? minH + 2 : ROOM_MAX_H);
     const w = rng.range(minW, Math.max(minW, capW));
     const h = rng.range(minH, Math.max(minH, capH));
-    const x = rng.range(b.x + 1, b.x + b.w - 1 - w);
-    const y = rng.range(b.y + 1, b.y + b.h - 1 - h);
+    const x = rng.range(b.x + 1, b.x + b.w - 2 - w);
+    const y = rng.range(b.y + 1, b.y + b.h - 2 - h);
     const rect = { x, y, w, h };
     const room = {
         id, rect, doors: [], dark: false,

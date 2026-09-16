@@ -73,6 +73,7 @@ function makePlayer(name) {
         weaponUid: null,
         shieldUid: null,
         braceletUid: null,
+        quickIds: [null, null, null],
         braceletHpBonus: 0,
         steps: 0,
         statuses: [],
@@ -326,15 +327,15 @@ function showFloorGuide(world, depth) {
         ],
         3: [
             'おなかが 減ると HP が 減り始める。食料は 大事に。',
-            'Shift を 押しながら 歩くと ダッシュできる。',
+            'R を 押しながら 方向で、ターンを 使わずに 向きだけ 変えられる。',
         ],
         4: [
-            'HP が 減ったら、敵のいない所で「.」を 押して 休むと 回復する。',
-            '武器と盾は 装備しないと 効かない。E →「道具」で 確かめよう。',
+            'HP が 減ったら、敵のいない所で「特殊 →休む」。敵がいると 休めない。',
+            'よく使う道具は「道具 →ショートカットに入れる」で 1〜3 に 置ける。',
         ],
         5: [
             'この階の 階段を 降りれば 踏破。持ち帰った物は 倉庫に 入る。',
-            '困ったら H キーで 操作の ヘルプが 見られる。',
+            '囲まれたら 通路へ 引くと 1 体ずつ 相手にできる。H キーでヘルプ。',
         ],
     };
     for (const line of guides[depth] ?? [])

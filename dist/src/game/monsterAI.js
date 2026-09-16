@@ -236,8 +236,15 @@ export function takeMonsterTurn(world, m, ctx) {
                 attackIfPossible(world, m, target);
                 return;
             }
-            // 上位種は半分の確率で追いかける
-            if (def.tier >= 1 && sees && world.rng.percent(50)) {
+            // 上位種は半分の確率で追いかける。
+            //
+            // 条件を sees にしていると、通路へ 1 歩引かれた瞬間に視線が切れて
+            // この枝ごと死ぬ。増殖するキノコ類がちょうどこの ai なので、
+            // 「通路に引いて 1 対 1 で捌く」が、いちばんそうしたい相手に効かない。
+            // しかも徘徊でたまたま通路に入ってくるので、
+            // 「来ないと思ったら来た」という読めない振る舞いになっていた。
+            // 一度こちらを見つけた個体（lastSeen 持ち）は追ってくる、に揃える。
+            if (def.tier >= 1 && (sees || m.lastSeen) && world.rng.percent(50)) {
                 chaseAndAttack(world, m, target, ctx);
                 return;
             }

@@ -142,8 +142,12 @@ export const MONSTER_SKILLS: Record<string, SkillHandler> = {
   },
 
   multiply: (world, m) => {
+    // フロア全体の上限を見る。ここだけ「同種 12 体」という別の基準で
+    // 動いていて、増殖系で唯一フロア上限の外にいた。
+    // しかも split と違って親の HP が減らないので、無からいくらでも増えていた
+    if (world.run.monsters.length >= crowdLimit(world)) return false;
     const same = world.run.monsters.filter((x) => x.defId === m.defId).length;
-    if (same >= 12) return false;
+    if (same >= 8) return false;
     const spot = freeNeighbor(world, m.pos);
     if (!spot) return false;
     const def = world.defOf(m);

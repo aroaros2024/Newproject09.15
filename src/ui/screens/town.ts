@@ -7,24 +7,27 @@ import type { IdentifyState, ItemInstance } from '../../core/types.js';
 import { ALL_ITEMS, allMonsters, getItem } from '../../data/registry.js';
 import {
   BENTOU_PRICE, SMITH_PRICE, buyFromTown, depositItem, dungeonList,
-  sellToTown, shopStock, smithTemper, smithUncurse, sortStorage, storageFull,
-  townIdentify, withdrawItem,
+  depositGitan, sellToTown, shopStock, smithTemper, smithUncurse, sortStorage,
+  storageFull, townIdentify, withdrawGitan, withdrawItem,
 } from '../../game/town.js';
 import { isUnidentifiableKind, itemName, kindLabel } from '../../game/naming.js';
 import { collectionRate } from '../../game/town.js';
 import { SELL_RATE } from '../../game/rules.js';
 import { type Ctx, drawPanel, drawText, drawOverlay } from '../draw.js';
-import { ConfirmDialog, ListMenu, MenuStack, type MenuEntry } from '../menu.js';
+import {
+  ConfirmDialog, ListMenu, MenuStack, QuantityPicker, type MenuEntry,
+} from '../menu.js';
 import { SCREEN_H, SCREEN_W, UI } from '../theme.js';
 import type { App, Screen } from './app.js';
 
 /** 村の建物 */
-type Place = 'plaza' | 'storage' | 'shop' | 'smith' | 'diner' | 'gate' | 'records';
+type Place = 'plaza' | 'storage' | 'shop' | 'smith' | 'diner' | 'bank' | 'gate' | 'records';
 
 export class TownScreen implements Screen {
   readonly id = 'town';
   private menus = new MenuStack();
   private dialog: ConfirmDialog | null = null;
+  private qty: QuantityPicker | null = null;
   private place: Place = 'plaza';
   private notice = '';
   private noticeLife = 0;
@@ -97,6 +100,14 @@ export class TownScreen implements Screen {
         desc: '道具を 買う・売る。',
         onSelect: () => {
           this.openShop();
+          return false;
+        },
+      },
+      {
+        label: '銀行',
+        desc: `ギタンを 預ける・引き出す。預けたぶんは 倒れても 残る（預り ${this.app.town.bankGitan} G）。`,
+        onSelect: () => {
+          this.openBank();
           return false;
         },
       },
@@ -571,6 +582,80 @@ export class TownScreen implements Screen {
 
   // ------------------------------------------------------------ 食事処
 
+  /**
+   * 銀行。
+   *
+   * 手持ちのギタンは冒険に持ち込まれ、倒れれば失う。預けたぶんは残る。
+   * 「いくら持っていくか」を選べるようにしないと、一度倒れただけで
+   * 貯めた全額が消えて、道具屋そのものが意味を失う。
+   */
+  private openBank(): void {
+    this.place = 'bank';
+    const town = this.app.town;
+    const show = (): void => {
+      this.menus.pop();
+      const menu = new ListMenu({
+        title: `銀行　手持ち ${town.gitan} G ／ 預り ${town.bankGitan} G`,
+        entries: this.bankEntries(show),
+        rect: { x: 360, y: 200, w: 560, h: 240 },
+        showDesc: true,
+      });
+      this.menus.push(menu);
+    };
+    this.menus.push(new ListMenu({
+      title: `銀行　手持ち ${town.gitan} G ／ 預り ${town.bankGitan} G`,
+      entries: this.bankEntries(show),
+      rect: { x: 360, y: 200, w: 560, h: 240 },
+      showDesc: true,
+    }));
+  }
+
+  private bankEntries(rebuild: () => void): MenuEntry[] {
+    const town = this.app.town;
+    return [
+      {
+        label: '預ける',
+        right: `${town.gitan} G`,
+        disabled: town.gitan <= 0,
+        desc: '預けたギタンは、ダンジョンで倒れても失われません。',
+        onSelect: () => {
+          this.qty = new QuantityPicker(
+            'いくら 預けますか？', 1, town.gitan, town.gitan,
+            (n) => {
+              const got = depositGitan(town, n);
+              this.say(`${got} ギタンを 預けた。`);
+              this.app.audio.play('gitan');
+              this.app.persist();
+              rebuild();
+            },
+            () => { /* 取り消し */ },
+          );
+          return false;
+        },
+      },
+      {
+        label: '引き出す',
+        right: `${town.bankGitan} G`,
+        disabled: town.bankGitan <= 0,
+        desc: '引き出したギタンは、次の冒険に持っていきます（倒れると失います）。',
+        onSelect: () => {
+          this.qty = new QuantityPicker(
+            'いくら 引き出しますか？', 1, town.bankGitan, town.bankGitan,
+            (n) => {
+              const got = withdrawGitan(town, n);
+              this.say(`${got} ギタンを 引き出した。`);
+              this.app.audio.play('gitan');
+              this.app.persist();
+              rebuild();
+            },
+            () => { /* 取り消し */ },
+          );
+          return false;
+        },
+      },
+    ];
+  }
+
   private openDiner(): void {
     this.place = 'diner';
     const town = this.app.town;
@@ -609,6 +694,10 @@ export class TownScreen implements Screen {
     if (this.noticeLife > 0) this.noticeLife -= dt;
     const input = this.app.input;
 
+    if (this.qty) {
+      if (this.qty.handleInput(input)) this.qty = null;
+      return;
+    }
     if (this.dialog) {
       if (this.dialog.handleInput(input)) this.dialog = null;
       return;
@@ -696,6 +785,10 @@ export class TownScreen implements Screen {
     if (this.dialog) {
       drawOverlay(g, SCREEN_W, SCREEN_H, 0.45);
       this.dialog.draw(g, SCREEN_W, SCREEN_H, now);
+    }
+    if (this.qty) {
+      drawOverlay(g, SCREEN_W, SCREEN_H, 0.45);
+      this.qty.draw(g, SCREEN_W, SCREEN_H);
     }
     void this.time;
   }

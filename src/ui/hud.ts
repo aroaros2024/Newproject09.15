@@ -7,6 +7,7 @@ import { expToNext } from '../game/rules.js';
 import { STATUS_NAME } from '../game/status.js';
 import { foodDisplay, maxFoodDisplay } from '../game/hunger.js';
 import { type Ctx, drawBar, drawPanel, drawText, roundRect } from './draw.js';
+import { getSprite, sprites } from './sprites.js';
 import { LAYOUT, UI, hpColor } from './theme.js';
 
 /** 状態異常の短い表示名（アイコンに入れる 1 文字） */
@@ -42,6 +43,16 @@ export interface FloorInfo {
   windy: boolean;
   /** 最深部か */
   bottom: boolean;
+  /** 保持バッグの見え方（数字キー 1〜3） */
+  quick: QuickView[];
+}
+
+/** 保持バッグ 1 枠の表示内容 */
+export interface QuickView {
+  defId: string | null;
+  label: string;
+  sprite: string | null;
+  count: number;
 }
 
 export class Hud {
@@ -61,6 +72,51 @@ export class Hud {
     this.drawStatus(g, p, frame);
     this.drawStatusIcons(g, p);
     this.drawFloor(g, info, frame);
+    this.drawQuick(g, info, frame);
+  }
+
+  /**
+   * 保持バッグ。数字キー 1〜3 に入れた道具を出しておく。
+   *
+   * 「持ち物の何番目」を覚えるのは無理なので、常に見えている 3 つだけを
+   * ショートカットにする。並べ替えても中身はずれない。
+   */
+  private drawQuick(g: Ctx, info: FloorInfo, frame: string): void {
+    const r = LAYOUT.quick;
+    drawPanel(g, r, { frame });
+    const slots = info.quick;
+    const slotW = (r.w - 24) / slots.length;
+    for (let i = 0; i < slots.length; i++) {
+      const x = r.x + 12 + slotW * i;
+      const s = slots[i];
+      const empty = s.defId === null;
+      const out = !empty && s.count === 0;
+
+      drawText(g, `${i + 1}`, x + 4, r.y + 26, {
+        size: 16, bold: true, color: empty ? UI.textDim : out ? UI.textDim : UI.cursorEdge,
+      });
+      if (empty) {
+        drawText(g, '空き', x + 24, r.y + 26, { size: 13, color: UI.textDim });
+        continue;
+      }
+      // アイコン
+      if (s.sprite) {
+        const icon = getSprite(s.sprite);
+        if (icon) {
+          sprites.draw(g, s.sprite, icon, x + 26, r.y + 46, 26, { alpha: out ? 0.35 : 1 });
+        }
+      }
+      // 名前（切らしていても枠は残す）。長い名前は隣とぶつかるので詰める
+      const label = s.label.length > 6 ? `${s.label.slice(0, 6)}…` : s.label;
+      drawText(g, label, x + 48, r.y + 28, {
+        size: 12, color: out ? UI.textDim : UI.text,
+      });
+      // 個数
+      drawText(g, `${s.count}`, x + slotW - 10, r.y + 56, {
+        size: out ? 15 : 20, bold: true, align: 'right',
+        color: out ? '#7a5a5a' : UI.gitan,
+      });
+    }
   }
 
   private drawStatus(g: Ctx, p: PlayerActor, frame: string): void {

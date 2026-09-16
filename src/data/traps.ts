@@ -69,7 +69,7 @@ export const TRAPS: readonly TrapDef[] = [
     desc: 'フロアのどこかへ飛ばされる。',
   },
   {
-    id: 'spin', name: '回転板', sprite: 'trapSpin', rate: 100, oneShot: false,
+    id: 'spin', name: '回転板', sprite: 'trapSpin', rate: 55, oneShot: false,
     affectsMonsters: true, effect: 'trapSpin', weight: 40,
     desc: '向きがぐるぐる変わり、持ち物がばらまかれる。',
   },

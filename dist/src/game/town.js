@@ -111,15 +111,22 @@ export function sortStorage(town) {
 // ---------------------------------------------------------------------------
 // 道具屋
 // ---------------------------------------------------------------------------
-/** 村の道具屋の品揃え。日替わりではなく、冒険の回数で変わる */
+/**
+ * 村の道具屋の品揃え。
+ *
+ * 毎回同じ顔ぶれだと「今日は何が来ているか」という楽しみが無いので、
+ * 覗くたびに引き直す。冒険の進み具合で良い品も混ざるようにしてある。
+ */
 export function shopStock(town) {
-    const rng = new Rng(`town-shop:${town.totalRuns}`);
+    const rng = new Rng(`town-shop:${town.totalRuns}:${town.nextUid}:${town.gitan}`);
     const pool = [
         'healHerb', 'healHerb', 'greatHerb', 'antidoteHerb', 'cureConfuse',
         'riceBall', 'riceBall', 'bigRiceBall',
         'identifyScroll', 'lightScroll', 'uncurseScroll', 'mapScroll',
         'woodStick', 'oakClub', 'bronzeSword', 'woodShield', 'leatherShield', 'bronzeShield',
-        'storagePot', 'woodArrow', 'stone',
+        'storagePot', 'woodArrow', 'woodArrow', 'ironArrow', 'stone',
+        'sleepHerb', 'strHerb', 'bigRiceBall', 'sleepScroll', 'confuseScroll',
+        'smokeBall', 'shockStone', 'warpScroll', 'bindStaff', 'knockbackStaff',
     ].filter((id) => {
         try {
             getItem(id);
@@ -178,6 +185,25 @@ export const townIdentify = (town) => ({
     known: { ...(town.knownItems ?? {}) },
     nicknames: { ...(town.nicknames ?? {}) },
 });
+/**
+ * 銀行。
+ *
+ * 持ち歩いているギタンは冒険に持ち込まれ、倒れれば失う。
+ * 預けたぶんは残るので、「いくら持っていくか」が選べるようになる。
+ * これが無いと、一度死んだだけで貯めた全額が消えて道具屋が意味を失う。
+ */
+export function depositGitan(town, amount) {
+    const n = Math.max(0, Math.min(Math.floor(amount), town.gitan));
+    town.gitan -= n;
+    town.bankGitan += n;
+    return n;
+}
+export function withdrawGitan(town, amount) {
+    const n = Math.max(0, Math.min(Math.floor(amount), town.bankGitan));
+    town.bankGitan -= n;
+    town.gitan += n;
+    return n;
+}
 export function sellToTown(town, uid) {
     const item = withdrawItem(town, uid);
     if (!item)

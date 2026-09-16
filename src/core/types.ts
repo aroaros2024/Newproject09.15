@@ -504,6 +504,17 @@ export interface PlayerActor extends ActorBase {
   shieldUid: number | null;
   braceletUid: number | null;
   /**
+   * 保持バッグ。数字キー 1〜3 に割り当てた道具の種類（defId）。
+   *
+   * 「持ち物の何番目」で覚えるのは無理なので、自分で入れた 3 つだけを
+   * 画面に出しておく。
+   *
+   * uid ではなく defId で覚えるのが肝。uid で持つと、矢を使い切った瞬間に
+   * 枠が空になり、拾い直すたびに入れ直すことになる。種類で覚えておけば、
+   * 0 個でも枠は残り、並べ替えても整理してもずれない。
+   */
+  quickIds: (string | null)[];
+  /**
    * 竜脈の腕輪などが maxHp に上乗せしている量。
    *
    * 「着けたら足す・外したら引く」を各所で手動に行うと、置く／投げる／売る／
@@ -669,6 +680,8 @@ export type Action =
   | { type: 'wait' }
   | { type: 'pickup' }
   | { type: 'place'; uid: number }
+  /** 持ち物がいっぱいの時、足元の物と 1 手で交換する */
+  | { type: 'swap'; uid: number }
   /** 道具を使う。identify の巻物のように対象を選ぶものは targetUid を渡す */
   | { type: 'use'; uid: number; targetUid?: number; dir?: Dir }
   | { type: 'equip'; uid: number }
