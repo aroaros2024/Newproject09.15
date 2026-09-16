@@ -11,6 +11,7 @@ import { Rng } from '../core/rng.js';
 import { ALL_ITEMS, allMonsters, getItem, getDungeon } from '../data/registry.js';
 import { DUNGEON_ORDER } from '../data/dungeons.js';
 import { keptItems, makeItem } from './inventory.js';
+import { addTally, mergeTally } from './counters.js';
 import { mergeInto } from './itemEffects.js';
 import { losesItemsOnDeath } from './death.js';
 import { BASE_KEEP_SLOTS, MAX_KEEP_SLOTS, SELL_RATE, stonesForRun } from './rules.js';
@@ -70,10 +71,8 @@ export const storageFull = (town) => town.storage.length >= STORAGE_LIMIT;
  * 村での行動は冒険と関係なく起きるので、こちらは直接足してよい。
  */
 export function bumpTown(town, key, n = 1) {
-    if (n <= 0)
-        return;
     town.tally ??= {};
-    town.tally[key] = (town.tally[key] ?? 0) + n;
+    addTally(town.tally, key, n);
 }
 /**
  * そのダンジョンで使える保持枠の数。
@@ -298,6 +297,7 @@ export function smithUncurse(town, uid) {
         return false;
     town.gitan -= SMITH_PRICE.uncurse;
     item.cursed = false;
+    bumpTown(town, 'cure:curse');
     return true;
 }
 /**
@@ -308,6 +308,9 @@ export function smithUncurse(town, uid) {
  * - 脱出  : 持ち帰ったものは残る
  */
 export function finishRun(world, town, kind, cause) {
+    // 精算は 1 回だけ。二度目は一度目の結果をそのまま返す
+    if (world.run.settled)
+        return world.run.settled;
     const p = world.player;
     const d = world.dungeon;
     const keepItems = kind !== 'death' || !losesItemsOnDeath(d.id);
@@ -351,12 +354,15 @@ export function finishRun(world, town, kind, cause) {
     world.pendingWarehouse = [];
     // 自分でつけた名前（「まちがえた」など）は、次の冒険にも持ち越す
     town.nicknames = { ...(town.nicknames ?? {}), ...world.run.identify.nicknames };
+    // 歩数と拾得数は、もともと p.steps / stats.itemsFound が数えている。
+    // 別に tally でも数えると真実が 2 つになってズレる（実際、仲間と入れ替わる
+    // 移動と「拾う」コマンドが数え漏れていた）。ここで一度だけ合流させる
+    world.tally('walk', p.steps);
+    world.tally('pickup', world.run.stats.itemsFound);
     // この冒険ぶんの数えを村へ移す。ここ 1 箇所だけで移すので、
     // 中断セーブから再開しても二重計上にならない
     town.tally ??= {};
-    for (const [k, v] of Object.entries(world.run.tally ?? {})) {
-        town.tally[k] = (town.tally[k] ?? 0) + v;
-    }
+    mergeTally(town.tally, world.run.tally ?? {});
     world.run.tally = {};
     // 石は倒れても貰える。ただし、初めて踏んだ階を満額にしてあるので、
     // 同じ階を往復するより 1 階でも深く潜る方が得になる
@@ -402,7 +408,9 @@ export function finishRun(world, town, kind, cause) {
     town.history.push(record);
     if (town.history.length > 50)
         town.history.shift();
-    return { record, lost, unlocked, rewardMessage, stones };
+    const result = { record, lost, unlocked, rewardMessage, stones };
+    world.run.settled = result;
+    return result;
 }
 /** 持ち物と壺の中身をひとまとめにする */
 function collectCarried(p) {

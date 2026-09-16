@@ -603,6 +603,7 @@ export class DungeonScreen implements Screen {
                 : cur.defId ? `${getItem(cur.defId).name}（切らしている）` : '（空き）'}`,
               onSelect: () => {
                 assignShortcut(p, i, item.defId);
+                world.tally('shortcut');
                 world.log(
                   `${itemName(item, world.run.identify)}を ショートカット ${i + 1} に 入れた。`,
                   'system',
@@ -636,6 +637,7 @@ export class DungeonScreen implements Screen {
           removeKept(p, item.uid);
           world.log(`${itemName(item, world.run.identify)}の 保持を やめた。`, 'system');
         } else if (addKept(p, item.uid, this.keepSlots())) {
+          world.tally('keep');
           world.log(`${itemName(item, world.run.identify)}を 保持した。`, 'good');
         } else {
           world.log(`保持枠が いっぱいだ（${this.keepSlots()} 個まで）。`, 'warning');

@@ -7,6 +7,7 @@
  */
 
 import { Rng } from '../core/rng.js';
+import { type MaxKey, type MissionKey, addTally, maxTally } from './counters.js';
 import type { Dir, Point } from '../core/geom.js';
 import { chebyshev, samePoint } from '../core/geom.js';
 import type {
@@ -333,10 +334,15 @@ export class World {
    * 中断セーブを跨いだときに二重計上になる。
    * ここで溜めたぶんは finishRun が村へ一度だけ移す。
    */
-  tally(key: string, n = 1): void {
-    if (n <= 0) return;
+  tally(key: MissionKey, n = 1): void {
     this.run.tally ??= {};
-    this.run.tally[key] = (this.run.tally[key] ?? 0) + n;
+    addTally(this.run.tally, key, n);
+  }
+
+  /** 到達値を覚える。足さずに最大値だけ残す（レベルなど） */
+  tallyMax(key: MaxKey, value: number): void {
+    this.run.tally ??= {};
+    maxTally(this.run.tally, key, value);
   }
 
   /** 積まれたイベントを取り出して空にする */

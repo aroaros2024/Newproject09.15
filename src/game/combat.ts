@@ -377,8 +377,8 @@ export function killActor(world: World, src: Actor | null, target: Actor): void 
 
   if (src && (src.kind === 'player' || src.kind === 'ally')) {
     world.run.stats.kills++;
-    world.tally('kill');
-    world.tally(`kill:${target.defId}`);
+    // 混乱して自分の仲間を斬ったぶんは「倒した」に数えない
+    if (target.kind === 'monster') world.tally(`kill:${target.defId}`);
     gainExp(world, world.player, target.exp);
     // 守銭の印
     const gitanRune = equipRuneLevel(equippedWeapon(world.player), 'gitanHit');
@@ -463,6 +463,7 @@ export function levelUp(world: World, p: PlayerActor): void {
   p.hp = Math.min(p.maxHp, p.hp + gain);
   p.str = p.maxStr; // レベルアップでちからが全回復する
   world.log(`${p.name}は レベル ${p.level}に 上がった！`, 'good');
+  world.tallyMax('level', p.level);
   world.emit({ t: 'levelUp', actorId: p.id });
   world.sfx('levelUp');
 }

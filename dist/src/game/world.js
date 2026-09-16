@@ -6,6 +6,7 @@
  * ゲームロジックはすべてこの World を受け取って動く。
  */
 import { Rng } from '../core/rng.js';
+import { addTally, maxTally } from './counters.js';
 import { chebyshev, samePoint } from '../core/geom.js';
 import { getMonster } from '../data/registry.js';
 import { at, canEnter, isOpen } from '../dungeon/tilemap.js';
@@ -308,10 +309,13 @@ export class World {
      * ここで溜めたぶんは finishRun が村へ一度だけ移す。
      */
     tally(key, n = 1) {
-        if (n <= 0)
-            return;
         this.run.tally ??= {};
-        this.run.tally[key] = (this.run.tally[key] ?? 0) + n;
+        addTally(this.run.tally, key, n);
+    }
+    /** 到達値を覚える。足さずに最大値だけ残す（レベルなど） */
+    tallyMax(key, value) {
+        this.run.tally ??= {};
+        maxTally(this.run.tally, key, value);
     }
     /** 積まれたイベントを取り出して空にする */
     drainEvents() {

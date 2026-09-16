@@ -7,6 +7,7 @@
  */
 import { SAVE_VERSION } from './types.js';
 import { BASE_KEEP_SLOTS, MAX_KEEP_SLOTS } from '../game/rules.js';
+import { sanitizeTally } from '../game/counters.js';
 const PREFIX = 'fushigi-dungeon';
 const KEY_TOWN = `${PREFIX}:town`;
 const KEY_RUN = `${PREFIX}:run`;
@@ -138,7 +139,7 @@ function validateTown(t) {
             ? Math.max(BASE_KEEP_SLOTS, Math.min(MAX_KEEP_SLOTS, Math.floor(t.keepSlots)))
             : BASE_KEEP_SLOTS,
         stones: Number.isFinite(t.stones) ? Math.max(0, Math.floor(t.stones)) : 0,
-        tally: typeof t.tally === 'object' && t.tally ? t.tally : {},
+        tally: sanitizeTally(t.tally),
         claimed: Array.isArray(t.claimed) ? t.claimed.filter((x) => typeof x === 'string') : [],
         seenMonsters: typeof t.seenMonsters === 'object' && t.seenMonsters ? t.seenMonsters : {},
         history: Array.isArray(t.history) ? t.history.slice(-50) : [],
@@ -192,7 +193,7 @@ export function loadRun() {
     if (data.player.hp <= 0 || data.player.alive === false)
         return null;
     // 古い中断データには無い項目を埋める（loadRun は検証しかしないので、ここだけ）
-    data.tally ??= {};
+    data.tally = sanitizeTally(data.tally);
     data.pendingRejoin ??= [];
     return data;
 }

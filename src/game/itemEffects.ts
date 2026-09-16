@@ -299,7 +299,7 @@ export const ITEM_EFFECTS: Record<string, EffectHandler> = {
     const item = target ?? equippedWeapon(world.player);
     if (!item) return false;
     item.plus = Math.min(PLUS_MAX, item.plus + 1);
-    item.cursed = false;
+    uncurseItem(world, item);
     item.plusKnown = true;
     world.log(`${itemName(item, world.run.identify)}が 鍛えられた！`, 'good');
     world.sfx('synthesis');
@@ -452,12 +452,8 @@ export const ITEM_EFFECTS: Record<string, EffectHandler> = {
     const p = world.player;
     let n = 0;
     for (const it of allCarriedItems(p)) {
-      if (it.cursed) {
-        it.cursed = false;
-        n++;
-      }
+      if (uncurseItem(world, it)) n++;
     }
-    world.tally('uncurse', n);
     world.log(n > 0 ? `${n}個の 呪いが 解けた！` : '呪われた物は 無かった。', 'good');
     return true;
   },
@@ -758,7 +754,6 @@ export const ITEM_EFFECTS: Record<string, EffectHandler> = {
     item.contents = [base];
     world.run.identify.known[base.defId] = true;
     base.plusKnown = true;
-    world.tally('synthesis');
     world.log(`${itemName(base, world.run.identify)}が できあがった！`, 'good');
     world.sfx('synthesis');
     return true;
@@ -806,7 +801,7 @@ export const ITEM_EFFECTS: Record<string, EffectHandler> = {
 
   blessPot: ({ world, target }) => {
     if (!target) return false;
-    target.cursed = false;
+    uncurseItem(world, target);
     target.plus = Math.min(PLUS_MAX, target.plus + 1);
     world.log(`${itemName(target, world.run.identify)}が 祝福された。`, 'good');
     return true;
@@ -830,9 +825,7 @@ export const ITEM_EFFECTS: Record<string, EffectHandler> = {
 
   purifyPot: ({ world, target }) => {
     if (!target) return false;
-    if (!target.cursed) return false;
-    target.cursed = false;
-    world.tally('uncurse');
+    if (!uncurseItem(world, target)) return false;
     world.log(`${itemName(target, world.run.identify)}の 呪いが 解けた。`, 'good');
     return true;
   },
@@ -931,6 +924,17 @@ export const ITEM_EFFECTS: Record<string, EffectHandler> = {
 // 補助
 // ---------------------------------------------------------------------------
 
+/**
+ * 呪いを解く唯一の入口。
+ * ここを通さずに cursed = false と書くと ミッションの計上が漏れる。
+ */
+export function uncurseItem(world: World, item: ItemInstance | null | undefined): boolean {
+  if (!item || !item.cursed) return false;
+  item.cursed = false;
+  world.tally('cure:curse');
+  return true;
+}
+
 function bless(world: World, item: ItemInstance | null, amount: number, label: string): boolean {
   if (!item) {
     world.log(`${label}を 装備していない。`);
@@ -988,6 +992,8 @@ export function mergeInto(world: World, base: ItemInstance, material: ItemInstan
   if (material.cursed) base.cursed = true;
   base.plusKnown = true;
   world.run.identify.known[base.defId] = true;
+  // 合成を数える唯一の場所。壺も巻物もここを通る
+  world.tally('synthesis');
 }
 
 /** 投げたアイテムの基本ダメージ */

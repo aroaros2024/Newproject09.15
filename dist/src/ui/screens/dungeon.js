@@ -571,6 +571,7 @@ export class DungeonScreen {
                                 : cur.defId ? `${getItem(cur.defId).name}（切らしている）` : '（空き）'}`,
                             onSelect: () => {
                                 assignShortcut(p, i, item.defId);
+                                world.tally('shortcut');
                                 world.log(`${itemName(item, world.run.identify)}を ショートカット ${i + 1} に 入れた。`, 'system');
                                 this.pumpEvents();
                                 return close();
@@ -601,6 +602,7 @@ export class DungeonScreen {
                     world.log(`${itemName(item, world.run.identify)}の 保持を やめた。`, 'system');
                 }
                 else if (addKept(p, item.uid, this.keepSlots())) {
+                    world.tally('keep');
                     world.log(`${itemName(item, world.run.identify)}を 保持した。`, 'good');
                 }
                 else {

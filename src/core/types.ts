@@ -808,6 +808,13 @@ export interface RunState {
    * 冒険中はここに溜め、finishRun で一度だけ移す。
    */
   tally?: Record<string, number>;
+  /**
+   * 精算済みの結果。
+   *
+   * 精算は 1 回きり。二度呼ぶと石も履歴も歩数も二重になるので、
+   * 一度目の結果をここに残し、二度目はそれをそのまま返す。
+   */
+  settled?: ReturnResult;
   /** すでに倒したボス */
   defeatedBosses: string[];
   /**
@@ -885,6 +892,19 @@ export interface AdventureRecord {
   cause: string | null;
   cleared: boolean;
   at: number;
+}
+
+/** 冒険が終わったときの精算の結果 */
+export interface ReturnResult {
+  record: AdventureRecord;
+  /** 失った持ち物の数 */
+  lost: number;
+  /** 新しく解放されたダンジョン */
+  unlocked: string | null;
+  /** クリア報酬のメッセージ */
+  rewardMessage: string | null;
+  /** この冒険で手に入った石 */
+  stones: number;
 }
 
 /** 設定 */

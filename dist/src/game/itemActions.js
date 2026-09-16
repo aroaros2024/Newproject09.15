@@ -61,6 +61,9 @@ export function useItem(world, uid, targetUid, dir) {
         return isEquipped(p, uid) ? unequipItem(world, uid) : equipItem(world, uid);
     }
     const target = targetUid !== undefined ? findItem(p, targetUid) : null;
+    // 「使った」はここで一度だけ数える。
+    // 壺・食料・杖はこの下で個別に return するので、分岐より後ろに置くと数え漏れる
+    world.tally(`use:${def.kind}`);
     // 壺はカテゴリごとに専用の扱いをする
     if (def.kind === 'pot')
         return usePot(world, item, target);
@@ -90,8 +93,6 @@ export function useItem(world, uid, targetUid, dir) {
     const effectId = def.effect;
     if (!effectId)
         return NO('使えない');
-    world.tally('useItem');
-    world.tally(`use:${def.kind}`);
     const verb = def.kind === 'herb' ? '飲んだ' : def.kind === 'scroll' ? '読んだ' : '振った';
     world.log(`${itemName(item, world.run.identify)}を ${verb}。`, 'item');
     world.sfx(def.kind === 'herb' ? 'drink' : def.kind === 'scroll' ? 'scroll' : 'zap');
@@ -166,6 +167,7 @@ function usePot(world, pot, target) {
         return NO('壺がいっぱい');
     }
     removeFromInventory(p, target.uid);
+    world.tally('potPut');
     world.log(`${shortItemName(target, world.run.identify)}を 壺に 入れた。`, 'item');
     identifyOnUse(world, pot);
     switch (def.effect) {
@@ -253,7 +255,6 @@ export function equipItem(world, uid) {
     item.plusKnown = true;
     if (def.kind === 'bracelet')
         world.run.identify.known[item.defId] = true;
-    world.tally('equip');
     world.tally(`equip:${def.kind}`);
     world.log(`${itemName(item, world.run.identify)}を 装備した。`, 'item');
     world.sfx('equip');
@@ -433,6 +434,7 @@ export function buyItem(world) {
     f.item.shopPrice = 0;
     addToInventory(p, f.item);
     world.removeFloorItem(f);
+    world.tally('shopBuy');
     world.log(`${itemName(f.item, world.run.identify)}を ${price}ギタンで 買った。`, 'item');
     world.sfx('buy');
     return OK;

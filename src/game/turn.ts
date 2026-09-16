@@ -97,6 +97,10 @@ export function stepTurn(world: World, action: Action): ActionResult {
     return result;
   }
 
+  // 「ターンを消費した操作」を種類ごとに 1 箇所で数える。
+  // 個々の処理に数える行を足して回ると、必ずどこかが漏れる
+  world.tally(`act:${action.type}`);
+
   resolvePendingEffects(world);
   if (checkPlayerDeath(world, 'ちからつきた')) return result;
 
