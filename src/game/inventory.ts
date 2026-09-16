@@ -178,12 +178,23 @@ export function shortcutSlots(p: PlayerActor): ShortcutSlot[] {
 }
 
 /** ショートカットへ割り当てる。同じ種類が別の枠にあれば、そちらは空ける */
-export function assignShortcut(p: PlayerActor, slot: number, defId: string | null): void {
+/**
+ * ショートカットの枠を割り当てる。
+ *
+ * 中身が本当に変わったときだけ true を返す。同じ枠に同じ物を入れ直しても
+ * false。数える側がここを見ないと、入れ直しの連打でミッションが進む。
+ */
+export function assignShortcut(
+  p: PlayerActor, slot: number, defId: string | null,
+): boolean {
   if (!p.shortcutIds) p.shortcutIds = new Array(SHORTCUT_SLOTS).fill(null);
+  if (slot < 0 || slot >= SHORTCUT_SLOTS) return false;
+  if (p.shortcutIds[slot] === defId) return false;
   if (defId !== null) {
     for (let i = 0; i < SHORTCUT_SLOTS; i++) if (p.shortcutIds[i] === defId) p.shortcutIds[i] = null;
   }
-  if (slot >= 0 && slot < SHORTCUT_SLOTS) p.shortcutIds[slot] = defId;
+  p.shortcutIds[slot] = defId;
+  return true;
 }
 
 /**

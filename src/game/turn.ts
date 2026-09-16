@@ -99,8 +99,9 @@ export function stepTurn(world: World, action: Action): ActionResult {
   }
 
   // 「ターンを消費した操作」を種類ごとに 1 箇所で数える。
-  // 個々の処理に数える行を足して回ると、必ずどこかが漏れる
-  world.tally(`act:${action.type}`);
+  // 個々の処理に数える行を足して回ると、必ずどこかが漏れる。
+  // 眠っていてターンだけ過ぎた場合は、押した操作は起きていないので数えない
+  if (!result.skipped) world.tally(`act:${action.type}`);
 
   resolvePendingEffects(world);
   if (checkPlayerDeath(world, 'ちからつきた')) return result;

@@ -5,7 +5,11 @@ import { MISSIONS, type MissionCond, tryGetMission } from '../src/data/missions.
 import type { Action, ItemInstance } from '../src/core/types.js';
 import { startRun } from '../src/game/run.js';
 import { stepTurn } from '../src/game/turn.js';
-import { makeItem } from '../src/game/inventory.js';
+import { assignShortcut, makeItem } from '../src/game/inventory.js';
+import { applyStatus } from '../src/game/status.js';
+import { applyTrapEffect } from '../src/game/trapEffects.js';
+import { depositGitan, depositItem, withdrawGitan, withdrawItem } from '../src/game/town.js';
+import { Rng } from '../src/core/rng.js';
 import { ALL_ITEMS, allMonsters, getDungeon, tryGetMonster } from '../src/data/registry.js';
 import {
   claimAll, claimMission, claimableCount, dexCounts, isDone, missionProgress, visibleMissions,
@@ -241,8 +245,9 @@ test('ミッションが使うキーは、どこかで数えられている', ()
   // 接頭辞は addTally が自動で足すので、その形に合っているかだけ見る
   const known = new Set([
     'walk', 'pickup', 'descend', 'kill', 'trap', 'equip', 'use', 'act',
-    'cure:curse', 'synthesis', 'makeAlly', 'buy', 'bank', 'keep',
-    'shortcut', 'potPut', 'shopBuy', 'house', 'steal', 'bentou', 'withdraw',
+    'cure:curse', 'synthesis', 'makeAlly', 'buy', 'keep',
+    'shortcut', 'potPut', 'potTake', 'shopBuy', 'house', 'steal', 'bentou',
+    'bring', 'sell', 'throwHit', 'swapGear',
   ]);
   for (const def of MISSIONS) {
     for (const key of tallyKeysOf(def.cond)) {
@@ -255,4 +260,89 @@ test('ミッションが使うキーは、どこかで数えられている', ()
 
 test('ちょうど 100 個ある', () => {
   assert.equal(MISSIONS.length, 100, `${MISSIONS.length} 個になっている`);
+});
+
+test('眠っていてターンだけ過ぎたときは、押した操作を数えない', () => {
+  // 持ち物ゼロで眠ったまま連打すると act:throw が増えていた。
+  // 「投げる」ミッションが 0 ターンで終わる形だったので、ここで固定する
+  const town = newTown();
+  const world = startRun('d2', town, { seed: 3 });
+  world.player.inventory.length = 0;
+  applyStatus(world, world.player, 'deepAsleep', 200);
+  for (let i = 0; i < 20; i++) {
+    stepTurn(world, { type: 'throw', uid: 9999, dir: 0 });
+    world.drainEvents();
+  }
+  assert.deepEqual(world.run.tally ?? {}, {}, '眠っているだけで数えが進んだ');
+  assert.ok(world.run.totalTurn > 0, 'ターンは過ぎるべき');
+});
+
+test('ボスは落とし穴で消えない', () => {
+  // 落ちると killActor を通らずに消えるので、戦わずに踏破でき、
+  // kill:<ボス> を条件にしたミッションが永久に達成できなかった
+  const town = newTown();
+  const world = startRun('d2', town, { seed: 5 });
+  const spot = world.randomOpenTile();
+  assert.ok(spot, '置ける場所が無い');
+  const boss = world.spawnAt?.('bossForest', spot!) ?? null;
+  assert.ok(boss, 'ボスを置けない');
+  applyTrapEffect(world, boss!, 'spike');
+  assert.equal(boss!.alive, true, 'ボスが落とし穴で消えた');
+});
+
+test('往復では進まない', () => {
+  const town = newTown({ gitan: 1000 });
+  // 銀行: 預ける→下ろすを繰り返しても預り高の記録は伸びない
+  depositGitan(town, 1000);
+  const peak = town.tally?.[`${MAX_PREFIX}bankGitan`];
+  withdrawGitan(town, 1000);
+  depositGitan(town, 1000);
+  assert.equal(town.tally?.[`${MAX_PREFIX}bankGitan`], peak, '往復で預り高が伸びた');
+
+  // 倉庫: 出し入れを繰り返しても持ち込みの数えは増えない
+  const t2 = newTown();
+  const item = makeItem('riceBall', new Rng(1), {}, () => t2.nextUid++);
+  depositItem(t2, item);
+  for (let i = 0; i < 5; i++) {
+    const got = withdrawItem(t2, item.uid);
+    assert.ok(got, '取り出せない');
+    depositItem(t2, got!);
+  }
+  assert.equal(t2.tally?.bring ?? 0, 0, '出し入れの往復で持ち込みが増えた');
+});
+
+test('ショートカットは同じ枠に入れ直しても増えない', () => {
+  const town = newTown();
+  const world = startRun('d2', town, { seed: 7 });
+  const p = world.player;
+  assert.equal(assignShortcut(p, 0, 'healHerb'), true, '1 回目が入らない');
+  for (let i = 0; i < 10; i++) {
+    assert.equal(assignShortcut(p, 0, 'healHerb'), false, '同じ物を入れ直して true');
+  }
+  assert.equal(assignShortcut(p, 0, 'riceBall'), true, '別の物に変えられない');
+});
+
+test('同じ装備の着け外しでは、持ち替えに数えない', () => {
+  const town = newTown();
+  const world = startRun('d2', town, { seed: 17 });
+  const p = world.player;
+  p.inventory.length = 0;
+  p.weaponUid = null;
+  const a = makeItem('bronzeSword', world.rng, {}, () => world.nextUid());
+  const b = makeItem('ironSword', world.rng, {}, () => world.nextUid());
+  p.inventory.push(a, b);
+
+  // 同じ剣を 10 往復
+  for (let i = 0; i < 10; i++) {
+    stepTurn(world, { type: 'equip', uid: a.uid });
+    stepTurn(world, { type: 'unequip', uid: a.uid });
+    world.drainEvents();
+  }
+  assert.equal(world.run.tally?.['swapGear:weapon'] ?? 0, 0, '着け外しで持ち替えが増えた');
+
+  // 別の剣に替えたら 1 回
+  stepTurn(world, { type: 'equip', uid: a.uid });
+  stepTurn(world, { type: 'equip', uid: b.uid });
+  world.drainEvents();
+  assert.equal(world.run.tally?.['swapGear:weapon'], 1, '持ち替えが数えられていない');
 });

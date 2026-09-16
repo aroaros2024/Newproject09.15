@@ -47,6 +47,12 @@ const TRAP_EFFECTS = {
             world.pendingRejoin.push(a);
             return;
         }
+        // ボスは落ちない。落ちると killActor を通らずに消えるので、
+        // 戦わずに踏破できてしまい、撃破の記録も残らない
+        if (world.defOf(a).isBoss) {
+            world.log(`${world.nameOf(a)}は 落ちなかった。`);
+            return;
+        }
         world.log(`${world.nameOf(a)}は 落とし穴に 落ちた。`);
         a.alive = false;
         world.removeActor(a);

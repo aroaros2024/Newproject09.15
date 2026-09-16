@@ -224,6 +224,7 @@ export function takeOutOfPot(world, potUid, index) {
         return NO('持ち物が いっぱい');
     pot.contents.splice(index, 1);
     addToInventory(p, item);
+    world.tally('potTake');
     world.log(`${shortItemName(item, world.run.identify)}を 取り出した。`, 'item');
     return OK;
 }
@@ -249,6 +250,10 @@ export function equipItem(world, uid) {
             return OK;
         }
     }
+    // 「持ち替えた」かどうかは、外す前の装備と品目が違うかで決める。
+    // 同じ物を着け外しするだけでは持ち替えたことにしない
+    const prev = currentUid !== null ? findItem(p, currentUid) : null;
+    const swapped = prev !== null && prev.defId !== item.defId;
     p[slot] = uid;
     if (def.kind === 'bracelet')
         syncBraceletBonus(world, p);
@@ -256,6 +261,8 @@ export function equipItem(world, uid) {
     if (def.kind === 'bracelet')
         world.run.identify.known[item.defId] = true;
     world.tally(`equip:${def.kind}`);
+    if (swapped)
+        world.tally(`swapGear:${def.kind}`);
     world.log(`${itemName(item, world.run.identify)}を 装備した。`, 'item');
     world.sfx('equip');
     if (item.cursed) {
@@ -326,6 +333,7 @@ export function throwItem(world, uid, dir) {
                 break;
             // 貫通するときは通り過ぎざまにダメージだけ与えて飛び続ける
             dealDamage(world, p, a, throwDamage(world, flying, p), 'physical');
+            world.tally('throwHit');
             victim = null;
         }
     }
@@ -350,6 +358,7 @@ export function throwItem(world, uid, dir) {
                 ? gitanThrowDamage(flying.count)
                 : throwDamage(world, flying, p);
             dealDamage(world, p, victim, dmg, 'physical');
+            world.tally('throwHit');
             // 当たったギタンは消える（拾い直せない）
             if (def.kind === 'gitan') {
                 world.log(`${flying.count}ギタンは 砕け散った。`, 'item');
@@ -454,6 +463,7 @@ export function sellItem(world, uid) {
     const price = Math.max(1, Math.floor(getItem(item.defId).price * SELL_RATE * (item.count || 1)));
     removeFromInventory(p, uid);
     p.gitan += price;
+    world.tally('sell');
     // 店で売ると種類が分かる
     world.run.identify.known[item.defId] = true;
     world.log(`${itemName(item, world.run.identify)}を ${price}ギタンで 売った。`, 'item');

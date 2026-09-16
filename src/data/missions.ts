@@ -101,18 +101,18 @@ const TUTORIAL: MissionDef[] = [
   m('walk5000', '5000 歩 歩く', T('walk', 5000), 40, 'tutorial'),
 
   // --- 知らないと損をする操作。どれも自分で選ばないと 1 回も発行されない
-  m('firstShortcut', 'ショートカットに 3 個 入れる', T('shortcut', 3), 60, 'tutorial'),
+  m('firstShortcut', 'ショートカットに 道具を 入れる', T('shortcut', 1), 60, 'tutorial'),
   m('firstBentou', '食事処で 弁当を 買う', T('bentou', 1), 60, 'tutorial'),
   m('firstWait', 'その場で 20 回 足踏みする', ACT('wait', 20), 40, 'tutorial'),
-  m('firstThrow', '道具を 20 回 投げる', ACT('throw', 20), 50, 'tutorial'),
+  m('firstThrow', '投げて 敵に 5 回 当てる', T('throwHit', 5), 60, 'tutorial'),
   m('firstPlace', '道具を 10 回 置く', ACT('place', 10), 40, 'tutorial'),
   m('firstSwap', '持ち物と 足元の物を 3 回 入れ替える', ACT('swap', 3), 60, 'tutorial'),
   m('firstUnequip', '装備を 5 回 外す', ACT('unequip', 5), 40, 'tutorial'),
 
   // --- 村の使い方
   m('townBuy', '村の 道具屋で 5 個 買う', T('buy', 5), 50, 'tutorial'),
-  m('townSell', '道具を 10 個 売る', ACT('sell', 10), 50, 'tutorial'),
-  m('bankSave', '銀行に 5 回 預ける', T('bank', 5), 50, 'tutorial'),
+  m('townSell', '道具を 10 個 売る', T('sell', 10), 50, 'tutorial'),
+  m('bankSave', '銀行に 3000 ギタン 預ける', MAX('bankGitan', 3000), 60, 'tutorial'),
   m('storeItems', '倉庫に 道具を 50 個 貯める', STORE(50), 60, 'tutorial'),
 
   // --- 始まりの洞窟の顔ぶれ（1 周 1.0〜4.3 体）
@@ -136,20 +136,22 @@ const TUTORIAL: MissionDef[] = [
 const MID: MissionDef[] = [
   // --- 道具の扱い。壺・腕輪・杖は d1 に落ちていないので、ここから
   m('firstStaff', '杖を 15 回 振る', T('use:staff', 15), 120, 'mid'),
+  // 投げるを「たまに使う」から「戦い方の 1 つ」にする
+  m('throwMaster', '投げて 敵に 100 回 当てる', T('throwHit', 100), 200, 'mid'),
   m('firstPot', '壺を 10 回 使う', T('use:pot', 10), 140, 'mid'),
-  m('firstBracelet', '腕輪を 5 回 装備する', T('equip:bracelet', 5), 120, 'mid'),
-  m('potPut', '壺に 道具を 15 回 入れる', T('potPut', 15), 140, 'mid'),
-  m('potTake', '壺から 道具を 10 回 出す', ACT('takeOut', 10), 120, 'mid'),
-  m('keepSlot', '保持枠に 道具を 10 回 入れる', T('keep', 10), 140, 'mid'),
-  m('useAllKinds', '草・巻物・杖・壺を すべて 使う',
-    ALL(T('use:herb', 1), T('use:scroll', 1), T('use:staff', 1), T('use:pot', 1)), 200, 'mid'),
-  m('equipAll', '武器・盾・腕輪を すべて 装備する',
-    ALL(T('equip:weapon', 1), T('equip:shield', 1), T('equip:bracelet', 1)), 160, 'mid'),
+  m('firstBracelet', '腕輪を 装備する', T('equip:bracelet', 1), 100, 'mid'),
+  m('potPut', '壺に 道具を 入れて、取り出す', ALL(T('potPut', 5), T('potTake', 5)), 140, 'mid'),
+  m('keepSlot', '保持枠に 道具を 入れる', T('keep', 1), 100, 'mid'),
+  m('useAllKinds', '草・巻物・杖・おにぎりを すべて 使う',
+    ALL(T('use:herb', 1), T('use:scroll', 1), T('use:staff', 1), T('use:food', 1)), 200, 'mid'),
+  m('gearSwap', '武器を 10 回 持ち替える', T('swapGear:weapon', 10), 160, 'mid'),
 
   // --- 鍛える
   m('synthesis', '装備を 3 回 合成する', T('synthesis', 3), 250, 'mid'),
+  // 村の鍛冶屋で +5 まで鍛えると 22,500 ギタン。冒険へ持ち込んだ時点で記録される
   m('plus5', '装備を +5 まで 鍛える', MAX('plus', 5), 200, 'mid'),
   m('plus10', '装備を +10 まで 鍛える', MAX('plus', 10), 400, 'mid'),
+  // 鉄の剣（印 3 枠・重み 70）なら 3 つ入る。実測で確認ずみ
   m('runes3', '1 つの 装備に 印を 3 つ 入れる', MAX('runes', 3), 300, 'mid'),
   m('uncurse5', '呪いを 5 回 解く', T('cure:curse', 5), 160, 'mid'),
 
@@ -170,7 +172,7 @@ const MID: MissionDef[] = [
   // --- 仲間
   m('makeAlly', '分身の巻物で 仲間を 作る', T('makeAlly', 1), 250, 'mid'),
   // 倉庫は「持ち帰る」だけでなく「持ち出す」ためにある
-  m('withdraw', '倉庫から 道具を 20 個 取り出す', T('withdraw', 20), 160, 'mid'),
+  m('withdraw', '倉庫の 道具を 20 個 冒険へ 持ち込む', T('bring', 20), 160, 'mid'),
 
   // --- せせらぎの森（1 周 2.2〜4.6 体）
   m('killRatMud', 'どろネズミを 25 体 倒す', KILL('ratMud', 25), 120, 'mid'),
@@ -196,9 +198,9 @@ const MID: MissionDef[] = [
   // --- 区切りとボス
   m('clearD3', '灼熱の火山を クリアする', CLR('d3'), 350, 'mid'),
   m('clearD4', '常闇の地下水路を クリアする', CLR('d4'), 450, 'mid'),
-  m('bossForest', '森の主を 倒す', KILL('bossForest', 1), 200, 'mid'),
-  m('bossVolcano', '火口の番人を 倒す', KILL('bossVolcano', 1), 300, 'mid'),
-  m('bossWaterway', '水路の淀みを 倒す', KILL('bossWaterway', 1), 400, 'mid'),
+  m('bossForest', '森の主を 3 回 倒す', KILL('bossForest', 3), 200, 'mid'),
+  m('bossVolcano', '火口の番人を 3 回 倒す', KILL('bossVolcano', 3), 300, 'mid'),
+  m('bossWaterway', '水路の淀みを 2 回 倒す', KILL('bossWaterway', 2), 400, 'mid'),
 ];
 
 /**
@@ -211,7 +213,7 @@ const MID: MissionDef[] = [
 const LATE: MissionDef[] = [
   // --- 天輪の塔（1 周 4.5〜6.5 体）
   m('clearDl', '天輪の塔を クリアする', CLR('dl'), 600, 'late'),
-  m('bossTowerFirst', '天輪の守り手を 倒す', KILL('bossTowerFirst', 1), 450, 'late'),
+  m('bossTowerFirst', '天輪の守り手を 2 回 倒す', KILL('bossTowerFirst', 2), 450, 'late'),
   m('killArcherBoulder', 'がんせき鬼を 30 体 倒す', KILL('archerBoulder', 30), 250, 'late'),
   m('killMageArch', '大術士を 30 体 倒す', KILL('mageArch', 30), 250, 'late'),
   m('killBatAbyss', 'やみのコウモリを 30 体 倒す', KILL('batAbyss', 30), 250, 'late'),
@@ -224,6 +226,8 @@ const LATE: MissionDef[] = [
   m('level50', 'レベル 50 に 到達する', MAX('level', 50), 600, 'late'),
   m('level80', 'レベル 80 に 到達する', MAX('level', 80), 1000, 'late'),
   m('plus20', '装備を +20 まで 鍛える', MAX('plus', 20), 600, 'late'),
+  // 印 6 枠は天輪の剣・天輪の盾だけ（村の道具屋が 4 本クリアで扱う）。
+  // 匠の印で枠を増やせば 3〜4 枠の装備でも届く
   m('runes6', '1 つの 装備に 印を 6 つ 入れる', MAX('runes', 6), 500, 'late'),
   m('gitan30000', '一度に 30000 ギタン 持つ', MAX('gitan', 30000), 600, 'late'),
   m('kills100', '1 回の 冒険で 100 体 倒す', MAX('killsInRun', 100), 600, 'late'),

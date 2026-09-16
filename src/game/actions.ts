@@ -66,7 +66,8 @@ export function performPlayerAction(world: World, action: Action): ActionResult 
   if (isIncapacitated(p)) {
     const s = p.statuses.find((x) => x.turns !== 0 && ['asleep', 'deepAsleep', 'paralyzed', 'fainted'].includes(x.id));
     world.log(`${p.name}は ${s ? STATUS_NAME[s.id] : '動けない'}で 動けない！`, 'bad');
-    return OK;
+    // ターンは失うが、押した操作そのものは起きていない
+    return { tookTurn: true, skipped: true };
   }
 
   switch (action.type) {

@@ -11,7 +11,7 @@ import { Rng } from '../core/rng.js';
 import { ALL_ITEMS, allMonsters, getItem, getDungeon } from '../data/registry.js';
 import { DUNGEON_ORDER } from '../data/dungeons.js';
 import { keptItems, makeItem } from './inventory.js';
-import { addTally, mergeTally } from './counters.js';
+import { addTally, maxTally, mergeTally } from './counters.js';
 import { activeBoosts } from './gacha.js';
 import { mergePartnerExp } from './partner.js';
 import { mergeInto } from './itemEffects.js';
@@ -119,7 +119,8 @@ export function withdrawItem(town, uid) {
     const i = town.storage.findIndex((it) => it.uid === uid);
     if (i < 0)
         return null;
-    bumpTown(town, 'withdraw');
+    // ここでは数えない。出し入れを往復するだけで増えてしまう。
+    // 数えるのは startRun の「実際に冒険へ持ち込んだ数」
     return town.storage.splice(i, 1)[0];
 }
 /** 倉庫のアイテムの並べ替え */
@@ -227,7 +228,10 @@ export function depositGitan(town, amount) {
         return 0;
     town.gitan -= n;
     town.bankGitan += n;
-    bumpTown(town, 'bank');
+    // 回数で数えると「預ける→下ろす」の往復で無限に増える。
+    // 預り高の最高記録なら往復では伸びない
+    town.tally ??= {};
+    maxTally(town.tally, 'bankGitan', town.bankGitan);
     return n;
 }
 export function withdrawGitan(town, amount) {
@@ -237,11 +241,15 @@ export function withdrawGitan(town, amount) {
     return n;
 }
 export function sellToTown(town, uid) {
-    const item = withdrawItem(town, uid);
-    if (!item)
+    // withdrawItem を使わない。売るのは「持ち出し」ではないので、
+    // 通すと 1 回の売却で持ち出しの数えまで進んでしまう
+    const i = town.storage.findIndex((it) => it.uid === uid);
+    if (i < 0)
         return 0;
+    const item = town.storage.splice(i, 1)[0];
     const price = Math.max(1, Math.floor(getItem(item.defId).price * SELL_RATE * (item.count || 1)));
     town.gitan += price;
+    bumpTown(town, 'sell');
     return price;
 }
 // ---------------------------------------------------------------------------

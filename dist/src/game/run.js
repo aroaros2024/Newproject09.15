@@ -146,6 +146,9 @@ export function startRun(dungeonId, town, opts = {}) {
                 contents: item.contents.map((c) => ({ ...c, uid: world.nextUid(), runes: [...c.runes] })),
             };
             player.inventory.push(copy);
+            // 倉庫から「持ち出した」のではなく「実際に持ち込んだ」数を数える。
+            // 倉庫のメニューで出し入れするだけでは増えない
+            world.tally('bring');
         }
         // ギタンは村から冒険へ「移す」。ここで村側を空にしないと、
         // 帰還時の town.gitan += p.gitan で毎回倍になる

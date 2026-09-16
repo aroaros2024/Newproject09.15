@@ -23,13 +23,20 @@ export type MissionKey =
   | `trap:${string}`
   /** 装備した道具の種類ごと。`equip` も自動で足る */
   | `equip:${string}`
+  /**
+   * 前と違う品目に持ち替えた種類ごと。`swapGear` も自動で足る。
+   *
+   * equip は着け直しでも増えるので、「拾った物と比べて替えた」を
+   * 数えたいときはこちらを見る。
+   */
+  | `swapGear:${string}`
   /** 使った道具の種類ごと。`use` も自動で足る */
   | `use:${string}`
   /** 使ったコマンドの種類ごと。`act` も自動で足る */
   | `act:${Action['type']}`
-  | 'kill' | 'trap' | 'equip' | 'use' | 'act'
+  | 'kill' | 'trap' | 'equip' | 'swapGear' | 'use' | 'act'
   | 'walk' | 'pickup' | 'descend'
-  | 'cure:curse' | 'synthesis' | 'makeAlly' | 'buy' | 'bank' | 'keep'
+  | 'cure:curse' | 'synthesis' | 'makeAlly' | 'buy' | 'keep'
   | 'shortcut' | 'potPut' | 'shopBuy'
   /** モンスターハウスに踏み込んだ */
   | 'house'
@@ -37,8 +44,14 @@ export type MissionKey =
   | 'steal'
   /** 食事処で 弁当を 買った */
   | 'bentou'
-  /** 倉庫から 道具を 取り出した */
-  | 'withdraw';
+  /** 倉庫の道具を 冒険へ 持ち込んだ */
+  | 'bring'
+  /** 道具を 売った（村でも ダンジョンの店でも） */
+  | 'sell'
+  /** 投げて 相手に 当てた */
+  | 'throwHit'
+  /** 壺から 道具を 取り出した */
+  | 'potTake';
 
 /**
  * 「最大値」で覚えるものの型。
@@ -57,6 +70,8 @@ export type MaxKey =
   | 'killsInRun'
   /** 一度に持ったギタン */
   | 'gitan'
+  /** 銀行の預り高 */
+  | 'bankGitan'
   /** 1 回の冒険で降りた階数 */
   | 'depth';
 
