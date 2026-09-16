@@ -16,7 +16,7 @@ import { attachFactories, startRun } from './game/run.js';
 import { finishRun } from './game/town.js';
 import { World } from './game/world.js';
 import { MessageLog } from './ui/log.js';
-import { registerSprites, validateAllSprites } from './ui/sprites.js';
+import { loadAllSprites } from './ui/spriteData.js';
 import { SCREEN_H, SCREEN_W } from './ui/theme.js';
 import { animScale, messageCps, type App, type Screen } from './ui/screens/app.js';
 import { DungeonScreen } from './ui/screens/dungeon.js';
@@ -49,13 +49,13 @@ class Game implements App {
 
   // ------------------------------------------------------------ 起動
 
-  async start(): Promise<void> {
+  start(): void {
     const errors = validateData();
     if (errors.length > 0) {
       // データが壊れているまま遊ばせない
       throw new Error(`データ不整合:\n${errors.slice(0, 10).join('\n')}`);
     }
-    await this.loadSprites();
+    this.loadSprites();
 
     input.attach();
     input.onFirstInput = () => audio.unlock();
@@ -74,31 +74,15 @@ class Game implements App {
     requestAnimationFrame(this.frame);
   }
 
-  /**
-   * ドット絵を読み込む。
-   * まだ用意できていないファイルがあっても、図形で代替して遊べるようにしてある。
-   */
-  private async loadSprites(): Promise<void> {
-    const modules = [
-      './ui/sprites/monstersA.js',
-      './ui/sprites/monstersB.js',
-      './ui/sprites/items.js',
-      './ui/sprites/world.js',
-    ];
-    for (const path of modules) {
-      try {
-        const mod = await import(/* @vite-ignore */ path) as Record<string, unknown>;
-        for (const value of Object.values(mod)) {
-          if (value && typeof value === 'object') {
-            registerSprites(value as never);
-          }
-        }
-      } catch {
-        // そのファイルがまだ無いだけ。描画側が図形で代替する
-      }
+  /** ドット絵を読み込む。不備があれば警告だけ出して遊べる状態は保つ */
+  private loadSprites(): void {
+    const { count, errors } = loadAllSprites();
+    if (errors.length > 0) {
+      console.warn(`ドット絵の不備 ${errors.length} 件:`, errors.slice(0, 20));
     }
-    const errors = validateAllSprites();
-    if (errors.length > 0) console.warn('ドット絵の不備:', errors.slice(0, 20));
+    if (count === 0) {
+      console.warn('ドット絵が 1 つも登録されていません。図形で代替します。');
+    }
   }
 
   // ------------------------------------------------------------ 画面
@@ -297,9 +281,9 @@ class Game implements App {
 let game: Game | null = null;
 
 /** index.html から呼ばれる起動関数 */
-export async function boot(canvas: HTMLCanvasElement): Promise<void> {
+export function boot(canvas: HTMLCanvasElement): void {
   game = new Game(canvas);
-  await game.start();
+  game.start();
 }
 
 /** デバッグ用（コンソールから触れるように） */
