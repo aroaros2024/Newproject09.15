@@ -17,6 +17,8 @@ const BUILDS = {
     d3: { lv: 20, str: 11, weapon: ['warHammer', 5], shield: ['stoneShield', 5] },
     d4: { lv: 28, str: 13, weapon: ['twinAxe', 7], shield: ['heavyShield', 6] },
     dl: { lv: 38, str: 15, weapon: ['greatSword', 9], shield: ['dragonScale', 8] },
+    // 不思議のダンジョンは持ち込み可なので、天輪の塔を抜けた装備で入る
+    exBring: { lv: 42, str: 16, weapon: ['greatSword', 11], shield: ['dragonScale', 10] },
     ex: { lv: 55, str: 20, weapon: ['tenrinSword', 14], shield: ['tenrinShield', 12] },
     // 真・もっと不思議は中身が ex と同じ（違うのは加護が効かないことだけ）
     exPure: { lv: 55, str: 20, weapon: ['tenrinSword', 14], shield: ['tenrinShield', 12] },
@@ -77,6 +79,9 @@ test('雑魚は想定装備で 10 発以内に倒せる', () => {
         const b = BUILDS[d.id];
         const atk = b.str + power(b.weapon[0], b.weapon[1]);
         for (const e of d.monsters) {
+            // そのダンジョンで到達しない階の行は見ない
+            if (e.from > d.depth)
+                continue;
             const m = byId.get(e.id);
             if (!m || m.isBoss || METAL.has(m.id))
                 continue;

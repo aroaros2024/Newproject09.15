@@ -544,7 +544,7 @@ const EX: DungeonDef = {
   // 加護なしで潜りたい人には exPure（真・もっと不思議）を用意してある
   allowAlly: true,
   allowBoosts: true,
-  requires: 'dl',
+  requires: 'exBring',
   theme: THEME_ABYSS,
   bgm: 'abyss',
   gen: gen({
@@ -657,6 +657,40 @@ const EX: DungeonDef = {
 };
 
 /**
+ * exBring 不思議のダンジョン — 40F。道具を持ち込める。
+ *
+ * シリーズでは「もっと」が付くと持ち込み不可・Lv1 スタートを意味するので、
+ * 持ち込める側は「不思議のダンジョン」として別に置く。
+ * 拾った物で何とかする即興の遊び（もっと不思議）と、
+ * 何を貯めて何を持ち込むかの準備の遊びは別物なので、片方に寄せない。
+ *
+ * 中身は ex と同じ表を 40F ぶん使う。倉庫・銀行・保持枠・加護の出口。
+ */
+const EX_BRING: DungeonDef = {
+  ...EX,
+  id: 'exBring',
+  name: '不思議のダンジョン',
+  subtitle: '持ち込み可・40 階',
+  desc: '道具を持ち込める 40 階。レベルも持ち越す。\n'
+    + '倉庫に貯めた物を、どこまで持っていくかを決める場所。\n'
+    + '生きて帰れば、拾った物は持ち帰れる。',
+  depth: 40,
+  allowBring: true,
+  resetLevel: false,
+  allowAlly: true,
+  allowBoosts: true,
+  requires: 'dl',
+  // ボスは置かない。最深部の階段を降りれば踏破
+  bosses: [],
+  // 40F までしか無いので、それより深い階の出現表は落とす。
+  // 残しておくと「この階には出ないはずの敵」がデータ上は居ることになり、
+  // バランスの検査が実態とずれる
+  monsters: EX.monsters.filter((e) => e.from <= 40),
+  items: EX.items.filter((e) => e.from <= 40),
+  traps: EX.traps.filter((e) => e.from <= 40),
+};
+
+/**
  * exPure 真・もっと不思議のダンジョン — 99F。村で得た加護が一切効かない。
  *
  * 中身は ex とまったく同じ。違うのは「相棒も加護も連れて行けない」ことだけ。
@@ -675,7 +709,7 @@ const EX_PURE: DungeonDef = {
   requires: 'ex',
 };
 
-export const DUNGEONS: readonly DungeonDef[] = [D1, D2, D3, D4, DL, EX, EX_PURE];
+export const DUNGEONS: readonly DungeonDef[] = [D1, D2, D3, D4, DL, EX_BRING, EX, EX_PURE];
 
 /**
  * 風の村の貸し出し装備。
@@ -692,13 +726,15 @@ export const LOANER_GEAR: Record<string, { weapon: string; shield: string } | nu
   d3: { weapon: 'bronzeSword', shield: 'bronzeShield' },
   d4: { weapon: 'ironSword', shield: 'ironShield' },
   dl: { weapon: 'steelSword', shield: 'steelShield' },
+  exBring: { weapon: 'steelSword', shield: 'steelShield' },
   // もっと不思議のダンジョンは何も持ち込めない
   ex: null,
   exPure: null,
 };
 
 /** 物語の順路（村のダンジョン選択に出る順） */
-export const DUNGEON_ORDER: readonly string[] = ['d1', 'd2', 'd3', 'd4', 'dl', 'ex', 'exPure'];
+export const DUNGEON_ORDER: readonly string[] =
+  ['d1', 'd2', 'd3', 'd4', 'dl', 'exBring', 'ex', 'exPure'];
 
 /** 最初から入れるダンジョン */
 export const INITIAL_UNLOCKED: readonly string[] = ['d1'];

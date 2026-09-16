@@ -9,9 +9,9 @@ test('データ整合性の検査がすべて通る', () => {
     assert.deepEqual(errors, [], `データ不整合:\n${errors.join('\n')}`);
 });
 test('依頼された構成（4 ダンジョン + ラスト + もっと不思議）になっている', () => {
-    // もっと不思議は「加護あり(ex)」と「加護なし(exPure)」の 2 種類
-    assert.deepEqual([...DUNGEON_ORDER], ['d1', 'd2', 'd3', 'd4', 'dl', 'ex', 'exPure']);
-    assert.equal(allDungeons().length, 7);
+    // 終盤は 3 本。持ち込み可(exBring)／持ち込み不可(ex)／加護なし(exPure)
+    assert.deepEqual([...DUNGEON_ORDER], ['d1', 'd2', 'd3', 'd4', 'dl', 'exBring', 'ex', 'exPure']);
+    assert.equal(allDungeons().length, 8);
     assert.equal(getDungeon('d1').depth, 5);
     assert.equal(getDungeon('d2').depth, 10);
     assert.equal(getDungeon('d3').depth, 15);
@@ -26,8 +26,22 @@ test('もっと不思議のダンジョンは持ち込み不可・Lv1 スター�
         assert.equal(ex.allowBring, false, `${id}: 道具は持ち込めない`);
         assert.equal(ex.resetLevel, true, `${id}: Lv1 から`);
     }
-    assert.equal(getDungeon('ex').requires, 'dl', 'ラストをクリアしてから解放される');
+    assert.equal(getDungeon('exBring').requires, 'dl', 'ラストをクリアしてから解放される');
+    assert.equal(getDungeon('ex').requires, 'exBring', '不思議のあとに解放される');
     assert.equal(getDungeon('exPure').requires, 'ex', 'もっと不思議のあとに解放される');
+});
+test('「もっと」が付くものだけ 持ち込み不可・Lv1 スタート', () => {
+    // シリーズの約束事。「もっと不思議」という名前自体が
+    // 「持ち込み不可・Lv1 から」を意味するので、名前と中身を食い違わせない
+    const bring = getDungeon('exBring');
+    assert.equal(bring.allowBring, true, '不思議のダンジョンは持ち込み可');
+    assert.equal(bring.resetLevel, false, 'レベルは持ち越す');
+    assert.equal(bring.depth, 40);
+    assert.equal(bring.bosses.length, 0, '最深部の階段を降りれば踏破');
+    for (const id of ['ex', 'exPure']) {
+        assert.equal(getDungeon(id).allowBring, false, `${id} は持ち込み不可`);
+        assert.equal(getDungeon(id).resetLevel, true, `${id} は Lv1 から`);
+    }
 });
 test('加護が効くかどうかだけが 2 つの違い', () => {
     // 加護あり／なしの違いは、この 2 つのフラグだけ
