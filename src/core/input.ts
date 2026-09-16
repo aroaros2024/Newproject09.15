@@ -1,302 +1,293 @@
 /**
- * 入力。キーボードとゲームパッドを「シレン風の仮想パッド」に写像する。
+ * 入力。キーボードとゲームパッドを「シレン 6 のボタン」へ写像する。
  *
- * ゲーム側はキーコードを一切見ず、Button 列挙だけを見る。
- * これによりキーコンフィグとゲームパッドが同じ経路に乗る。
+ * ゲーム側はキーコードを一切見ず、Cmd 列挙と「今の方向入力」だけを見る。
  *
- * - `justPressed()`  … このフレームで押された（メニュー操作向け）
- * - `repeated()`     … 長押しリピートを含む（連続移動向け）
- * - `isDown()`       … 押しっぱなし判定（斜め固定・ダッシュ修飾キー向け）
- * - 行動アニメーション中の入力は 1 つだけ先行入力として貯める
+ * 方針（docs/DESIGN.md §操作 に対応）:
+ *   - Ctrl / Alt / Meta が押された入力は一切受け取らない（ブラウザと衝突するため）
+ *   - Shift は方向キーの修飾（ダッシュ）にだけ使う。例外は Shift+. の階段だけ
+ *   - 斜めは「矢印/WADS の 2 キー同時押し」か「テンキー 1/3/7/9」か「L 押しながら」
+ *   - 反対方向の同時押しは相殺して無方向にする
+ *   - リピートの間隔は用途ごとに違う（移動・メニュー・数値入力…）
  */
 
-export const Button = {
-  Up: 'Up',
-  Down: 'Down',
-  Left: 'Left',
-  Right: 'Right',
-  /** 決定 / 攻撃 / 調べる / 階段を降りる（Switch の A） */
+import type { Dir } from './geom.js';
+
+/** 意味づけされたコマンド */
+export const Cmd = {
+  /** 決定 / 調べる / メッセージ送り */
   A: 'A',
-  /** キャンセル / 押しながら移動でダッシュ（Switch の B） */
+  /** キャンセル / 戻る */
   B: 'B',
-  /** メインメニュー（Switch の X） */
+  /** メインメニュー */
   X: 'X',
-  /** 足元メニュー（Switch の Y） */
+  /** 足元メニュー */
   Y: 'Y',
-  /** 押しながらで斜め移動固定（Switch の L） */
+  /** 押している間、斜め移動に固定 */
   L: 'L',
-  /** 押しながらで向きだけ変える（Switch の R） */
+  /** 押している間、向きだけ変える */
   R: 'R',
-  /** 全体マップ */
+  /** 押しながら方向でダッシュ */
+  Dash: 'Dash',
+  /** 押している間、全体マップ */
   Map: 'Map',
-  /** その場で足踏み（1 ターン待つ） */
+  /** ミニマップの表示切り替え */
+  Minimap: 'Minimap',
+  /** その場で 1 ターン待つ */
   Wait: 'Wait',
-  /** ポーズ / 中断メニュー */
-  Start: 'Start',
-  /** 表示切替（メッセージログ全文など） */
-  Select: 'Select',
+  /** 階段メニュー（Shift + .） */
+  Stairs: 'Stairs',
+  /** メッセージ履歴 */
+  Log: 'Log',
+  /** 操作ヘルプ */
+  Help: 'Help',
+  /** 道具メニューを直接開く */
+  MenuItem: 'MenuItem',
+  /** 特殊メニューを直接開く */
+  MenuSpecial: 'MenuSpecial',
+  /** 作戦メニューを直接開く */
+  MenuTactics: 'MenuTactics',
+  /** ページ送り */
+  PageUp: 'PageUp',
+  PageDown: 'PageDown',
 } as const;
 
-export type Button = (typeof Button)[keyof typeof Button];
+export type Cmd = (typeof Cmd)[keyof typeof Cmd];
 
-export const ALL_BUTTONS: readonly Button[] = Object.values(Button);
+/** ショートカット（数字キー） */
+export type ShortcutIndex = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
 
-/** ボタン → KeyboardEvent.code の配列 */
-export type KeyBindings = Record<Button, string[]>;
-
-/**
- * 既定のキー配置。
- * Switch 版シレン 6 のボタン配置をキーボードへ写像している。
- * テンキーがある環境ではテンキーで 8 方向を直接入力できる。
- */
-export const DEFAULT_BINDINGS: KeyBindings = {
-  Up: ['ArrowUp', 'KeyW', 'Numpad8'],
-  Down: ['ArrowDown', 'KeyS', 'Numpad2'],
-  Left: ['ArrowLeft', 'KeyA', 'Numpad4'],
-  Right: ['ArrowRight', 'KeyD', 'Numpad6'],
-  A: ['KeyZ', 'Enter', 'Space', 'NumpadEnter'],
-  B: ['KeyX', 'Backspace'],
-  X: ['KeyC', 'Escape'],
-  Y: ['KeyV', 'KeyF'],
-  L: ['ShiftLeft', 'ShiftRight'],
-  R: ['ControlLeft', 'ControlRight'],
-  Map: ['Tab', 'KeyM'],
-  Wait: ['Period', 'Numpad5', 'KeyQ'],
-  Start: ['KeyP', 'NumpadAdd'],
-  Select: ['KeyE', 'NumpadSubtract'],
+/** code → コマンド。ここに無い code は未割り当て */
+const KEY_TO_CMD: Record<string, Cmd> = {
+  Space: Cmd.A, Enter: Cmd.A, NumpadEnter: Cmd.A, KeyZ: Cmd.A,
+  Escape: Cmd.B, Backspace: Cmd.B, NumpadSubtract: Cmd.B,
+  KeyE: Cmd.X, Numpad0: Cmd.X,
+  KeyF: Cmd.Y, NumpadDecimal: Cmd.Y,
+  KeyQ: Cmd.L, NumpadDivide: Cmd.L,
+  KeyR: Cmd.R, NumpadMultiply: Cmd.R,
+  ShiftLeft: Cmd.Dash, ShiftRight: Cmd.Dash, NumpadAdd: Cmd.Dash,
+  Tab: Cmd.Map,
+  KeyM: Cmd.Minimap,
+  Period: Cmd.Wait, Numpad5: Cmd.Wait,
+  KeyL: Cmd.Log,
+  KeyH: Cmd.Help, F1: Cmd.Help,
+  KeyI: Cmd.MenuItem,
+  KeyT: Cmd.MenuSpecial,
+  KeyC: Cmd.MenuTactics,
+  PageUp: Cmd.PageUp, PageDown: Cmd.PageDown,
 };
 
-/** 斜めを直接入力できるテンキー（対応する 2 方向に展開する） */
-const DIAGONAL_KEYS: Record<string, [Button, Button]> = {
-  Numpad7: [Button.Up, Button.Left],
-  Numpad9: [Button.Up, Button.Right],
-  Numpad1: [Button.Down, Button.Left],
-  Numpad3: [Button.Down, Button.Right],
+/** KeyX は「キャンセル」と「ダッシュ」を兼ねる（原作の B ボタン） */
+const DUAL_KEYS: Record<string, Cmd[]> = {
+  KeyX: [Cmd.B, Cmd.Dash],
 };
 
-/** ゲームパッド（標準配置）のボタン番号 → Button */
-const GAMEPAD_MAP: Record<number, Button> = {
-  0: Button.A, // Switch の B / Xbox の A
-  1: Button.B,
-  2: Button.Y, // 西ボタン
-  3: Button.X, // 北ボタン
-  4: Button.L,
-  5: Button.R,
-  6: Button.Map, // ZL
-  7: Button.Wait, // ZR
-  8: Button.Select,
-  9: Button.Start,
-  12: Button.Up,
-  13: Button.Down,
-  14: Button.Left,
-  15: Button.Right,
+/** 方向キー。U/D/L/R のどれを押しているか */
+type Axis = 'U' | 'D' | 'L' | 'R';
+const KEY_TO_AXIS: Record<string, Axis> = {
+  ArrowUp: 'U', KeyW: 'U', Numpad8: 'U',
+  ArrowDown: 'D', KeyS: 'D', Numpad2: 'D',
+  ArrowLeft: 'L', KeyA: 'L', Numpad4: 'L',
+  ArrowRight: 'R', KeyD: 'R', Numpad6: 'R',
 };
 
-export interface RepeatConfig {
-  /** 長押しを開始してからリピートが始まるまで(ms) */
-  delayMs: number;
-  /** リピートの間隔(ms) */
-  intervalMs: number;
-}
+/** テンキーで直接入力できる斜め */
+const KEY_TO_DIAGONAL: Record<string, Dir> = {
+  Numpad7: 7, Numpad9: 1, Numpad1: 5, Numpad3: 3,
+};
 
-export const DEFAULT_REPEAT: RepeatConfig = { delayMs: 250, intervalMs: 70 };
+/** U/D/L/R のビットから 8 方向を引く表 */
+const DIR_FROM_UDLR: Record<number, Dir | null> = {
+  0b1000: 0, // U
+  0b1001: 1, // U+R
+  0b0001: 2, // R
+  0b0101: 3, // D+R
+  0b0100: 4, // D
+  0b0110: 5, // D+L
+  0b0010: 6, // L
+  0b1010: 7, // U+L
+};
 
-interface ButtonState {
-  down: boolean;
-  /** 押された時刻(ms) */
-  since: number;
-  /** 次にリピートを発火する時刻(ms) */
-  nextRepeat: number;
+/** 用途ごとのリピート設定 */
+export const REPEAT = {
+  move: { delay: 180, interval: 90 },
+  wait: { delay: 300, interval: 120 },
+  menu: { delay: 300, interval: 70, fastAfter: 5, fastInterval: 45 },
+  page: { delay: 350, interval: 140 },
+  number: { delay: 300, interval: 60, fastAfter: 10, fastInterval: 25 },
+  message: { delay: 200, interval: 90 },
+} as const;
+
+/** 2 キー同時押しを斜めとみなす猶予(ms) */
+export const DIAG_WINDOW_MS = 40;
+
+/** ゲームパッド（standard mapping）のボタン番号 → コマンド */
+const PAD_TO_CMD: Record<number, Cmd> = {
+  0: Cmd.A, 1: Cmd.B, 2: Cmd.Y, 3: Cmd.X,
+  4: Cmd.L, 5: Cmd.R, 6: Cmd.Map, 7: Cmd.Dash,
+  8: Cmd.Log, 9: Cmd.X,
+  10: Cmd.Wait,
+};
+const PAD_TO_AXIS: Record<number, Axis> = { 12: 'U', 13: 'D', 14: 'L', 15: 'R' };
+
+interface KeyState {
+  pressedAt: number;
+  lastRepeatAt: number;
+  repeatCount: number;
   /** このフレームで押下エッジが立った */
-  pressedEdge: boolean;
-  /** このフレームでリピートを含む入力があった */
-  repeatEdge: boolean;
+  edge: boolean;
   /** このフレームで離された */
-  releasedEdge: boolean;
+  released: boolean;
 }
-
-const newState = (): ButtonState => ({
-  down: false, since: 0, nextRepeat: 0,
-  pressedEdge: false, repeatEdge: false, releasedEdge: false,
-});
 
 export class InputManager {
-  private bindings: KeyBindings = structuredClone(DEFAULT_BINDINGS);
-  private keyToButtons = new Map<string, Button[]>();
-  private state = new Map<Button, ButtonState>();
-  private repeat: RepeatConfig = { ...DEFAULT_REPEAT };
+  private keys = new Map<string, KeyState>();
+  private cmds = new Map<Cmd, KeyState>();
+  private axes = new Map<Axis, KeyState>();
+  /** テンキーの斜め。押下エッジだけを見る */
+  private diagonalEdge: Dir | null = null;
+  private shortcutEdge: ShortcutIndex | null = null;
+
   private now = 0;
   private attached = false;
 
-  /** 先行入力。アニメーション中に押されたボタンを 1 つだけ覚えておく */
-  private buffered: Button | null = null;
-  private bufferedAt = 0;
-  /** 先行入力の有効時間(ms)。古すぎる入力は暴発防止のため捨てる */
-  bufferWindowMs = 300;
+  /**
+   * 方向のリピートを止めるラッチ。
+   * 被弾や敵の出現でバッファを消したとき、キーを押し直すまで走り出さないようにする。
+   */
+  private dirLatched = false;
 
-  /** 最初の入力で 1 度だけ呼ばれる（AudioContext の解除などに使う） */
+  /** 斜め合成の待ち。単発入力で斜めを取りこぼさないための猶予 */
+  private pendingDir: { dir: Dir; at: number } | null = null;
+
+  /** 最初の入力で 1 度だけ呼ばれる（AudioContext の解除用） */
   onFirstInput: (() => void) | null = null;
   private firstInputDone = false;
 
-  /** キーコンフィグ画面用。次に押されたキーを 1 つ拾う */
-  private captureResolve: ((code: string) => void) | null = null;
-
-  constructor() {
-    for (const b of ALL_BUTTONS) this.state.set(b, newState());
-    this.rebuildKeyMap();
-  }
-
-  // ------------------------------------------------------------ 設定
-
-  getBindings(): KeyBindings {
-    return structuredClone(this.bindings);
-  }
-
-  setBindings(b: Partial<KeyBindings>): void {
-    this.bindings = { ...this.bindings, ...structuredClone(b) } as KeyBindings;
-    this.rebuildKeyMap();
-  }
-
-  resetBindings(): void {
-    this.bindings = structuredClone(DEFAULT_BINDINGS);
-    this.rebuildKeyMap();
-  }
-
-  setRepeat(cfg: Partial<RepeatConfig>): void {
-    this.repeat = { ...this.repeat, ...cfg };
-  }
-
-  /**
-   * 割り当ての衝突を検出する。
-   * 同じキーが複数のボタンに割り当てられていたら、その一覧を返す。
-   */
-  findConflicts(): Array<{ code: string; buttons: Button[] }> {
-    const out: Array<{ code: string; buttons: Button[] }> = [];
-    for (const [code, buttons] of this.keyToButtons) {
-      if (buttons.length > 1) out.push({ code, buttons: [...buttons] });
-    }
-    return out;
-  }
-
-  private rebuildKeyMap(): void {
-    this.keyToButtons.clear();
-    for (const b of ALL_BUTTONS) {
-      for (const code of this.bindings[b] ?? []) {
-        const list = this.keyToButtons.get(code);
-        if (list) list.push(b);
-        else this.keyToButtons.set(code, [b]);
-      }
-    }
-  }
+  /** 斜め合成の猶予（設定で伸ばせる） */
+  diagWindowMs = DIAG_WINDOW_MS;
+  /** 矢印キーの同時押しで斜めにしない（テンキーのみ設定） */
+  numpadOnlyDiagonal = false;
 
   // ------------------------------------------------------------ 接続
 
   attach(): void {
-    if (this.attached) this.detach();
-    window.addEventListener('keydown', this.handleKeyDown, { passive: false });
-    window.addEventListener('keyup', this.handleKeyUp);
-    window.addEventListener('blur', this.handleBlur);
+    if (this.attached) return;
+    window.addEventListener('keydown', this.onKeyDown, { passive: false });
+    window.addEventListener('keyup', this.onKeyUp);
+    window.addEventListener('blur', this.onBlur);
     this.attached = true;
   }
 
   detach(): void {
     if (!this.attached) return;
-    window.removeEventListener('keydown', this.handleKeyDown);
-    window.removeEventListener('keyup', this.handleKeyUp);
-    window.removeEventListener('blur', this.handleBlur);
+    window.removeEventListener('keydown', this.onKeyDown);
+    window.removeEventListener('keyup', this.onKeyUp);
+    window.removeEventListener('blur', this.onBlur);
     this.attached = false;
   }
 
-  private handleBlur = (): void => {
-    // フォーカスが外れたらキーが押しっぱなしのまま残らないようにする
-    this.releaseAll();
-  };
+  private onBlur = (): void => this.releaseAll();
 
-  /** すべてのボタンを離した状態にする */
   releaseAll(): void {
-    for (const b of ALL_BUTTONS) {
-      const s = this.state.get(b);
-      if (s && s.down) {
-        s.down = false;
-        s.releasedEdge = true;
-      }
-    }
+    for (const s of this.keys.values()) s.released = true;
+    this.keys.clear();
+    this.cmds.clear();
+    this.axes.clear();
+    this.pendingDir = null;
+    this.dirLatched = false;
   }
 
-  private handleKeyDown = (e: KeyboardEvent): void => {
-    if (this.captureResolve) {
-      e.preventDefault();
-      const r = this.captureResolve;
-      this.captureResolve = null;
-      r(e.code);
-      return;
-    }
-    // ブラウザの既定動作（スクロール・タブ移動・検索）を潰す
-    const handled = this.keyToButtons.has(e.code) || e.code in DIAGONAL_KEYS;
-    if (handled) e.preventDefault();
+  private newState(): KeyState {
+    return {
+      pressedAt: this.now, lastRepeatAt: this.now,
+      repeatCount: 0, edge: true, released: false,
+    };
+  }
+
+  private onKeyDown = (e: KeyboardEvent): void => {
+    // ブラウザのショートカットと衝突するので、修飾キー付きは受け取らない
+    if (e.ctrlKey || e.altKey || e.metaKey) return;
+
+    const code = e.code;
+    const known = code in KEY_TO_CMD || code in DUAL_KEYS
+      || code in KEY_TO_AXIS || code in KEY_TO_DIAGONAL
+      || /^Digit[0-9]$/.test(code);
+    if (!known) return;
+    e.preventDefault();
 
     if (!this.firstInputDone) {
       this.firstInputDone = true;
       this.onFirstInput?.();
     }
     if (e.repeat) return; // OS のリピートは使わず自前で管理する
+    if (this.keys.has(code)) return;
+    this.keys.set(code, this.newState());
 
-    const buttons = this.buttonsForCode(e.code);
-    for (const b of buttons) this.pressButton(b);
+    // 階段は Shift + Period だけの特別扱い
+    if (code === 'Period' && e.shiftKey) {
+      this.cmds.set(Cmd.Stairs, this.newState());
+      return;
+    }
+
+    const axis = KEY_TO_AXIS[code];
+    if (axis) {
+      this.axes.set(axis, this.newState());
+      this.dirLatched = false;
+      this.notePendingDir();
+      return;
+    }
+    const diag = KEY_TO_DIAGONAL[code];
+    if (diag !== undefined) {
+      this.diagonalEdge = diag;
+      this.dirLatched = false;
+      return;
+    }
+    const digit = /^Digit([0-9])$/.exec(code);
+    if (digit) {
+      this.shortcutEdge = Number(digit[1]) as ShortcutIndex;
+      return;
+    }
+    for (const cmd of DUAL_KEYS[code] ?? [KEY_TO_CMD[code]]) {
+      if (cmd) this.cmds.set(cmd, this.newState());
+    }
   };
 
-  private handleKeyUp = (e: KeyboardEvent): void => {
-    const buttons = this.buttonsForCode(e.code);
-    for (const b of buttons) this.releaseButton(b);
+  private onKeyUp = (e: KeyboardEvent): void => {
+    const code = e.code;
+    this.keys.delete(code);
+    const axis = KEY_TO_AXIS[code];
+    if (axis) {
+      this.axes.delete(axis);
+      this.dirLatched = false;
+      return;
+    }
+    if (code in KEY_TO_DIAGONAL) return;
+    for (const cmd of DUAL_KEYS[code] ?? [KEY_TO_CMD[code]]) {
+      if (cmd) this.cmds.delete(cmd);
+    }
+    if (code === 'Period') this.cmds.delete(Cmd.Stairs);
   };
 
-  private buttonsForCode(code: string): Button[] {
-    const diag = DIAGONAL_KEYS[code];
-    if (diag) return [diag[0], diag[1]];
-    return this.keyToButtons.get(code) ?? [];
+  /** 単発入力の斜め判定のために、直前の方向を覚えておく */
+  private notePendingDir(): void {
+    const dir = this.rawDirection();
+    if (dir !== null) this.pendingDir = { dir, at: this.now };
   }
 
-  private pressButton(b: Button): void {
-    const s = this.state.get(b);
-    if (!s || s.down) return;
-    s.down = true;
-    s.since = this.now;
-    s.nextRepeat = this.now + this.repeat.delayMs;
-    s.pressedEdge = true;
-    s.repeatEdge = true;
-    this.pushBuffer(b);
-  }
+  // ------------------------------------------------------------ 毎フレーム
 
-  private releaseButton(b: Button): void {
-    const s = this.state.get(b);
-    if (!s || !s.down) return;
-    s.down = false;
-    s.releasedEdge = true;
-  }
-
-  // ------------------------------------------------------------ 更新
-
-  /**
-   * 毎フレーム 1 回呼ぶ。前フレームのエッジを消し、リピートを発火する。
-   * @param nowMs performance.now() の値
-   */
   update(nowMs: number): void {
     this.now = nowMs;
-    for (const b of ALL_BUTTONS) {
-      const s = this.state.get(b);
-      if (!s) continue;
-      s.pressedEdge = false;
-      s.repeatEdge = false;
-      s.releasedEdge = false;
-      if (s.down && nowMs >= s.nextRepeat) {
-        s.repeatEdge = true;
-        s.nextRepeat = nowMs + this.repeat.intervalMs;
-      }
-    }
+    for (const s of this.keys.values()) s.edge = false;
+    for (const s of this.cmds.values()) s.edge = false;
+    for (const s of this.axes.values()) s.edge = false;
+    this.diagonalEdge = null;
+    this.shortcutEdge = null;
     this.pollGamepad();
   }
 
-  private prevGamepad = new Set<Button>();
+  private prevPad = new Set<Cmd | Axis>();
 
   private pollGamepad(): void {
     const nav = navigator as Navigator & { getGamepads?: () => (Gamepad | null)[] };
@@ -307,169 +298,212 @@ export class InputManager {
     } catch {
       return;
     }
-    const active = new Set<Button>();
+    const active = new Set<Cmd | Axis>();
     for (const pad of pads) {
-      if (!pad) continue;
-      for (const [idxStr, btn] of Object.entries(GAMEPAD_MAP)) {
-        const gb = pad.buttons[Number(idxStr)];
-        if (gb && gb.pressed) active.add(btn);
+      if (!pad || pad.mapping !== 'standard') continue;
+      for (const [idx, cmd] of Object.entries(PAD_TO_CMD)) {
+        if (pad.buttons[Number(idx)]?.pressed) active.add(cmd);
       }
-      // 左スティックを 8 方向へ
-      const [ax = 0, ay = 0] = pad.axes;
+      for (const [idx, axis] of Object.entries(PAD_TO_AXIS)) {
+        if (pad.buttons[Number(idx)]?.pressed) active.add(axis);
+      }
       const dz = 0.45;
-      if (ax < -dz) active.add(Button.Left);
-      if (ax > dz) active.add(Button.Right);
-      if (ay < -dz) active.add(Button.Up);
-      if (ay > dz) active.add(Button.Down);
+      const [ax = 0, ay = 0] = pad.axes;
+      if (ax < -dz) active.add('L');
+      if (ax > dz) active.add('R');
+      if (ay < -dz) active.add('U');
+      if (ay > dz) active.add('D');
     }
-    for (const b of active) {
-      if (!this.prevGamepad.has(b)) {
-        if (!this.firstInputDone) {
-          this.firstInputDone = true;
-          this.onFirstInput?.();
-        }
-        this.pressButton(b);
+    for (const k of active) {
+      if (this.prevPad.has(k)) continue;
+      if (!this.firstInputDone) {
+        this.firstInputDone = true;
+        this.onFirstInput?.();
+      }
+      if (k === 'U' || k === 'D' || k === 'L' || k === 'R') {
+        this.axes.set(k, this.newState());
+        this.dirLatched = false;
+      } else {
+        this.cmds.set(k, this.newState());
       }
     }
-    for (const b of this.prevGamepad) {
-      if (!active.has(b)) this.releaseButton(b);
+    for (const k of this.prevPad) {
+      if (active.has(k)) continue;
+      if (k === 'U' || k === 'D' || k === 'L' || k === 'R') this.axes.delete(k);
+      else this.cmds.delete(k);
     }
-    this.prevGamepad = active;
+    this.prevPad = active;
   }
 
   // ------------------------------------------------------------ 問い合わせ
 
-  isDown(b: Button): boolean {
-    return this.state.get(b)?.down ?? false;
+  isDown(cmd: Cmd): boolean {
+    return this.cmds.has(cmd);
   }
 
-  /** このフレームで押下エッジが立ったか（リピートを含まない） */
-  justPressed(b: Button): boolean {
-    return this.state.get(b)?.pressedEdge ?? false;
+  /** このフレームで押されたか */
+  justPressed(cmd: Cmd): boolean {
+    return this.cmds.get(cmd)?.edge === true;
   }
 
-  /** このフレームで離されたか */
-  justReleased(b: Button): boolean {
-    return this.state.get(b)?.releasedEdge ?? false;
+  heldMs(cmd: Cmd): number {
+    const s = this.cmds.get(cmd);
+    return s ? this.now - s.pressedAt : 0;
   }
 
-  /** このフレームで入力があったか（長押しリピートを含む） */
-  repeated(b: Button): boolean {
-    return this.state.get(b)?.repeatEdge ?? false;
+  /** 数字キーのショートカット。押されたフレームだけ値を返す */
+  takeShortcut(): ShortcutIndex | null {
+    const v = this.shortcutEdge;
+    this.shortcutEdge = null;
+    return v;
   }
 
-  /** 押しっぱなしの経過時間(ms)。押されていなければ 0 */
-  heldMs(b: Button): number {
-    const s = this.state.get(b);
-    return s && s.down ? this.now - s.since : 0;
-  }
-
-  /** いずれかのボタンが押されているか */
-  anyDown(): boolean {
-    for (const b of ALL_BUTTONS) if (this.isDown(b)) return true;
-    return false;
+  /** 押されている U/D/L/R から合成した方向（相殺と斜め固定を考慮しない生の値） */
+  private rawDirection(): Dir | null {
+    let up = this.axes.has('U');
+    let dn = this.axes.has('D');
+    let lf = this.axes.has('L');
+    let rt = this.axes.has('R');
+    if (up && dn) up = dn = false;
+    if (lf && rt) lf = rt = false;
+    const bits = (up ? 0b1000 : 0) | (dn ? 0b0100 : 0) | (lf ? 0b0010 : 0) | (rt ? 0b0001 : 0);
+    if (bits === 0) return null;
+    return DIR_FROM_UDLR[bits] ?? null;
   }
 
   /**
-   * 現在の方向入力を (dx, dy) で返す。押されていなければ (0,0)。
-   * 上下・左右が同時に押されていれば斜めになる。
+   * 今の方向入力。
+   * テンキーの斜めが押されていればそれを優先する。
+   * L（斜め固定）が押されている間は、直交方向を捨てる。
    */
-  directionVector(): { x: number; y: number } {
-    let x = 0;
-    let y = 0;
-    if (this.isDown(Button.Left)) x -= 1;
-    if (this.isDown(Button.Right)) x += 1;
-    if (this.isDown(Button.Up)) y -= 1;
-    if (this.isDown(Button.Down)) y += 1;
-    return { x, y };
+  direction(): Dir | null {
+    if (this.diagonalEdge !== null) return this.diagonalEdge;
+    if (this.dirLatched) return null;
+    const dir = this.rawDirection();
+    if (dir === null) return null;
+    // 矢印の同時押しで斜めにしない設定
+    if (this.numpadOnlyDiagonal && (dir & 1) === 1) return null;
+    // 斜め固定中に直交方向が来たら入力を捨てる
+    if (this.isDown(Cmd.L) && (dir & 1) === 0) return null;
+    return dir;
   }
 
-  /** リピートを含む方向入力があったか */
-  directionRepeated(): boolean {
-    return (
-      this.repeated(Button.Up) || this.repeated(Button.Down) ||
-      this.repeated(Button.Left) || this.repeated(Button.Right)
-    );
+  /** 方向キーがひとつでも押されているか */
+  hasDirectionHeld(): boolean {
+    return this.axes.size > 0;
   }
 
-  /** メニューのカーソル移動用。押しっぱなしでリピートする 4 方向 */
-  menuDirection(): 'up' | 'down' | 'left' | 'right' | null {
-    if (this.repeated(Button.Up)) return 'up';
-    if (this.repeated(Button.Down)) return 'down';
-    if (this.repeated(Button.Left)) return 'left';
-    if (this.repeated(Button.Right)) return 'right';
-    return null;
+  /**
+   * 方向入力がこのフレームで「発火」したか。
+   * 押した瞬間と、リピート間隔を満たしたときに true。
+   */
+  directionFires(kind: keyof typeof REPEAT = 'move'): boolean {
+    if (this.dirLatched) return false;
+    if (this.diagonalEdge !== null) return true;
+    let newest: KeyState | null = null;
+    for (const s of this.axes.values()) {
+      if (!newest || s.pressedAt > newest.pressedAt) newest = s;
+    }
+    if (!newest) return false;
+    if (newest.edge) {
+      // 単発入力は、斜めの相方を待つ猶予を置いてから確定させる
+      return true;
+    }
+    return this.repeatFires(newest, kind);
   }
 
-  // ------------------------------------------------------------ 先行入力
-
-  private pushBuffer(b: Button): void {
-    // 方向・決定系のみバッファする。修飾キーは貯めない
-    if (b === Button.L || b === Button.R) return;
-    this.buffered = b;
-    this.bufferedAt = this.now;
+  /** コマンドのリピート判定（メニューのカーソル移動など） */
+  commandFires(cmd: Cmd, kind: keyof typeof REPEAT = 'menu'): boolean {
+    const s = this.cmds.get(cmd);
+    if (!s) return false;
+    if (s.edge) return true;
+    return this.repeatFires(s, kind);
   }
 
-  /** 先行入力を取り出す（取り出したら消える）。古いものは捨てる */
-  takeBuffered(): Button | null {
-    if (this.buffered === null) return null;
-    const b = this.buffered;
-    const age = this.now - this.bufferedAt;
-    this.buffered = null;
-    return age <= this.bufferWindowMs ? b : null;
+  private repeatFires(s: KeyState, kind: keyof typeof REPEAT): boolean {
+    const cfg = REPEAT[kind] as {
+      delay: number; interval: number; fastAfter?: number; fastInterval?: number;
+    };
+    const elapsed = this.now - s.pressedAt;
+    if (elapsed < cfg.delay) return false;
+    const interval = cfg.fastAfter !== undefined && s.repeatCount >= cfg.fastAfter
+      ? (cfg.fastInterval ?? cfg.interval)
+      : cfg.interval;
+    if (this.now - s.lastRepeatAt < interval) return false;
+    s.lastRepeatAt = this.now;
+    s.repeatCount++;
+    return true;
   }
 
-  peekBuffered(): Button | null {
-    return this.buffered;
+  /**
+   * 方向のリピートを止める。
+   * 被弾・敵の出現・フロア移動のときに呼び、走り続ける事故を防ぐ。
+   */
+  latchDirection(): void {
+    this.dirLatched = true;
   }
 
-  clearBuffer(): void {
-    this.buffered = null;
+  get isDirectionLatched(): boolean {
+    return this.dirLatched;
   }
 
-  // ------------------------------------------------------------ キーコンフィグ
-
-  /** 次に押されたキーの code を 1 つ返す。キーコンフィグ画面用 */
-  captureNextKey(): Promise<string> {
-    return new Promise((resolve) => {
-      this.captureResolve = resolve;
-    });
+  /** 斜め合成の猶予中か（単発入力の確定を待っている） */
+  isWaitingForDiagonal(): boolean {
+    if (!this.pendingDir) return false;
+    if (this.numpadOnlyDiagonal) return false;
+    return this.now - this.pendingDir.at < this.diagWindowMs;
   }
 
-  cancelCapture(): void {
-    this.captureResolve = null;
-  }
+  // ------------------------------------------------------------ 表示用
 
-  isCapturing(): boolean {
-    return this.captureResolve !== null;
-  }
-
-  /** 表示用のキー名（日本語） */
+  /** 表示用のキー名 */
   static keyLabel(code: string): string {
     const table: Record<string, string> = {
       ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→',
-      Enter: 'Enter', NumpadEnter: 'テンキーEnter', Space: 'スペース',
+      Enter: 'Enter', NumpadEnter: '[Enter]', Space: 'Space',
       Backspace: 'BackSpace', Escape: 'Esc', Tab: 'Tab', Period: '.',
-      ShiftLeft: '左Shift', ShiftRight: '右Shift',
-      ControlLeft: '左Ctrl', ControlRight: '右Ctrl',
-      NumpadAdd: 'テンキー＋', NumpadSubtract: 'テンキー−',
+      ShiftLeft: 'Shift', ShiftRight: 'Shift',
+      NumpadAdd: '[+]', NumpadSubtract: '[-]', NumpadMultiply: '[*]',
+      NumpadDivide: '[/]', NumpadDecimal: '[.]',
     };
     if (table[code]) return table[code];
     if (code.startsWith('Key')) return code.slice(3);
     if (code.startsWith('Digit')) return code.slice(5);
-    if (code.startsWith('Numpad')) return 'テンキー' + code.slice(6);
+    if (code.startsWith('Numpad')) return `[${code.slice(6)}]`;
     return code;
   }
 
-  /** ボタンの日本語名（設定画面の表示用） */
-  static buttonLabel(b: Button): string {
-    const table: Record<Button, string> = {
-      Up: '上', Down: '下', Left: '左', Right: '右',
-      A: '決定・攻撃', B: 'キャンセル・ダッシュ', X: 'メニュー', Y: '足元',
-      L: '斜め移動固定', R: '向き変更', Map: '全体図', Wait: 'その場で待つ',
-      Start: '中断メニュー', Select: 'ログ表示',
+  /** そのコマンドに割り当てられた code 一覧（ヘルプ画面用） */
+  static keysFor(cmd: Cmd): string[] {
+    const out: string[] = [];
+    for (const [code, c] of Object.entries(KEY_TO_CMD)) if (c === cmd) out.push(code);
+    for (const [code, list] of Object.entries(DUAL_KEYS)) {
+      if (list.includes(cmd)) out.push(code);
+    }
+    if (cmd === Cmd.Stairs) out.push('Shift+Period');
+    return out;
+  }
+
+  /**
+   * キー割り当ての衝突を調べる。
+   * 「同じ code が 2 つの機能に割り当てられている」ものを返す。
+   * KeyX だけは B とダッシュを意図的に兼ねているので除外する。
+   */
+  static findConflicts(): Array<{ code: string; cmds: Cmd[] }> {
+    const seen = new Map<string, Cmd[]>();
+    const push = (code: string, cmd: Cmd): void => {
+      const list = seen.get(code);
+      if (list) list.push(cmd);
+      else seen.set(code, [cmd]);
     };
-    return table[b] ?? b;
+    for (const [code, cmd] of Object.entries(KEY_TO_CMD)) push(code, cmd);
+    for (const code of Object.keys(KEY_TO_AXIS)) push(code, 'DIR' as Cmd);
+    for (const code of Object.keys(KEY_TO_DIAGONAL)) push(code, 'DIAG' as Cmd);
+    const out: Array<{ code: string; cmds: Cmd[] }> = [];
+    for (const [code, cmds] of seen) {
+      if (cmds.length > 1) out.push({ code, cmds });
+    }
+    return out;
   }
 }
 
