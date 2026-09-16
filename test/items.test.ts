@@ -4,7 +4,7 @@ import { Rng } from '../src/core/rng.js';
 import type { Dir, ItemDef, TownState } from '../src/core/types.js';
 import { ALL_ITEMS, getItem, itemsOfKind } from '../src/data/registry.js';
 import { RUNES } from '../src/data/runes.js';
-import { startRun } from '../src/game/run.js';
+import { enterFloor, startRun } from '../src/game/run.js';
 import { stepTurn } from '../src/game/turn.js';
 import { makeItem, addToInventory, findItem } from '../src/game/inventory.js';
 import {
@@ -15,6 +15,8 @@ import { addRune, freeSlots, runeLevel, slotCapacity, usedSlots } from '../src/g
 import { itemName } from '../src/game/naming.js';
 import { isBraceletEffect } from '../src/game/bracelets.js';
 import { attackPower, defensePower } from '../src/game/combat.js';
+import { reachabilityReport } from '../src/dungeon/tilemap.js';
+import { DIRS } from '../src/core/geom.js';
 import type { World } from '../src/game/world.js';
 
 function newTown(): TownState {
@@ -406,4 +408,23 @@ test('持っている以上のギタンは投げられない', async () => {
   const r = throwGitan(world, 100, 2);
   assert.equal(r.tookTurn, false);
   assert.equal(world.player.gitan, 50);
+});
+
+test('掘り進みの杖は、歩いて行ける道しか作らない', () => {
+  // 斜めに掘ると、角を残したまま「床だけど歩けない」階段状の穴ができていた
+  for (let seed = 0; seed < 60; seed++) {
+    const world = startRun('d4', newTown(), { seed: 3000 + seed });
+    enterFloor(world, 10);
+    world.drainEvents();
+    assert.ok(reachabilityReport(world.map, 'ground').ok, `seed ${seed}: 生成時点で不通`);
+
+    const staff = makeItem('digStaff', world.rng, { charges: 99 }, () => world.nextUid());
+    addToInventory(world.player, staff);
+    for (const dir of DIRS) {
+      useItem(world, staff.uid, undefined, dir as Dir);
+      world.drainEvents();
+    }
+    const r = reachabilityReport(world.map, 'ground');
+    assert.ok(r.ok, `seed ${seed}: 掘ったあとに歩いて行けない床が残った`);
+  }
 });

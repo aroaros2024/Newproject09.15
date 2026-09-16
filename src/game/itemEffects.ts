@@ -9,7 +9,9 @@ import { type Dir, type Point, chebyshev, dirTo, rayPoints, step } from '../core
 import type { Actor, ItemInstance, MonsterActor, PlayerActor } from '../core/types.js';
 import { getItem, itemsOfKind, tryGetItem } from '../data/registry.js';
 import { revealWholeFloor } from '../dungeon/fov.js';
-import { at, canEnter, neighbors8, roomOf, roomCells } from '../dungeon/tilemap.js';
+import {
+  at, canEnter, canMoveDiagonally, neighbors8, roomOf, roomCells,
+} from '../dungeon/tilemap.js';
 import { dealDamage, gainStr, healActor, levelDown, levelUp, loseStr } from './combat.js';
 import { eat, loseFood } from './hunger.js';
 import {
@@ -42,6 +44,22 @@ export interface EffectContext {
 export type EffectHandler = (ctx: EffectContext) => boolean;
 
 const P = (ctx: EffectContext): PlayerActor => ctx.world.player;
+
+/**
+ * 斜めに進めるよう、角のどちらかを開ける。
+ * 開けられた（もともと通れた場合も含む）なら true。
+ */
+function openDiagonalCorner(world: World, from: Point, to: Point): boolean {
+  if (canMoveDiagonally(world.map, from, to.x - from.x, to.y - from.y, 'ground')) return true;
+  for (const c of [{ x: to.x, y: from.y }, { x: from.x, y: to.y }]) {
+    const t = at(world.map, c.x, c.y);
+    if (!t || t.hard || t.kind !== 'wall') continue;
+    t.kind = 'floor';
+    t.roomId = -1;
+    return true;
+  }
+  return false;
+}
 
 /** 部屋の中の敵を集める。通路なら周囲 2 マス */
 function enemiesInRoom(world: World, from: Point): MonsterActor[] {
@@ -628,11 +646,17 @@ export const ITEM_EFFECTS: Record<string, EffectHandler> = {
       const next = step(cur, d);
       const tile = at(world.map, next.x, next.y);
       if (!tile || tile.hard) break;
+      // 壁でない所は通り抜けるが、歩いて渡れない地形（水路・溶岩・谷底）で
+      // 止める。ここを越えて掘ると、向こう側に「歩いては行けない床」ができる
+      if (tile.kind !== 'wall' && !canEnter(world.map, next.x, next.y, 'ground')) break;
       if (tile.kind === 'wall') {
         tile.kind = 'floor';
         tile.roomId = -1;
         dug++;
       }
+      // 斜めに掘る時は角も開ける。斜め移動は両隣が開いていないと通れないので、
+      // 角を残したままだと「床なのに歩いて行けない」階段状の穴ができる
+      if (d % 2 === 1 && !openDiagonalCorner(world, cur, next)) break;
       cur = next;
     }
     world.log(dug > 0 ? '壁が 崩れ、道が できた！' : '掘れる壁が 無かった。', 'good');
