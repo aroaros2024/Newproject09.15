@@ -31,10 +31,11 @@ export const INVENTORY_LIMIT = 20;
 export const PLUS_MIN = -99;
 export const PLUS_MAX = 99;
 
-/** 店の売値は買値の何割か */
-export const SELL_RATE = 0.5;
-/** 店に売りつける時のレート（プレイヤーが売る） */
-export const SHOP_BUYBACK_RATE = 0.4;
+/**
+ * プレイヤーが店に売るときのレート（買値に対する割合）。
+ * 表示（道具の説明欄）と実際の売値は必ずこの 1 つの定数から出すこと。
+ */
+export const SELL_RATE = 0.4;
 
 // ===========================================================================
 // 経験値

@@ -654,7 +654,8 @@ export type Action =
   | { type: 'putIn'; potUid: number; uid: number }
   | { type: 'takeOut'; potUid: number; index: number }
   | { type: 'stairs' }
-  | { type: 'buy'; uid: number }
+  /** 足元の商品を買う */
+  | { type: 'buy' }
   | { type: 'sell'; uid: number }
   | { type: 'setTactic'; tactic: AllyTactic }
   /** 何もしない（ターンを消費しない）。メニューを閉じた時など */

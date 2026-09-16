@@ -127,11 +127,38 @@ function causeOfDeath(world: World, m: MonsterActor): string {
   return `${world.nameOf(m)}に やられた`;
 }
 
-/** 死んだ敵の後始末（爆発する敵はここで爆発する） */
+/**
+ * ボスを倒したときの処理。
+ * その階にまだ次の形態が控えていれば、同じ場所に現れる。
+ */
+function handleBossDefeated(world: World, m: MonsterActor): void {
+  if (!world.run.defeatedBosses.includes(m.defId)) {
+    world.run.defeatedBosses.push(m.defId);
+  }
+  const here = world.bossesHere();
+  const idx = here.findIndex((b) => b.monsterId === m.defId);
+  const next = idx >= 0 ? here[idx + 1] : undefined;
+  if (!next) {
+    if (here.length > 0) {
+      world.log('あたりの 気配が 静まった。階段が 開いている。', 'good');
+      world.sfx('fanfare');
+    }
+    return;
+  }
+  const spot = world.findDropSpot(m.pos, 4) ?? m.pos;
+  const boss = world.spawnAt?.(next.monsterId, spot);
+  if (!boss) return;
+  world.log('しかし 相手は まだ 倒れていなかった！', 'bad');
+  world.emit({ t: 'bossAppear', actorId: boss.id });
+  world.sfx('bossAppear');
+}
+
+/** 死んだ敵の後始末（爆発する敵はここで爆発し、ボスは次の形態へ移る） */
 function cleanupDead(world: World): void {
   for (const m of [...world.run.monsters]) {
     if (m.alive) continue;
     if (world.defOf(m).skills.includes('explodeOnDeath')) explodeOnDeath(world, m);
+    if (world.defOf(m).isBoss) handleBossDefeated(world, m);
     world.removeActor(m);
   }
   for (const a of [...world.run.allies]) {

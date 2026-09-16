@@ -247,4 +247,56 @@ test('モンスターはプレイヤーへ近づいてくる', () => {
         assert.ok(after < before || after <= 1, `敵が近づいてこない: ${before} → ${after}`);
     }
 });
+test('ボスを倒すまで階段を降りられない', async () => {
+    const world = startRun('d2', newTown(), { seed: 2024 });
+    // ボスの階まで一気に降ろす
+    const { enterFloor } = await import('../src/game/run.js');
+    enterFloor(world, 10);
+    world.drainEvents();
+    assert.equal(world.bossesHere().length, 1, 'd2 の 10F にボスがいない');
+    assert.equal(world.bossesCleared(), false);
+    // 階段の上に立って降りようとしても進めない
+    world.player.pos = { ...world.map.stairs };
+    const before = world.run.depth;
+    stepTurn(world, { type: 'stairs' });
+    world.drainEvents();
+    assert.equal(world.run.depth, before, 'ボスを倒す前に降りられてしまった');
+    assert.equal(world.finished, null);
+    // ボスを倒すと通れるようになる
+    const boss = world.run.monsters.find((m) => world.defOf(m).isBoss);
+    assert.ok(boss, 'ボスが配置されていない');
+    boss.hp = 0;
+    boss.alive = false;
+    stepTurn(world, { type: 'wait' });
+    world.drainEvents();
+    assert.equal(world.bossesCleared(), true, 'ボス撃破が記録されていない');
+});
+test('ラストダンジョンのボスは倒すと第 2 形態が現れる', async () => {
+    const world = startRun('dl', newTown(), { seed: 555 });
+    const { enterFloor } = await import('../src/game/run.js');
+    enterFloor(world, 30);
+    world.drainEvents();
+    const here = world.bossesHere();
+    assert.equal(here.length, 2, 'ラストボスが 2 形態になっていない');
+    const first = world.run.monsters.find((m) => m.defId === here[0].monsterId);
+    assert.ok(first, '第 1 形態が配置されていない');
+    first.hp = 0;
+    first.alive = false;
+    stepTurn(world, { type: 'wait' });
+    world.drainEvents();
+    const second = world.run.monsters.find((m) => m.defId === here[1].monsterId);
+    assert.ok(second, '第 2 形態が現れていない');
+    assert.equal(world.bossesCleared(), false, '第 2 形態が残っているのにクリア扱い');
+});
+test('脱出の巻物で村へ戻れる', async () => {
+    const world = startRun('d3', newTown(), { seed: 606060 });
+    const { makeItem, addToInventory } = await import('../src/game/inventory.js');
+    const { useItem } = await import('../src/game/itemActions.js');
+    const scroll = makeItem('escapeScroll', world.rng, {}, () => world.nextUid());
+    addToInventory(world.player, scroll);
+    useItem(world, scroll.uid);
+    world.drainEvents();
+    assert.ok(world.finished, '脱出できていない');
+    assert.equal(world.finished.kind, 'escape');
+});
 //# sourceMappingURL=play.test.js.map

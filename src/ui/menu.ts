@@ -143,7 +143,7 @@ export class ListMenu {
     return 'open';
   }
 
-  draw(g: Ctx, time: number, frame = UI.frame): void {
+  draw(g: Ctx, time: number, frame: string = UI.frame): void {
     const r = this.rect;
     drawPanel(g, r, { frame });
     drawText(g, this.title, r.x + 18, r.y + 30, {
@@ -269,7 +269,7 @@ export class MenuStack {
     return true;
   }
 
-  draw(g: Ctx, time: number, frame = UI.frame): void {
+  draw(g: Ctx, time: number, frame: string = UI.frame): void {
     // 下の階層は少し暗くして、今の階層が分かるようにする
     this.stack.forEach((menu, i) => {
       const isTop = i === this.stack.length - 1;

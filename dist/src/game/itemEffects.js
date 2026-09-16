@@ -425,6 +425,23 @@ export const ITEM_EFFECTS = {
         world.log('店の 気配が 消えた。商品は 自分の物に なった！', 'good');
         return true;
     },
+    escapeDungeon: ({ world }) => {
+        world.log('体が 風に 包まれた……', 'good');
+        world.sfx('warp');
+        world.emit({ t: 'flash', color: '#cdbb7a', ms: 500 });
+        world.finished = { kind: 'escape', reason: '脱出の巻物で 村へ 戻った' };
+        return true;
+    },
+    releaseStatus: ({ world, user }) => {
+        const n = cureAilments(world, user);
+        if (n === 0) {
+            world.log('体に 異常は 無かった。');
+            return true;
+        }
+        world.log('体の 異常が すべて 解けた！', 'good');
+        world.sfx('heal');
+        return true;
+    },
     makeTrap: ({ world, user }) => {
         const tile = at(world.map, user.pos.x, user.pos.y);
         if (!tile || tile.kind !== 'floor' || tile.trap)

@@ -30,6 +30,10 @@ import { activeBraceletEffect } from './bracelets.js';
 export function attachFactories(world: World): void {
   world.itemFactory = (defId) => makeSpecificItem(world, defId, world.run.depth);
   world.braceletEffectLookup = (p) => activeBraceletEffect(world, p);
+  world.spawnAt = (defId, pos) => {
+    if (world.actorAt(pos)) return null;
+    return world.addMonster(makeMonster(world, defId, pos));
+  };
   world.monsterFactory = (pos) => {
     const id = pickMonsterId(world.dungeon, world.run.depth, world.rng);
     if (!id) return null;

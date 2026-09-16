@@ -40,6 +40,8 @@ export class World {
    * spawn 側から注入する（循環参照を避けるため）。
    */
   monsterFactory: ((pos: Point) => MonsterActor | null) | null = null;
+  /** 指定のモンスターを指定位置に出す（ボスの形態変化などで使う） */
+  spawnAt: ((defId: string, pos: Point) => MonsterActor | null) | null = null;
   /** 聖域の巻物が敷かれているマス。敵はここに入れない */
   sanctuaries: Point[] = [];
   /** 身代わりの杖で狙われるようになった敵の id */
@@ -70,6 +72,21 @@ export class World {
   /** 最深部にいるか */
   get atBottom(): boolean {
     return this.run.depth >= this.dungeon.depth;
+  }
+
+  /** この階に出るボスの一覧（形態変化は配列の順） */
+  bossesHere(): { depth: number; monsterId: string }[] {
+    return this.dungeon.bosses.filter((b) => b.depth === this.run.depth);
+  }
+
+  /**
+   * この階のボスをすべて倒したか。
+   * ボスの居る階では、倒すまで階段を降りられない。
+   */
+  bossesCleared(): boolean {
+    const here = this.bossesHere();
+    if (here.length === 0) return true;
+    return here.every((b) => this.run.defeatedBosses.includes(b.monsterId));
   }
 
   /** プレイヤー・仲間・敵をまとめて返す（行動順とは無関係） */

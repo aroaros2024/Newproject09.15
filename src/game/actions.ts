@@ -6,7 +6,7 @@
 
 import type { Dir, Point } from '../core/geom.js';
 import { DIR_VEC, chebyshev, samePoint, step } from '../core/geom.js';
-import type { Action, ActionResult, Actor, PlayerActor } from '../core/types.js';
+import type { Action, ActionResult, Actor, ItemInstance, PlayerActor } from '../core/types.js';
 import { getItem, getTrap } from '../data/registry.js';
 import { at, canMoveDiagonally, canEnter, isOpen } from '../dungeon/tilemap.js';
 import { attackInDirection, dealDamage } from './combat.js';
@@ -216,6 +216,10 @@ function playerPlace(world: World, uid: number): ActionResult {
 function playerStairs(world: World): ActionResult {
   const p = world.player;
   if (!samePoint(p.pos, world.map.stairs)) return NOPE('ここに 階段は 無い');
+  if (!world.bossesCleared()) {
+    world.log('強い 気配に 阻まれて 先へ 進めない！', 'bad');
+    return NOPE('ボスを倒していない');
+  }
   world.sfx('stairs');
   world.pendingDescend = true;
   return OK;
@@ -247,23 +251,51 @@ export function onEnterTile(world: World, a: Actor): boolean {
     return triggerTrap(world, a, tile.trap.defId);
   }
 
-  // 足元のアイテムを知らせる
+  // 足元のアイテム。店の商品でなければ、乗った時点で自動的に拾う（本家準拠）
   if (a.kind === 'player') {
     const f = world.floorItemAt(a.pos);
     if (f) {
       const name = itemName(f.item, world.run.identify);
-      world.log(
-        f.item.shopPrice > 0
-          ? `${name}［${f.item.shopPrice}ギタン］が 置いてある。`
-          : `${name}が 落ちている。`,
-        'item',
-      );
+      if (f.item.shopPrice > 0) {
+        world.log(`${name}［${f.item.shopPrice}ギタン］が 置いてある。`, 'item');
+      } else {
+        const picked = autoPickup(world, f);
+        if (!picked) world.log(`${name}が 落ちている。持ち物が いっぱいだ。`, 'warning');
+      }
     }
     if (samePoint(a.pos, world.map.stairs)) {
       world.log('階段がある。', 'system');
     }
   }
   return false;
+}
+
+/**
+ * 足元のアイテムを自動で拾う。
+ * 持ち物がいっぱいなら拾わずに false を返す（床に残す）。
+ */
+function autoPickup(world: World, f: { item: ItemInstance; pos: Point }): boolean {
+  const p = world.player;
+  const def = getItem(f.item.defId);
+  if (def.kind === 'gitan') {
+    p.gitan += f.item.count;
+    world.run.stats.gitanEarned += f.item.count;
+    world.log(`${f.item.count}ギタンを 拾った。`, 'item');
+    world.sfx('gitan');
+    world.removeFloorItem(f);
+    return true;
+  }
+  if (!addToInventory(p, f.item)) return false;
+  if (hasBracelet(world, p, 'autoIdentify')) {
+    world.run.identify.known[f.item.defId] = true;
+    f.item.plusKnown = true;
+  }
+  world.removeFloorItem(f);
+  world.run.stats.itemsFound++;
+  world.log(`${itemName(f.item, world.run.identify)}を 拾った。`, 'item');
+  world.emit({ t: 'itemGet', uid: f.item.uid });
+  world.sfx('pickup');
+  return true;
 }
 
 /** ワナを発動させる。実処理は trapEffects.ts が持つ */

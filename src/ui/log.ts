@@ -31,7 +31,7 @@ export class MessageLog {
   fastForward = false;
 
   /** 1 文字あたりのミリ秒。設定で変わる */
-  cps = ANIM.messageCps;
+  cps: number = ANIM.messageCps;
 
   add(text: string, style: LogStyle = 'normal', now = 0): void {
     const last = this.entries[this.entries.length - 1];
