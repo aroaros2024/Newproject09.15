@@ -1,6 +1,17 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { allDungeons, allMonsters, getItem, getMonster } from '../src/data/registry.js';
+import type { TownState } from '../src/core/types.js';
+import { enterFloor, startRun } from '../src/game/run.js';
+import { stepTurn } from '../src/game/turn.js';
+
+function newTown(): TownState {
+  return {
+    playerName: 'ナギ', storage: [], bankGitan: 0, gitan: 0,
+    cleared: [], unlocked: ['d1'], bestDepth: {},
+    seenItems: {}, seenMonsters: {}, history: [], totalRuns: 0, nextUid: 1,
+  };
+}
 import { expectedDamage, hpGainForLevel } from '../src/game/rules.js';
 
 /**
@@ -119,4 +130,46 @@ test('自己回復を持つ敵は、無限に立て直せない', () => {
     // 上限 3 回 × 最大 HP の 30% ＝ 実質 HP は 1.9 倍まで
     assert.ok(m.hp * 1.9 < 1200, `${m.name} は回復込みで実質 ${Math.floor(m.hp * 1.9)} HP もある`);
   }
+});
+
+test('ボスの階は「ボスと戦う階」になっている', () => {
+  // モンスターハウスが重なると、勝ち負けが運だけになってボス戦が成立しない
+  for (const d of allDungeons()) {
+    for (const b of d.bosses) {
+      for (let seed = 0; seed < 30; seed++) {
+        const world = startRun(d.id, newTown(), { seed: 5000 + seed });
+        enterFloor(world, b.depth);
+        world.drainEvents();
+        assert.equal(
+          world.map.rooms.some((r) => r.monsterHouse !== null), false,
+          `${d.id} ${b.depth}F seed${seed}: ボスの階にモンスターハウスがある`,
+        );
+        // 取り巻きは少数。ボスを含めて 6 体を超えない
+        assert.ok(
+          world.run.monsters.length <= 6,
+          `${d.id} ${b.depth}F seed${seed}: ボスの階に ${world.run.monsters.length} 体いる`,
+        );
+        // 装備を奪う敵は、ボス戦の事故でしかない
+        for (const m of world.run.monsters) {
+          const def = world.defOf(m);
+          if (def.isBoss) continue;
+          assert.notEqual(def.ai, 'thief',
+            `${d.id} ${b.depth}F seed${seed}: ボスの階に ${def.name}（盗み）がいる`);
+        }
+      }
+    }
+  }
+});
+
+test('倒せるボスが居なくなったら、階段は開く', () => {
+  // 第 2 形態の出現に失敗するなどでボスが消えると、
+  // 撃破が記録されないまま階段が永久に閉じて冒険が詰む
+  const world = startRun('d2', newTown(), { seed: 4242 });
+  enterFloor(world, 10);
+  world.drainEvents();
+  assert.equal(world.bossesCleared(), false, '最初からクリア扱いになっている');
+  for (const m of [...world.run.monsters]) world.removeActor(m);
+  stepTurn(world, { type: 'wait' });
+  world.drainEvents();
+  assert.equal(world.bossesCleared(), true, 'ボスが居なくなったのに階段が開かない');
 });

@@ -241,6 +241,28 @@ function endOfTurn(world) {
     tickWind(world);
     refreshFov(world);
     updateShopAnger(world);
+    ensureBossChainNotStuck(world);
+}
+/**
+ * ボスが「倒してもいないのに居なくなった」状態を拾う。
+ *
+ * 第 2 形態の出現に失敗した、ワナで落ちた、といった経路でフロアから
+ * ボスが消えると、撃破が記録されないまま階段が永久に閉じ、その冒険が
+ * 詰んでしまう。倒せる相手が居なくなったなら、そこで決着とみなす。
+ */
+function ensureBossChainNotStuck(world) {
+    const here = world.bossesHere();
+    if (here.length === 0 || world.bossesCleared())
+        return;
+    const alive = world.run.monsters.some((m) => m.alive && world.defOf(m).isBoss);
+    if (alive)
+        return;
+    for (const b of here) {
+        if (!world.run.defeatedBosses.includes(b.monsterId)) {
+            world.run.defeatedBosses.push(b.monsterId);
+        }
+    }
+    world.log('あたりの 気配が 静まった。階段が 開いている。', 'good');
 }
 /** 不定の風。一定ターンを過ぎると次の階へ飛ばされる */
 function tickWind(world) {

@@ -2,7 +2,7 @@
  * フロアへの配置。階段・アイテム・ワナ・モンスター・店・モンスターハウス。
  */
 import { chebyshev, samePoint } from '../core/geom.js';
-import { getItem, getMonster } from '../data/registry.js';
+import { getItem, getMonster, tryGetMonster } from '../data/registry.js';
 import { makeGitan, makeItem } from '../game/inventory.js';
 import { gitanAmount, monsterHouseRate } from '../game/rules.js';
 import { at, allRoomFloors, roomCells } from './tilemap.js';
@@ -18,8 +18,36 @@ export function pickFrom(table, depth, rng) {
     const picked = rng.weightedPick(pool, (e) => e.weight);
     return picked ? picked.id : null;
 }
+/**
+ * ボスの階に出してはいけない敵か。
+ *
+ * ボス戦の最中に装備を盗まれたり錆びさせられたりすると、その一瞬で
+ * 守りが消えて、以後どう戦っても勝てなくなる。ボスに負けたのではなく
+ * 「取り巻きの事故で終わった」になってしまうので、ボスの階には
+ * 盗み・装備荒らしの類を出さない。ボス自身の特技はそのまま効く。
+ */
+function forbiddenOnBossFloor(id) {
+    const def = tryGetMonster(id);
+    if (!def)
+        return true;
+    if (def.isBoss)
+        return false;
+    if (def.ai === 'thief')
+        return true;
+    const BAD = [
+        'stealItem', 'stealEquip', 'stealGitan', 'swallowItem', 'eatFood',
+        'rustWeapon', 'rustShield', 'curseItem', 'curseEquip',
+    ];
+    return def.skills.some((sk) => BAD.includes(sk));
+}
 /** その階のモンスターを 1 種選ぶ */
-export const pickMonsterId = (d, depth, rng) => pickFrom(d.monsters, depth, rng);
+export function pickMonsterId(d, depth, rng) {
+    const onBossFloor = d.bosses.some((b) => b.depth === depth);
+    if (!onBossFloor)
+        return pickFrom(d.monsters, depth, rng);
+    const table = d.monsters.filter((e) => !forbiddenOnBossFloor(e.id));
+    return pickFrom(table.length > 0 ? table : d.monsters, depth, rng);
+}
 /** その階のアイテムを 1 種選ぶ */
 export const pickItemId = (d, depth, rng) => pickFrom(d.items, depth, rng);
 /** その階のワナを 1 種選ぶ */
@@ -69,6 +97,7 @@ export function makeMonster(world, defId, pos, kind = 'monster') {
         tactic: 'follow',
         bossPhase: 0,
         healsUsed: 0,
+        lastSkillTurn: -1,
         lastSeen: null,
         angry: false,
         nameOverride: null,
@@ -100,8 +129,11 @@ export function populateFloor(world) {
         shopRoom = makeShop(world);
     }
     // --- モンスターハウス ---
+    // ボスの階には出さない。ボスと戦っている最中に 20 体が一斉に湧くと、
+    // 勝ち負けが運だけになり、ボス戦そのものが成立しない
+    const onBossFloor = d.bosses.some((b) => b.depth === depth);
     let houseKind = null;
-    const houseRate = monsterHouseRate(d.monsterHouseRate, depth, d.depth);
+    const houseRate = onBossFloor ? 0 : monsterHouseRate(d.monsterHouseRate, depth, d.depth);
     const houseCandidates = map.rooms.filter((r) => !r.shop && roomCells(r).length >= 20);
     if (houseCandidates.length > 0 && rng.percent(houseRate)) {
         const room = rng.pick(houseCandidates);
@@ -145,7 +177,13 @@ export function populateFloor(world) {
     const lo = d.gen.monsters[0];
     const hi = d.gen.monsters[1];
     const cap = Math.round(lo + (hi - lo) * ramp);
-    const monsterCount = rng.range(Math.max(2, Math.floor(lo * (0.5 + 0.5 * ramp))), Math.max(2, cap));
+    let monsterCount = rng.range(Math.max(2, Math.floor(lo * (0.5 + 0.5 * ramp))), Math.max(2, cap));
+    // ボスの階は「ボスと戦う階」にする。普段どおりの数の雑魚を撒くと、
+    // ボスを殴っている間に横から袋叩きにされて、ボスの戦い方どころではなくなる
+    // （ボスは特技で取り巻きを呼ぶので、そちらで賑やかさは出る）
+    if (onBossFloor) {
+        monsterCount = Math.max(1, Math.round(monsterCount / 6));
+    }
     for (let i = 0; i < monsterCount; i++) {
         const id = pickMonsterId(d, depth, rng);
         if (!id)
@@ -375,6 +413,10 @@ export function triggerMonsterHouse(world, room) {
 export function naturalSpawn(world) {
     const interval = world.dungeon.gen.spawnInterval;
     if (interval <= 0)
+        return;
+    // ボスの階では湧かせない。長期戦の間じゅう雑魚が増え続けると、
+    // 勝てるかどうかが「どれだけ早く倒せたか」だけになってしまう
+    if (world.dungeon.bosses.some((b) => b.depth === world.run.depth))
         return;
     if (world.run.floorTurn % interval !== 0)
         return;

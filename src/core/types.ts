@@ -537,6 +537,13 @@ export interface MonsterActor extends ActorBase {
   bossPhase: number;
   /** 自己回復の特技を使った回数（無限に回復して不死身にならないための上限） */
   healsUsed: number;
+  /**
+   * 最後に特技を使ったターン。
+   * 倍速の相手が同じターンに息を 2 回吐くと、盾を無視する大ダメージが
+   * 重なって「何をしても 1 ターンで死ぬ」状況ができてしまうので、
+   * 特技は 1 ターンに 1 つまでに制限する。
+   */
+  lastSkillTurn: number;
   /** 追跡のために最後にプレイヤーを見た位置 */
   lastSeen: Point | null;
   /** 店主が怒っているか */

@@ -171,7 +171,12 @@ export function resolveAttack(
 
   const critical = world.rng.chance(critRate(world, a));
   const atk = Math.floor(attackPower(world, a) * powerMul);
-  let def = critical ? 0 : defensePower(world, target);
+  // 会心は防御力を無視する。ただしモンスターの痛恨は「半分」に留める。
+  // 終盤の敵は攻撃力が 150 を超えるので、完全に無視させると
+  // 1/32 の抽選で最大 HP の半分が飛ぶ。盾を鍛える意味が無くなってしまう
+  const rawDef = defensePower(world, target);
+  let def = !critical ? rawDef
+    : a.kind === 'player' ? 0 : Math.floor(rawDef / 2);
 
   // 砕きの印は相手の防御力を半分にする
   if (a.kind === 'player' && equipRuneLevel(equippedWeapon(world.player), 'crush') > 0) {
@@ -180,7 +185,7 @@ export function resolveAttack(
 
   let dmg = calcDamage(atk, def, world.rng);
   dmg = applyAttackRunes(world, a, target, dmg);
-  dmg = applyDefenseRunes(world, a, target, dmg);
+  dmg = applyDefenseRunes(world, a, target, dmg, critical);
 
   // メタル系は固定で減算する
   if (target.kind !== 'player' && world.defOf(target).metal) {
@@ -233,13 +238,20 @@ function applyAttackRunes(world: World, a: Actor, target: Actor, dmg: number): n
 }
 
 /** 盾の印による被ダメージ軽減 */
-function applyDefenseRunes(world: World, a: Actor, target: Actor, dmg: number): number {
+function applyDefenseRunes(
+  world: World, a: Actor, target: Actor, dmg: number, critical = false,
+): number {
   if (target.kind !== 'player') return dmg;
   const shield = equippedShield(world.player);
   let out = dmg;
   const reduce = equipRuneLevel(shield, 'reduce');
   if (reduce > 0) out -= reduce * 2;
-  if (world.hasStatus(target, 'fainted')) out = Math.floor(out * FAINT_DAMAGE_MUL);
+  // 気絶の割増は、盾を無視する痛恨の一撃には乗せない。
+  // 両方が重なると「何をしても 1 ターンで死ぬ」一撃ができてしまい、
+  // 装備を固める意味が消える
+  if (world.hasStatus(target, 'fainted') && !critical) {
+    out = Math.floor(out * FAINT_DAMAGE_MUL);
+  }
   out = Math.max(shield && equipRuneLevel(shield, 'evade') > 0 ? 0 : 1, out);
 
   // 返しの印

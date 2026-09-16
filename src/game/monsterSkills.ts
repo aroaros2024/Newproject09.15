@@ -26,6 +26,27 @@ const adjacent = (m: MonsterActor, t: Actor): boolean => chebyshev(m.pos, t.pos)
 /** 自己回復の特技を使える回数の上限 */
 const MAX_SELF_HEALS = 3;
 
+/**
+ * 息（ブレス）のダメージ。
+ *
+ * 息は盾を無視するので、攻撃力にそのまま比例させてはいけない。
+ * ボスは攻撃力が大きいため、比例させると盾を固めても一撃 90 以上が
+ * 倍速で飛んでくることになり、装備で備えるという遊び方が成立しなくなる。
+ */
+const breathDamage = (atk: number, ratio: number, cap: number): number =>
+  Math.max(1, Math.min(cap, Math.floor(atk * ratio)));
+
+/**
+ * 増殖・分身・呼び寄せで増やしてよい上限。
+ *
+ * ボスの階だけは別枠にする。取り巻きが際限なく増えると、勝てるかどうかが
+ * 「ボスをどれだけ早く倒せたか」だけになり、ボスとの戦い方が消えてしまう。
+ */
+function crowdLimit(world: World): number {
+  const onBossFloor = world.dungeon.bosses.some((b) => b.depth === world.run.depth);
+  return onBossFloor ? 4 : world.dungeon.gen.maxMonsters + 4;
+}
+
 /** 盾の「盗」印・盗賊よけの腕輪で盗みを防げるか */
 function blocksTheft(world: World, t: Actor): boolean {
   if (t.kind !== 'player') return false;
@@ -101,7 +122,7 @@ export const MONSTER_SKILLS: Record<string, SkillHandler> = {
     if (!adjacent(m, t)) return false;
     // 身代わりに向かって無限に分裂されると、フロアが敵で埋まる
     if (t.id === world.decoyId) return false;
-    if (world.run.monsters.length >= world.dungeon.gen.maxMonsters + 6) return false;
+    if (world.run.monsters.length >= crowdLimit(world) + 2) return false;
     const spot = freeNeighbor(world, m.pos);
     if (!spot) return false;
     const clone: MonsterActor = {
@@ -143,7 +164,7 @@ export const MONSTER_SKILLS: Record<string, SkillHandler> = {
   },
 
   cloneSelf: (world, m) => {
-    if (world.run.monsters.length >= world.dungeon.gen.maxMonsters + 4) return false;
+    if (world.run.monsters.length >= crowdLimit(world)) return false;
     const spot = freeNeighbor(world, m.pos);
     if (!spot) return false;
     const clone: MonsterActor = {
@@ -156,7 +177,7 @@ export const MONSTER_SKILLS: Record<string, SkillHandler> = {
   },
 
   summonAlly: (world, m) => {
-    if (world.run.monsters.length >= world.dungeon.gen.maxMonsters + 4) return false;
+    if (world.run.monsters.length >= crowdLimit(world)) return false;
     const factory = world.monsterFactory;
     if (!factory) return false;
     let summoned = 0;
@@ -238,7 +259,7 @@ export const MONSTER_SKILLS: Record<string, SkillHandler> = {
     world.log(`${world.nameOf(m)}は 炎を 吐いた！`, 'bad');
     world.emit({ t: 'zap', from: { ...m.pos }, to: { ...t.pos }, color: '#ff8030' });
     world.sfx('explosion');
-    dealDamage(world, m, t, Math.floor(m.atk * 0.9), 'fire');
+    dealDamage(world, m, t, breathDamage(m.atk, 0.7, 35), 'fire');
     return true;
   },
 
@@ -253,7 +274,7 @@ export const MONSTER_SKILLS: Record<string, SkillHandler> = {
     world.sfx('explosion');
     for (const p of rayPoints(m.pos, t.pos)) {
       const victim = world.actorAt(p);
-      if (victim && victim !== m) dealDamage(world, m, victim, Math.floor(m.atk * 1.1), 'fire');
+      if (victim && victim !== m) dealDamage(world, m, victim, breathDamage(m.atk, 0.8, 55), 'fire');
     }
     applyStatus(world, t, 'burning');
     return true;
@@ -504,10 +525,16 @@ export function useSkill(world: World, m: MonsterActor, target: Actor): boolean 
   const def = world.defOf(m);
   if (def.skills.length === 0) return false;
   if (world.hasStatus(m, 'sealed')) return false;
+  // 特技は 1 ターンに 1 つまで。倍速の相手が同じターンに 2 回撃てると、
+  // 盾を無視する息などが重なって、備えようのない即死ができてしまう
+  if (m.lastSkillTurn === world.run.totalTurn) return false;
   if (!world.rng.percent(def.skillRate)) return false;
   for (const id of world.rng.shuffled(def.skills)) {
     const handler = MONSTER_SKILLS[id];
-    if (handler && handler(world, m, target)) return true;
+    if (handler && handler(world, m, target)) {
+      m.lastSkillTurn = world.run.totalTurn;
+      return true;
+    }
   }
   return false;
 }
