@@ -6,10 +6,10 @@ import { Cmd } from '../../core/input.js';
 import { clearRun, saveRun } from '../../core/save.js';
 import { getItem, getTrap } from '../../data/registry.js';
 import { at } from '../../dungeon/tilemap.js';
-import { SHORTCUT_SLOTS, assignShortcut, equippedBracelet, isEquipped, isInventoryFull, mergeStacks, shortcutOf, shortcutSlots, sortInventory, } from '../../game/inventory.js';
+import { SHORTCUT_SLOTS, addKept, assignShortcut, equippedBracelet, isEquipped, isInventoryFull, isKept, keptItems, mergeStacks, removeKept, shortcutOf, shortcutSlots, sortInventory, } from '../../game/inventory.js';
 import { isContainer, needsDirection, needsItemTarget, payDebt, shopDebt, throwGitan, } from '../../game/itemActions.js';
 import { itemName, kindLabel, useVerb } from '../../game/naming.js';
-import { SELL_RATE } from '../../game/rules.js';
+import { BASE_KEEP_SLOTS, MAX_KEEP_SLOTS, SELL_RATE } from '../../game/rules.js';
 import { onStairs, restTurns, stepTurn, whyCannotRest } from '../../game/turn.js';
 import { drawText, drawOverlay } from '../draw.js';
 import { Camera, DungeonRenderer } from '../renderer.js';
@@ -424,6 +424,8 @@ export class DungeonScreen {
             const slot = shortcutOf(p, item.defId);
             if (slot >= 0)
                 badges.push({ text: `${slot + 1}`, color: UI.cursorEdge });
+            if (isKept(p, item.uid))
+                badges.push({ text: '保', color: UI.good });
             if (item.cursed && item.plusKnown)
                 badges.push({ text: '呪', color: UI.curse });
             if (item.shopPrice > 0)
@@ -446,7 +448,9 @@ export class DungeonScreen {
     }
     openItemMenu() {
         const menu = new ListMenu({
-            title: `持ち物　${this.world.player.inventory.length} / 20　　［F］整理　［1〜9］ショートカット`,
+            title: `持ち物　${this.world.player.inventory.length} / 20`
+                + `　　保持 ${keptItems(this.world.player).length} / ${this.keepSlots()}`
+                + `　　［F］整理`,
             entries: [],
             rect: {
                 x: MENU_LAYOUT.items.x, y: MENU_LAYOUT.items.y,
@@ -577,6 +581,30 @@ export class DungeonScreen {
                 },
             });
         }
+        // 保持枠（倒れても失わない）
+        const kept = isKept(p, item.uid);
+        entries.push({
+            label: kept ? '保持を やめる' : '保持する',
+            color: kept ? undefined : UI.good,
+            right: `${keptItems(p).length}/${this.keepSlots()}`,
+            desc: kept
+                ? 'この道具は 倒れても 持ち帰れます。'
+                : `倒れても 失わなくなります（持てる数は 増えません）。`,
+            onSelect: () => {
+                if (kept) {
+                    removeKept(p, item.uid);
+                    world.log(`${itemName(item, world.run.identify)}の 保持を やめた。`, 'system');
+                }
+                else if (addKept(p, item.uid, this.keepSlots())) {
+                    world.log(`${itemName(item, world.run.identify)}を 保持した。`, 'good');
+                }
+                else {
+                    world.log(`保持枠が いっぱいだ（${this.keepSlots()} 個まで）。`, 'warning');
+                }
+                this.pumpEvents();
+                return close();
+            },
+        });
         entries.push({
             label: '置く',
             disabled: !!world.floorItemAt(p.pos),
@@ -723,6 +751,16 @@ export class DungeonScreen {
             rows: MENU_LAYOUT.items.rows,
             showDesc: true,
         }));
+    }
+    /**
+     * 保持枠の数。
+     * 加護の効かないダンジョン（真・もっと不思議）では、基本の 3 のまま。
+     */
+    keepSlots() {
+        if (this.world.dungeon.allowBoosts === false)
+            return BASE_KEEP_SLOTS;
+        const n = this.app.town.keepSlots ?? BASE_KEEP_SLOTS;
+        return Math.max(BASE_KEEP_SLOTS, Math.min(MAX_KEEP_SLOTS, n));
     }
     openFeetMenu() {
         const world = this.world;

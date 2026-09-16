@@ -84,6 +84,7 @@ function makePlayer(name: string): PlayerActor {
     shieldUid: null,
     braceletUid: null,
     shortcutIds: new Array(SHORTCUT_SLOTS).fill(null),
+    keptUids: [],
     braceletHpBonus: 0,
     steps: 0,
     statuses: [],

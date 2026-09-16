@@ -141,6 +141,42 @@ export function assignShortcut(p, slot, defId) {
     if (slot >= 0 && slot < SHORTCUT_SLOTS)
         p.shortcutIds[slot] = defId;
 }
+/**
+ * 保持枠。倒れても失わない道具を選ぶ。
+ *
+ * 持てる数は増えない（持ち物 20 の中から選ぶ）。
+ * 増えるのは「失わない」という保証だけなので、
+ * 「今いちばん惜しい物は何か」を選ぶ遊びになる。
+ */
+export function keptItems(p) {
+    if (!p.keptUids)
+        return [];
+    return p.keptUids
+        .map((uid) => p.inventory.find((it) => it.uid === uid))
+        .filter((it) => it !== undefined);
+}
+export const isKept = (p, uid) => !!p.keptUids && p.keptUids.includes(uid);
+/** 保持枠に入れる。空きが無ければ false */
+export function addKept(p, uid, slots) {
+    if (!p.keptUids)
+        p.keptUids = [];
+    // 持っていない物は守れない
+    if (!p.inventory.some((it) => it.uid === uid))
+        return false;
+    if (p.keptUids.includes(uid))
+        return true;
+    // 持ち物から消えた物は枠を占めたままにしない
+    p.keptUids = p.keptUids.filter((u) => p.inventory.some((it) => it.uid === u));
+    if (p.keptUids.length >= slots)
+        return false;
+    p.keptUids.push(uid);
+    return true;
+}
+export function removeKept(p, uid) {
+    if (!p.keptUids)
+        return;
+    p.keptUids = p.keptUids.filter((u) => u !== uid);
+}
 /** その種類が入っている枠。無ければ -1 */
 export function shortcutOf(p, defId) {
     if (!p.shortcutIds)
@@ -165,6 +201,7 @@ export function removeFromInventory(p, uid) {
         p.shieldUid = null;
     if (p.braceletUid === uid)
         p.braceletUid = null;
+    removeKept(p, uid);
     return p.inventory.splice(i, 1)[0];
 }
 /**

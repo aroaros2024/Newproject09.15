@@ -18,6 +18,10 @@ export const START_STR = 8;
 export const MAX_LEVEL = 99;
 export const MAX_HP_CAP = 999;
 export const MAX_STR_CAP = 99;
+
+/** 保持枠（倒れても失わない道具の数）。最初は 3、加護で最大 5 */
+export const BASE_KEEP_SLOTS = 3;
+export const MAX_KEEP_SLOTS = 5;
 export const MAX_EXP = 999_999_999;
 
 /** 満腹度は 1/10 単位の整数で持つ */

@@ -8,6 +8,7 @@
 
 import type { RunState, Settings, TownState } from './types.js';
 import { SAVE_VERSION } from './types.js';
+import { BASE_KEEP_SLOTS, MAX_KEEP_SLOTS } from '../game/rules.js';
 
 const PREFIX = 'fushigi-dungeon';
 const KEY_TOWN = `${PREFIX}:town`;
@@ -41,6 +42,7 @@ export function defaultTown(playerName = 'ナギ'): TownState {
     seenItems: {},
     knownItems: {},
     nicknames: {},
+    keepSlots: BASE_KEEP_SLOTS,
     seenMonsters: {},
     history: [],
     totalRuns: 0,
@@ -137,6 +139,9 @@ function validateTown(t: Partial<TownState>): TownState {
     seenItems: typeof t.seenItems === 'object' && t.seenItems ? t.seenItems : {},
     knownItems: typeof t.knownItems === 'object' && t.knownItems ? t.knownItems : {},
     nicknames: typeof t.nicknames === 'object' && t.nicknames ? t.nicknames : {},
+    keepSlots: Number.isFinite(t.keepSlots)
+      ? Math.max(BASE_KEEP_SLOTS, Math.min(MAX_KEEP_SLOTS, Math.floor(t.keepSlots as number)))
+      : BASE_KEEP_SLOTS,
     seenMonsters: typeof t.seenMonsters === 'object' && t.seenMonsters ? t.seenMonsters : {},
     history: Array.isArray(t.history) ? t.history.slice(-50) : [],
     totalRuns: Number.isFinite(t.totalRuns) ? Math.max(0, Math.floor(t.totalRuns as number)) : 0,

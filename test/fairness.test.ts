@@ -4,7 +4,9 @@ import type { TownState } from '../src/core/types.js';
 import { chebyshev } from '../src/core/geom.js';
 import { at } from '../src/dungeon/tilemap.js';
 import { makeMonster } from '../src/dungeon/spawn.js';
-import { addToInventory, makeItem } from '../src/game/inventory.js';
+import { addKept, addToInventory, keptItems, makeItem } from '../src/game/inventory.js';
+import { BASE_KEEP_SLOTS } from '../src/game/rules.js';
+import { finishRun } from '../src/game/town.js';
 import { samePoint } from '../src/core/geom.js';
 import { enterFloor, startRun } from '../src/game/run.js';
 import { restTurns, stepTurn, whyCannotRest } from '../src/game/turn.js';
@@ -299,4 +301,63 @@ test('怒っていない店主とは 位置を入れ替えられる', () => {
   world.drainEvents();
   assert.deepEqual(p.pos, spot, '店主と入れ替われない');
   assert.deepEqual(keeper.pos, before, '店主が元の位置に来ていない');
+});
+
+test('保持枠に入れた道具は、倒れても持ち帰れる', () => {
+  const town = newTown();
+  const world = startRun('d2', town, { seed: 77 });
+  const p = world.player;
+  p.inventory.length = 0;
+  p.weaponUid = null;
+  p.shieldUid = null;
+
+  const saved = makeItem('greatHerb', world.rng, {}, () => world.nextUid());
+  const lost1 = makeItem('healHerb', world.rng, {}, () => world.nextUid());
+  const lost2 = makeItem('riceBall', world.rng, {}, () => world.nextUid());
+  for (const it of [saved, lost1, lost2]) addToInventory(p, it);
+
+  assert.equal(addKept(p, saved.uid, BASE_KEEP_SLOTS), true, '保持枠に入らない');
+  // d2 は倒れると持ち物を失う
+  finishRun(world, town, 'death', 'テスト');
+
+  const names = town.storage.map((i) => i.defId);
+  assert.ok(names.includes('greatHerb'), '保持したのに失われた');
+  assert.equal(names.includes('healHerb'), false, '保持していない物が残った');
+  assert.equal(names.includes('riceBall'), false, '保持していない物が残った');
+});
+
+test('保持枠は数に限りがあり、持てる数は増えない', () => {
+  const world = startRun('d2', newTown(), { seed: 78 });
+  const p = world.player;
+  p.inventory.length = 0;
+  // 山にまとまらない道具で数える（石や矢は 1 つの山になってしまう）
+  const kinds = ['greatHerb', 'healHerb', 'riceBall', 'identifyScroll', 'lightScroll'];
+  const made = kinds.slice(0, BASE_KEEP_SLOTS + 2).map((id) => {
+    const it = makeItem(id, world.rng, {}, () => world.nextUid());
+    addToInventory(p, it);
+    return it;
+  });
+  for (let i = 0; i < BASE_KEEP_SLOTS; i++) {
+    assert.equal(addKept(p, made[i].uid, BASE_KEEP_SLOTS), true, `${i} 個目が入らない`);
+  }
+  assert.equal(
+    addKept(p, made[BASE_KEEP_SLOTS].uid, BASE_KEEP_SLOTS), false,
+    '枠を超えて入ってしまう',
+  );
+  assert.equal(keptItems(p).length, BASE_KEEP_SLOTS);
+  // 持ち物の上限は変わらない
+  assert.equal(p.inventory.length, BASE_KEEP_SLOTS + 2, '持てる数が変わってしまった');
+});
+
+test('保持した道具を手放すと、枠も空く', () => {
+  const world = startRun('d2', newTown(), { seed: 79 });
+  const p = world.player;
+  p.inventory.length = 0;
+  const item = makeItem('greatHerb', world.rng, {}, () => world.nextUid());
+  addToInventory(p, item);
+  addKept(p, item.uid, BASE_KEEP_SLOTS);
+  assert.equal(keptItems(p).length, 1);
+  stepTurn(world, { type: 'place', uid: item.uid });
+  world.drainEvents();
+  assert.equal(keptItems(p).length, 0, '置いたのに枠を占めたまま');
 });

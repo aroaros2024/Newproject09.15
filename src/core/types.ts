@@ -514,6 +514,14 @@ export interface PlayerActor extends ActorBase {
    */
   shortcutIds: (string | null)[];
   /**
+   * 保持枠に入れた道具の uid。
+   *
+   * 持てる数は増えない。増えるのは「倒れても失わない」という保証だけ。
+   * 何を守るかを選ぶこと自体が持ち物の駆け引きになる。
+   * 枠の数は村側（TownState.keepSlots）が持つ。
+   */
+  keptUids: number[];
+  /**
    * 竜脈の腕輪などが maxHp に上乗せしている量。
    *
    * 「着けたら足す・外したら引く」を各所で手動に行うと、置く／投げる／売る／
@@ -835,6 +843,8 @@ export interface TownState {
    */
   knownItems?: Record<string, boolean>;
   nicknames?: Record<string, string>;
+  /** 保持枠の数。最初は 3、ガチャの加護で最大 5 まで増える */
+  keepSlots?: number;
   seenMonsters: Record<string, boolean>;
   /** 冒険の記録 */
   history: AdventureRecord[];

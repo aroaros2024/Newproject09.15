@@ -14,7 +14,7 @@ import type {
 } from '../core/types.js';
 import { ALL_ITEMS, allMonsters, getItem, getDungeon } from '../data/registry.js';
 import { DUNGEON_ORDER } from '../data/dungeons.js';
-import { makeItem } from './inventory.js';
+import { keptItems, makeItem } from './inventory.js';
 import { mergeInto } from './itemEffects.js';
 import { losesItemsOnDeath } from './death.js';
 import { SELL_RATE } from './rules.js';
@@ -316,7 +316,15 @@ export function finishRun(
     }
     town.gitan += p.gitan;
   } else {
-    lost = p.inventory.length;
+    // 倒れて持ち物を失う時でも、保持枠に入れておいた物だけは届く。
+    // 「何を守るか」を選ばせるための枠なので、ここが要
+    const saved = keptItems(p);
+    for (const item of saved) {
+      item.shopPrice = 0;
+      if (world.run.identify.known[item.defId]) learnItem(town, item.defId);
+      if (!depositItem(town, item)) lost++;
+    }
+    lost += p.inventory.length - saved.length;
   }
   // 持ち込んだギタンは startRun で村から冒険へ「移した」ので、
   // ここで足し戻したあとは冒険側を空にしておく。
