@@ -504,16 +504,15 @@ export interface PlayerActor extends ActorBase {
   shieldUid: number | null;
   braceletUid: number | null;
   /**
-   * 保持バッグ。数字キー 1〜3 に割り当てた道具の種類（defId）。
+   * ショートカット。数字キー 1〜9 に割り当てた道具の種類（defId）。
    *
-   * 「持ち物の何番目」で覚えるのは無理なので、自分で入れた 3 つだけを
-   * 画面に出しておく。
+   * 「持ち物の何番目」で覚えるのは無理なので、割り当てた物を画面に出しておく。
    *
    * uid ではなく defId で覚えるのが肝。uid で持つと、矢を使い切った瞬間に
    * 枠が空になり、拾い直すたびに入れ直すことになる。種類で覚えておけば、
    * 0 個でも枠は残り、並べ替えても整理してもずれない。
    */
-  quickIds: (string | null)[];
+  shortcutIds: (string | null)[];
   /**
    * 竜脈の腕輪などが maxHp に上乗せしている量。
    *
@@ -617,6 +616,11 @@ export interface DungeonDef {
   resetLevel: boolean;
   /** 仲間を連れて入れるか */
   allowAlly: boolean;
+  /**
+   * 村で得た恒久強化（ガチャの加護・相棒・識別済みの知識）が効くか。
+   * 省略時は true。素の腕試しをしたい人のために、効かない版を用意する。
+   */
+  allowBoosts?: boolean;
   /** クリアしないと解放されない前提ダンジョン */
   requires: string | null;
   theme: DungeonTheme;

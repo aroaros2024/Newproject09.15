@@ -17,7 +17,7 @@ import {
   placePlayer, placeStairs, populateFloor,
 } from '../dungeon/spawn.js';
 import { canEnter, createMap } from '../dungeon/tilemap.js';
-import { makeItem } from './inventory.js';
+import { SHORTCUT_SLOTS, makeItem } from './inventory.js';
 import {
   START_FOOD_X10, START_HP, START_LEVEL, START_STR, WIND_DEFAULT_TURNS,
 } from './rules.js';
@@ -83,7 +83,7 @@ function makePlayer(name: string): PlayerActor {
     weaponUid: null,
     shieldUid: null,
     braceletUid: null,
-    quickIds: [null, null, null],
+    shortcutIds: new Array(SHORTCUT_SLOTS).fill(null),
     braceletHpBonus: 0,
     steps: 0,
     statuses: [],

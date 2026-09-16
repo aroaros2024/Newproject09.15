@@ -18,6 +18,8 @@ const BUILDS = {
     d4: { lv: 28, str: 13, weapon: ['twinAxe', 7], shield: ['heavyShield', 6] },
     dl: { lv: 38, str: 15, weapon: ['greatSword', 9], shield: ['dragonScale', 8] },
     ex: { lv: 55, str: 20, weapon: ['tenrinSword', 14], shield: ['tenrinShield', 12] },
+    // 真・もっと不思議は中身が ex と同じ（違うのは加護が効かないことだけ）
+    exPure: { lv: 55, str: 20, weapon: ['tenrinSword', 14], shield: ['tenrinShield', 12] },
 };
 function power(id, plus) {
     const d = getItem(id);

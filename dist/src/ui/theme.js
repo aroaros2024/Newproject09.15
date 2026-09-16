@@ -59,8 +59,8 @@ export const LAYOUT = {
     status: { x: 16, y: 592, w: 456, h: 112 },
     /** 階層表示 */
     floor: { x: 1096, y: 600, w: 168, h: 104 },
-    /** 保持バッグ（数字キー 1〜3） */
-    quick: { x: 488, y: 618, w: 396, h: 86 },
+    /** ショートカット（数字キー 1〜9） */
+    shortcuts: { x: 484, y: 626, w: 604, h: 78 },
 };
 /** メニューの配置 */
 export const MENU_LAYOUT = {

@@ -502,14 +502,17 @@ const DL = {
 const EX = {
     id: 'ex',
     name: 'もっと不思議のダンジョン',
-    subtitle: '何も持ち込めない 99 階',
+    subtitle: '相棒と 加護を 連れて行ける 99 階',
     desc: 'レベル 1 から始まり、道具は何ひとつ持ち込めない。\n' +
         'すべてを拾い集めて 99 階を目指す。生きて帰れば、拾った物は持ち帰れる。\n' +
         '風来人の本当の腕試し。',
     depth: 99,
     allowBring: false,
     resetLevel: true,
-    allowAlly: false,
+    // 道具は持ち込めないが、村で授かった加護と相棒は通じる。
+    // 加護なしで潜りたい人には exPure（真・もっと不思議）を用意してある
+    allowAlly: true,
+    allowBoosts: true,
     requires: 'dl',
     theme: THEME_ABYSS,
     bgm: 'abyss',
@@ -621,7 +624,25 @@ const EX = {
     bigRoomRate: 4,
     windTurns: 800,
 };
-export const DUNGEONS = [D1, D2, D3, D4, DL, EX];
+/**
+ * exPure 真・もっと不思議のダンジョン — 99F。村で得た加護が一切効かない。
+ *
+ * 中身は ex とまったく同じ。違うのは「相棒も加護も連れて行けない」ことだけ。
+ * ガチャで強くなった人と、素の腕で潜りたい人の両方に居場所を作る。
+ */
+const EX_PURE = {
+    ...EX,
+    id: 'exPure',
+    name: '真・もっと不思議のダンジョン',
+    subtitle: '何の加護も無い 99 階',
+    desc: 'レベル 1 から始まり、道具は何ひとつ持ち込めない。\n'
+        + '村で授かった加護も、相棒も、ここでは通じない。\n'
+        + '拾った物と、己の腕だけで 99 階を目指す。',
+    allowAlly: false,
+    allowBoosts: false,
+    requires: 'ex',
+};
+export const DUNGEONS = [D1, D2, D3, D4, DL, EX, EX_PURE];
 /**
  * 風の村の貸し出し装備。
  *
@@ -639,9 +660,10 @@ export const LOANER_GEAR = {
     dl: { weapon: 'steelSword', shield: 'steelShield' },
     // もっと不思議のダンジョンは何も持ち込めない
     ex: null,
+    exPure: null,
 };
 /** 物語の順路（村のダンジョン選択に出る順） */
-export const DUNGEON_ORDER = ['d1', 'd2', 'd3', 'd4', 'dl', 'ex'];
+export const DUNGEON_ORDER = ['d1', 'd2', 'd3', 'd4', 'dl', 'ex', 'exPure'];
 /** 最初から入れるダンジョン */
 export const INITIAL_UNLOCKED = ['d1'];
 //# sourceMappingURL=dungeons.js.map

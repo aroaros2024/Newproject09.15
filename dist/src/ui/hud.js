@@ -47,47 +47,53 @@ export class Hud {
         this.drawStatus(g, p, frame);
         this.drawStatusIcons(g, p);
         this.drawFloor(g, info, frame);
-        this.drawQuick(g, info, frame);
+        this.drawShortcuts(g, info, frame);
     }
     /**
-     * 保持バッグ。数字キー 1〜3 に入れた道具を出しておく。
+     * ショートカット。数字キー 1〜9 に割り当てた道具を出しておく。
      *
-     * 「持ち物の何番目」を覚えるのは無理なので、常に見えている 3 つだけを
-     * ショートカットにする。並べ替えても中身はずれない。
+     * 「持ち物の何番目」を覚えるのは無理なので、割り当てた物を常に見せる。
+     * 覚えているのは道具の種類なので、並べ替えても 0 個になっても枠は残る。
      */
-    drawQuick(g, info, frame) {
-        const r = LAYOUT.quick;
+    drawShortcuts(g, info, frame) {
+        const r = LAYOUT.shortcuts;
         drawPanel(g, r, { frame });
-        const slots = info.quick;
-        const slotW = (r.w - 24) / slots.length;
+        const slots = info.shortcuts;
+        const pad = 8;
+        const cellW = (r.w - pad * 2) / slots.length;
         for (let i = 0; i < slots.length; i++) {
-            const x = r.x + 12 + slotW * i;
+            const x = r.x + pad + cellW * i;
             const s = slots[i];
             const empty = s.defId === null;
             const out = !empty && s.count === 0;
-            drawText(g, `${i + 1}`, x + 4, r.y + 26, {
-                size: 16, bold: true, color: empty ? UI.textDim : out ? UI.textDim : UI.cursorEdge,
-            });
-            if (empty) {
-                drawText(g, '空き', x + 24, r.y + 26, { size: 13, color: UI.textDim });
-                continue;
+            // 枠線（割り当て済みだけ）
+            if (!empty) {
+                g.save();
+                g.strokeStyle = out ? 'rgba(154,154,168,0.25)' : 'rgba(255,214,102,0.35)';
+                g.lineWidth = 1;
+                roundRect(g, x + 2, r.y + 6, cellW - 4, r.h - 12, 4);
+                g.stroke();
+                g.restore();
             }
+            // 番号
+            drawText(g, `${i + 1}`, x + 7, r.y + 20, {
+                size: 13, bold: true, color: empty || out ? UI.textDim : UI.cursorEdge,
+            });
+            if (empty)
+                continue;
             // アイコン
             if (s.sprite) {
                 const icon = getSprite(s.sprite);
                 if (icon) {
-                    sprites.draw(g, s.sprite, icon, x + 26, r.y + 46, 26, { alpha: out ? 0.35 : 1 });
+                    sprites.draw(g, s.sprite, icon, x + cellW / 2, r.y + 38, 28, {
+                        alpha: out ? 0.3 : 1,
+                    });
                 }
             }
-            // 名前（切らしていても枠は残す）。長い名前は隣とぶつかるので詰める
-            const label = s.label.length > 6 ? `${s.label.slice(0, 6)}…` : s.label;
-            drawText(g, label, x + 48, r.y + 28, {
-                size: 12, color: out ? UI.textDim : UI.text,
-            });
-            // 個数
-            drawText(g, `${s.count}`, x + slotW - 10, r.y + 56, {
-                size: out ? 15 : 20, bold: true, align: 'right',
-                color: out ? '#7a5a5a' : UI.gitan,
+            // 個数（切らしていたら赤く 0）
+            drawText(g, `${s.count}`, x + cellW - 8, r.y + 66, {
+                size: 15, bold: true, align: 'right',
+                color: out ? '#c06060' : UI.gitan,
             });
         }
     }

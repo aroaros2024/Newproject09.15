@@ -6,7 +6,7 @@ import { Cmd } from '../../core/input.js';
 import { clearRun, saveRun } from '../../core/save.js';
 import { getItem, getTrap } from '../../data/registry.js';
 import { at } from '../../dungeon/tilemap.js';
-import { QUICK_SLOTS, assignQuickSlot, equippedBracelet, isEquipped, isInventoryFull, mergeStacks, quickSlotOf, quickSlots, sortInventory, } from '../../game/inventory.js';
+import { SHORTCUT_SLOTS, assignShortcut, equippedBracelet, isEquipped, isInventoryFull, mergeStacks, shortcutOf, shortcutSlots, sortInventory, } from '../../game/inventory.js';
 import { isContainer, needsDirection, needsItemTarget, payDebt, shopDebt, throwGitan, } from '../../game/itemActions.js';
 import { itemName, kindLabel, useVerb } from '../../game/naming.js';
 import { SELL_RATE } from '../../game/rules.js';
@@ -21,7 +21,7 @@ import { MENU_LAYOUT, SCREEN_H, SCREEN_W, TILE, UI } from '../theme.js';
 import { animScale, messageCps } from './app.js';
 import { drawHelp } from './help.js';
 /** 保持バッグに入れるコマンドの名前 */
-const QUICK_LABEL = 'ショートカットに 入れる';
+const SHORTCUT_LABEL = 'ショートカットに 入れる';
 /**
  * ショートカットから「投げる」で使う物か。
  * 矢や石は向きを聞かずに今の向きへ飛ばす。1 手で撃てることが値打ちなので、
@@ -421,7 +421,7 @@ export class DungeonScreen {
             const badges = [];
             if (isEquipped(p, item.uid))
                 badges.push({ text: 'E', color: UI.equip });
-            const slot = quickSlotOf(p, item.defId);
+            const slot = shortcutOf(p, item.defId);
             if (slot >= 0)
                 badges.push({ text: `${slot + 1}`, color: UI.cursorEdge });
             if (item.cursed && item.plusKnown)
@@ -446,7 +446,7 @@ export class DungeonScreen {
     }
     openItemMenu() {
         const menu = new ListMenu({
-            title: `持ち物　${this.world.player.inventory.length} / 20　　［F］整理　［1〜3］ショートカット`,
+            title: `持ち物　${this.world.player.inventory.length} / 20　　［F］整理　［1〜9］ショートカット`,
             entries: [],
             rect: {
                 x: MENU_LAYOUT.items.x, y: MENU_LAYOUT.items.y,
@@ -541,12 +541,12 @@ export class DungeonScreen {
             },
         });
         // 保持バッグ（数字キー 1〜3）
-        const inSlot = quickSlotOf(p, item.defId);
+        const inSlot = shortcutOf(p, item.defId);
         if (inSlot >= 0) {
             entries.push({
                 label: `ショートカット ${inSlot + 1} から 外す`,
                 onSelect: () => {
-                    assignQuickSlot(p, inSlot, null);
+                    assignShortcut(p, inSlot, null);
                     world.log(`ショートカット ${inSlot + 1} を 空けた。`, 'system');
                     this.pumpEvents();
                     return close();
@@ -555,23 +555,23 @@ export class DungeonScreen {
         }
         else {
             entries.push({
-                label: QUICK_LABEL,
+                label: SHORTCUT_LABEL,
                 desc: '数字キー 1〜3 で すぐ 使えるようになります。並べ替えても ずれません。',
                 onSelect: () => {
                     this.menus.push(new ListMenu({
-                        title: 'どの 枠に 入れますか？',
-                        entries: quickSlots(p).map((cur, i) => ({
+                        title: 'どの 番号に 割り当てますか？',
+                        entries: shortcutSlots(p).map((cur, i) => ({
                             label: `${i + 1}：${cur.item
                                 ? itemName(cur.item, world.run.identify)
                                 : cur.defId ? `${getItem(cur.defId).name}（切らしている）` : '（空き）'}`,
                             onSelect: () => {
-                                assignQuickSlot(p, i, item.defId);
+                                assignShortcut(p, i, item.defId);
                                 world.log(`${itemName(item, world.run.identify)}を ショートカット ${i + 1} に 入れた。`, 'system');
                                 this.pumpEvents();
                                 return close();
                             },
                         })),
-                        rect: { x: 420, y: 260, w: 420, h: 60 + QUICK_SLOTS * 40 },
+                        rect: { x: 420, y: 260, w: 420, h: 60 + SHORTCUT_SLOTS * 40 },
                     }));
                     return false;
                 },
@@ -1043,19 +1043,19 @@ export class DungeonScreen {
         });
     }
     /**
-     * 数字キー 1〜3 の保持バッグ。
+     * 数字キー 1〜9 のショートカット。
      *
      * 以前は「持ち物の N 番目」を直接指していたが、どこに何があるかは
      * 覚えていられないし、並べ替えると全部ずれる。
-     * 自分で入れた 3 つだけを画面に出し、uid で指すようにした。
+     * 割り当てた物を画面に出し、道具の種類で指すようにした。
      */
     useShortcut(index) {
         const p = this.world.player;
-        if (index < 1 || index > QUICK_SLOTS)
+        if (index < 1 || index > SHORTCUT_SLOTS)
             return;
-        const slot = quickSlots(p)[index - 1];
+        const slot = shortcutSlots(p)[index - 1];
         if (!slot.defId) {
-            this.world.log(`${index} の 枠は 空っぽだ。道具から「${QUICK_LABEL}」で 入れられる。`);
+            this.world.log(`${index} には 何も 割り当てていない。道具から「${SHORTCUT_LABEL}」で 登録できる。`);
             this.pumpEvents();
             return;
         }
@@ -1144,7 +1144,7 @@ export class DungeonScreen {
             turn: world.run.totalTurn,
             windy: world.dungeon.windTurns > 0 && world.run.windLeft <= 30 && world.run.windLeft > 0,
             bottom: world.atBottom,
-            quick: quickSlots(world.player).map((s) => ({
+            shortcuts: shortcutSlots(world.player).map((s) => ({
                 defId: s.defId,
                 label: s.item
                     ? itemName(s.item, world.run.identify, { withDetail: false, withCount: false })
