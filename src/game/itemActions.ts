@@ -18,7 +18,7 @@ import {
   makeItem, removeFromInventory, splitOne,
 } from './inventory.js';
 import { itemName, shortItemName } from './naming.js';
-import { applyEquipBonus, hasBracelet } from './bracelets.js';
+import { hasBracelet, syncBraceletBonus } from './bracelets.js';
 import { THROW_HIT, SELL_RATE, gitanThrowDamage, hitRate } from './rules.js';
 import type { World } from './world.js';
 
@@ -246,10 +246,8 @@ export function equipItem(world: World, uid: number): ActionResult {
       return OK;
     }
   }
-  // 前の腕輪のボーナスを外してから着け替える
-  if (def.kind === 'bracelet') applyEquipBonus(world, p, false);
   p[slot] = uid;
-  if (def.kind === 'bracelet') applyEquipBonus(world, p, true);
+  if (def.kind === 'bracelet') syncBraceletBonus(world, p);
   item.plusKnown = true;
   if (def.kind === 'bracelet') world.run.identify.known[item.defId] = true;
   world.log(`${itemName(item, world.run.identify)}を 装備した。`, 'item');
@@ -273,8 +271,8 @@ export function unequipItem(world: World, uid: number): ActionResult {
   if (p.weaponUid === uid) p.weaponUid = null;
   else if (p.shieldUid === uid) p.shieldUid = null;
   else if (p.braceletUid === uid) {
-    applyEquipBonus(world, p, false);
     p.braceletUid = null;
+    syncBraceletBonus(world, p);
   } else return NO('装備していない');
   world.log(`${itemName(item, world.run.identify)}を 外した。`, 'item');
   return OK;

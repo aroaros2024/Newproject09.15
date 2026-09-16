@@ -490,6 +490,12 @@ export interface PlayerActor extends ActorBase {
   foodX10: number;
   /** 満腹度の最大値（1/10 単位。上限 1500） */
   maxFoodX10: number;
+  /**
+   * 満腹度の減りの端数（1/100 単位）。
+   * 腹持ちの印などで「1 ターンあたり 0.5」のような減り方になるため、
+   * 整数の foodX10 だけで持つと切り捨てで 0 になり、腹が一切減らなくなる。
+   */
+  foodDrainAcc: number;
   gitan: number;
   /** 持ち物 */
   inventory: ItemInstance[];
@@ -497,6 +503,14 @@ export interface PlayerActor extends ActorBase {
   weaponUid: number | null;
   shieldUid: number | null;
   braceletUid: number | null;
+  /**
+   * 竜脈の腕輪などが maxHp に上乗せしている量。
+   *
+   * 「着けたら足す・外したら引く」を各所で手動に行うと、置く／投げる／売る／
+   * 壺に入れる／封印される、のどれか 1 つを直し忘れた時点で最大 HP がずれる。
+   * 上乗せ分をここに覚えておき、syncBraceletBonus() で毎ターン引き直す。
+   */
+  braceletHpBonus: number;
   /** 累計歩数（風の判定などに使う） */
   steps: number;
 }
@@ -738,6 +752,12 @@ export interface RunState {
   nextActorId: number;
   /** 風が吹くまでの残りターン（0 以下で強制移動） */
   windLeft: number;
+  /**
+   * 疾風状態で「あと 1 回、敵を動かさずに行動できる」か。
+   * 1 回の入力で 2 回動かすのではなく、2 回入力を受け付けてから
+   * 敵のターンを回す（シレンの倍速と同じ手触りにするため）。
+   */
+  playerActAgain: boolean;
   /** すでに倒したボス */
   defeatedBosses: string[];
   /**

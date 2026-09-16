@@ -24,6 +24,7 @@ import { applyTrapEffect } from './trapEffects.js';
 import { descend, refreshFov } from './run.js';
 import { tickStatuses } from './status.js';
 import { handlePlayerDeath } from './death.js';
+import { syncBraceletBonus } from './bracelets.js';
 import { WIND_GRACE_TURNS } from './rules.js';
 /** そのアクターがこのラウンドで行動するか */
 function actsThisRound(world, a, round) {
@@ -55,9 +56,13 @@ function effectiveSpeed(world, m) {
         return base === 'double' ? 'normal' : 'slow';
     return base;
 }
-/** プレイヤーが何ラウンド行動できるか */
+/** プレイヤーが 1 ターンに行動できる回数（疾風なら 2） */
 export function playerRounds(world) {
     return world.hasStatus(world.player, 'quick') ? 2 : 1;
+}
+/** 鈍足のプレイヤーの周りでは、他のみんなが 2 回分動く */
+function otherRoundsPerInput(world) {
+    return world.hasStatus(world.player, 'slow') ? 2 : 1;
 }
 /**
  * プレイヤーの行動を 1 つ処理して、1 ターンを進める。
@@ -83,9 +88,21 @@ export function stepTurn(world, action) {
         return result;
     detectAdjacentTraps(world, world.player);
     checkMonsterHouse(world);
-    // 倍速のときは 2 ラウンド目にもう一度入力を受け付ける必要があるが、
-    // 本作では簡潔さのため「1 回の入力で 2 回行動する」扱いにはしない。
-    runOthers(world);
+    // 疾風: 敵を動かさずに、もう 1 回だけ入力を受け付ける。
+    // 「1 回の入力で 2 回動く」ではなく「2 回操作できる」ことが倍速の価値なので、
+    // ここで敵のターンを回さずに戻る
+    if (!world.finished && world.hasStatus(world.player, 'quick') && !world.run.playerActAgain) {
+        world.run.playerActAgain = true;
+        refreshFov(world);
+        return result;
+    }
+    world.run.playerActAgain = false;
+    // 鈍足: 自分が 1 回動く間に、他のみんなが 2 回分動く
+    for (let i = 0; i < otherRoundsPerInput(world); i++) {
+        if (world.finished)
+            break;
+        runOthers(world);
+    }
     endOfTurn(world);
     return result;
 }
@@ -191,6 +208,10 @@ function checkMonsterHouse(world) {
 function endOfTurn(world) {
     world.run.floorTurn++;
     world.run.totalTurn++;
+    // 竜脈の腕輪の最大 HP ボーナスを引き直す。
+    // 置く・投げる・売る・壺に入れる・封印される、といった経路をすべて
+    // 個別に直すのは無理があるので、毎ターンここで一度だけ辻褄を合わせる
+    syncBraceletBonus(world, world.player);
     // 状態異常。火傷や猛毒で敵が倒れた場合も、通常の撃破と同じ経路を通して
     // 経験値・ドロップ・盗まれた道具の返却が起きるようにする
     for (const a of [...world.livingActors()]) {

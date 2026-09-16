@@ -12,7 +12,7 @@ import { eat } from './hunger.js';
 import { ITEM_EFFECTS, mergeInto, throwDamage } from './itemEffects.js';
 import { addToInventory, allCarriedItems, findItem, isEquipped, isInventoryFull, makeItem, removeFromInventory, splitOne, } from './inventory.js';
 import { itemName, shortItemName } from './naming.js';
-import { applyEquipBonus, hasBracelet } from './bracelets.js';
+import { hasBracelet, syncBraceletBonus } from './bracelets.js';
 import { THROW_HIT, SELL_RATE, gitanThrowDamage, hitRate } from './rules.js';
 const OK = { tookTurn: true };
 const NO = (reason) => ({ tookTurn: false, reason });
@@ -225,12 +225,9 @@ export function equipItem(world, uid) {
             return OK;
         }
     }
-    // 前の腕輪のボーナスを外してから着け替える
-    if (def.kind === 'bracelet')
-        applyEquipBonus(world, p, false);
     p[slot] = uid;
     if (def.kind === 'bracelet')
-        applyEquipBonus(world, p, true);
+        syncBraceletBonus(world, p);
     item.plusKnown = true;
     if (def.kind === 'bracelet')
         world.run.identify.known[item.defId] = true;
@@ -256,8 +253,8 @@ export function unequipItem(world, uid) {
     else if (p.shieldUid === uid)
         p.shieldUid = null;
     else if (p.braceletUid === uid) {
-        applyEquipBonus(world, p, false);
         p.braceletUid = null;
+        syncBraceletBonus(world, p);
     }
     else
         return NO('装備していない');

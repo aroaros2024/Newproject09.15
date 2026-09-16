@@ -12,6 +12,7 @@
 import type { PlayerActor } from '../core/types.js';
 import { getItem } from '../data/registry.js';
 import { equippedBracelet } from './inventory.js';
+import { MAX_HP_CAP } from './rules.js';
 import type { World } from './world.js';
 
 /** 実装済みの腕輪の効果 id。data 側はこの中からしか使ってはいけない */
@@ -54,16 +55,28 @@ export function braceletIsCursed(p: PlayerActor): boolean {
   return !!b && b.cursed;
 }
 
-/** 竜脈の腕輪のように、着け外しで最大 HP が変わるものを反映する */
-export function applyEquipBonus(world: World, p: PlayerActor, equipping: boolean): void {
-  const effect = activeBraceletEffect(world, p);
-  if (effect !== 'maxHpUp') return;
-  const amount = 30;
-  if (equipping) {
-    p.maxHp = Math.min(999, p.maxHp + amount);
-    p.hp = Math.min(p.maxHp, p.hp + amount);
-  } else {
-    p.maxHp = Math.max(1, p.maxHp - amount);
-    p.hp = Math.min(p.hp, p.maxHp);
-  }
+/** 竜脈の腕輪が上乗せする最大 HP */
+export const MAX_HP_BRACELET_BONUS = 30;
+
+/**
+ * 竜脈の腕輪の最大 HP ボーナスを、今の状態に合わせて引き直す。
+ *
+ * 「装備した時に足して、外した時に引く」という書き方だと、
+ * 置く・投げる・売る・壺に入れる・封印される・封印が解ける、の
+ * どれか 1 つでも呼び忘れた瞬間に最大 HP がずれる（増え続ける／減り続ける）。
+ * そこで「今いくら上乗せしているか」を braceletHpBonus に持ち、
+ * この関数は何度呼んでも同じ結果になるようにしてある。
+ * 装備の付け外しの直後と、毎ターンの終わりに呼べばよい。
+ */
+export function syncBraceletBonus(world: World, p: PlayerActor): void {
+  // 腕輪を抜きにした素の最大 HP
+  const base = p.maxHp - p.braceletHpBonus;
+  const want = activeBraceletEffect(world, p) === 'maxHpUp' ? MAX_HP_BRACELET_BONUS : 0;
+  const applied = Math.max(0, Math.min(want, MAX_HP_CAP - base));
+  if (applied === p.braceletHpBonus) return;
+  const diff = applied - p.braceletHpBonus;
+  p.braceletHpBonus = applied;
+  p.maxHp = base + applied;
+  if (diff > 0) p.hp = Math.min(p.maxHp, p.hp + diff);
+  else p.hp = Math.min(p.hp, p.maxHp);
 }

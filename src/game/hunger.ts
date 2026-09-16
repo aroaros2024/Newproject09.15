@@ -15,8 +15,17 @@ import { equipRuneLevel } from './runes.js';
 import { equippedBracelet, equippedShield, equippedWeapon } from './inventory.js';
 import type { World } from './world.js';
 
-/** 1 ターンに減る満腹度（1/10 単位） */
-export function hungerDrain(world: World, p: PlayerActor): number {
+/** 満腹度の減りを数える細かさ。1 ターンぶんの基本値 = 1/10 単位の 1 */
+const DRAIN_SCALE = 100;
+
+/**
+ * 1 ターンに減る満腹度（1/10 単位の DRAIN_SCALE 倍）。
+ *
+ * 腹持ちの印・疾風の印は減りを半分にするが、1/10 単位のままだと
+ * floor(1/2) = 0 になり「一切減らない」になってしまう。
+ * ここでは 100 倍した細かさで計算し、端数は foodDrainAcc に貯める。
+ */
+export function hungerDrainX100(world: World, p: PlayerActor): number {
   const bracelet = equippedBracelet(p);
   const sealed = world.hasStatus(p, 'sealed');
   const braceletEffect = bracelet && !sealed
@@ -27,9 +36,9 @@ export function hungerDrain(world: World, p: PlayerActor): number {
     : '';
 
   // ハラヘラズの腕輪は、呪われていなければ満腹度が減らない
-  if (braceletEffect === 'noHunger') return bracelet && bracelet.cursed ? 3 : 0;
+  if (braceletEffect === 'noHunger') return bracelet && bracelet.cursed ? 3 * DRAIN_SCALE : 0;
 
-  let d = HUNGER_DRAIN_BASE;
+  let d = HUNGER_DRAIN_BASE * DRAIN_SCALE;
   if (braceletEffect === 'regen') d *= 2;
   if (braceletEffect === 'starveCurse') d *= 4;
   if (world.hasStatus(p, 'hungryFast')) d *= 2;
@@ -43,7 +52,7 @@ export function hungerDrain(world: World, p: PlayerActor): number {
   if (satiety > 0) d = Math.max(0, Math.floor(d / (1 + satiety)));
   if (equipRuneLevel(shield, 'blunt') > 0) d *= 2;
 
-  return Math.min(HUNGER_DRAIN_CAP, d);
+  return Math.min(HUNGER_DRAIN_CAP * DRAIN_SCALE, d);
 }
 
 /**
@@ -52,7 +61,10 @@ export function hungerDrain(world: World, p: PlayerActor): number {
  */
 export function tickHunger(world: World, p: PlayerActor): boolean {
   const before = p.foodX10;
-  p.foodX10 = Math.max(0, p.foodX10 - hungerDrain(world, p));
+  p.foodDrainAcc += hungerDrainX100(world, p);
+  const eaten = Math.floor(p.foodDrainAcc / DRAIN_SCALE);
+  p.foodDrainAcc -= eaten * DRAIN_SCALE;
+  p.foodX10 = Math.max(0, p.foodX10 - eaten);
 
   if (before > HUNGER_WARN_X10 && p.foodX10 <= HUNGER_WARN_X10) {
     world.log('おなかが 減ってきた……', 'warning');

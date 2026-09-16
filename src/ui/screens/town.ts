@@ -319,13 +319,20 @@ export class TownScreen implements Screen {
           },
         };
       });
+      // 売られた物が混ざっていたら、ここで落としておく
+      this.bring = this.bring.filter((i) => town.storage.includes(i));
       entries.unshift({
         label: `▶ この ${this.bring.length} 個を 持って 出発する`,
         color: UI.good,
         desc: 'いま選んでいる道具だけを持って ダンジョンへ 向かいます。',
         onSelect: () => {
-          const taken = this.bring.slice();
-          for (const item of taken) withdrawItem(town, item.uid);
+          // 実際に倉庫から取り出せた物だけを持っていく。
+          // 選んだあとに売ってしまった物を持ち込めてしまうと、
+          // 代金と品物の両方が手に入る（無限にギタンが増える）
+          const taken = this.bring
+            .map((i) => withdrawItem(town, i.uid))
+            .filter((i): i is ItemInstance => i !== null);
+          this.bring = [];
           this.app.persist();
           this.onEnterDungeon(dungeonId, taken);
           return true;

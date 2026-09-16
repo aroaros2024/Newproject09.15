@@ -63,7 +63,15 @@ export function unlockNext(town, clearedId) {
 // 倉庫
 // ---------------------------------------------------------------------------
 export const storageFull = (town) => town.storage.length >= STORAGE_LIMIT;
-/** 倉庫へ預ける */
+/**
+ * 倉庫へ預ける。
+ *
+ * 冒険中の uid は startRun のたびに 1 から振り直されるので、持ち帰った物を
+ * そのまま積むと村の uid とぶつかる（2 回目の冒険から必ず起きる）。
+ * 倉庫の操作はすべて uid の先頭一致で対象を探すため、重複したまま置くと
+ * 「売ったのに別の物が消える」「鍛えたのに別の物が強くなる」が起きる。
+ * ここで村の採番に付け替えて、倉庫の中では必ず一意になるようにする。
+ */
 export function depositItem(town, item) {
     const def = getItem(item.defId);
     if (def.stackable) {
@@ -75,6 +83,9 @@ export function depositItem(town, item) {
     }
     if (storageFull(town))
         return false;
+    item.uid = town.nextUid++;
+    for (const c of item.contents)
+        c.uid = town.nextUid++;
     town.storage.push(item);
     return true;
 }
@@ -236,6 +247,10 @@ export function finishRun(world, town, kind, cause) {
     else {
         lost = p.inventory.length;
     }
+    // 持ち込んだギタンは startRun で村から冒険へ「移した」ので、
+    // ここで足し戻したあとは冒険側を空にしておく。
+    // そうしないと finishRun を経るたびに所持ギタンが倍になる
+    p.gitan = 0;
     // 倉庫の壺に入れた物は、死んでも届く
     for (const item of world.pendingWarehouse) {
         if (!depositItem(town, item))

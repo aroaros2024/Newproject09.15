@@ -139,7 +139,27 @@ function validateTown(t: Partial<TownState>): TownState {
     nextUid: Number.isFinite(t.nextUid) ? Math.max(1, Math.floor(t.nextUid as number)) : 1,
   };
   if (!out.unlocked.includes('d1')) out.unlocked.push('d1');
+  renumberStorage(out);
   return out;
+}
+
+/**
+ * 倉庫の uid を 1 から振り直す。
+ *
+ * 倉庫の操作（売る・鍛える・持っていく）は uid の先頭一致で対象を探すので、
+ * 重複があると別の道具に作用してしまう。以前のセーブには
+ * 冒険側の uid がそのまま混ざっているものがあるため、読み込み時に均す。
+ */
+function renumberStorage(town: TownState): void {
+  let next = 1;
+  for (const item of town.storage) {
+    if (!item || typeof item !== 'object') continue;
+    item.uid = next++;
+    if (Array.isArray(item.contents)) {
+      for (const c of item.contents) c.uid = next++;
+    }
+  }
+  town.nextUid = Math.max(next, town.nextUid);
 }
 
 // ---------------------------------------------------------------------------

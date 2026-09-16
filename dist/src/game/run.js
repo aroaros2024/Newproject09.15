@@ -67,11 +67,13 @@ function makePlayer(name) {
         maxStr: START_STR,
         foodX10: START_FOOD_X10,
         maxFoodX10: START_FOOD_X10,
+        foodDrainAcc: 0,
         gitan: 0,
         inventory: [],
         weaponUid: null,
         shieldUid: null,
         braceletUid: null,
+        braceletHpBonus: 0,
         steps: 0,
         statuses: [],
         alive: true,
@@ -112,6 +114,7 @@ export function startRun(dungeonId, town, opts = {}) {
         nextUid: 1,
         nextActorId: 1,
         windLeft: dungeon.windTurns > 0 ? dungeon.windTurns : WIND_DEFAULT_TURNS,
+        playerActAgain: false,
         defeatedBosses: [],
         encountered: { monsters: [], items: [] },
         stats: {
@@ -133,7 +136,10 @@ export function startRun(dungeonId, town, opts = {}) {
             };
             player.inventory.push(copy);
         }
+        // ギタンは村から冒険へ「移す」。ここで村側を空にしないと、
+        // 帰還時の town.gitan += p.gitan で毎回倍になる
         player.gitan = town.gitan;
+        town.gitan = 0;
     }
     if (dungeon.allowBring) {
         // 丸腰で出発させない。武器も盾も無ければ村が貸してくれる
