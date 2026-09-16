@@ -23,6 +23,9 @@ export type SkillHandler = (world: World, m: MonsterActor, target: Actor) => boo
 
 const adjacent = (m: MonsterActor, t: Actor): boolean => chebyshev(m.pos, t.pos) === 1;
 
+/** 自己回復の特技を使える回数の上限 */
+const MAX_SELF_HEALS = 3;
+
 /** 盾の「盗」印・盗賊よけの腕輪で盗みを防げるか */
 function blocksTheft(world: World, t: Actor): boolean {
   if (t.kind !== 'player') return false;
@@ -185,9 +188,13 @@ export const MONSTER_SKILLS: Record<string, SkillHandler> = {
   },
 
   healSelf: (world, m) => {
+    // 回数制限が無いと、倍速で回復を撃ち続ける敵が不死身になってしまう。
+    // 回復できる総量を「最大 HP の 90%」までに抑える。
+    if (m.healsUsed >= MAX_SELF_HEALS) return false;
     if (m.hp >= m.maxHp * 0.6) return false;
     const heal = healActor(world, m, Math.floor(m.maxHp * 0.3));
     if (heal <= 0) return false;
+    m.healsUsed++;
     world.log(`${world.nameOf(m)}は 傷を 癒やした。`, 'bad');
     return true;
   },
@@ -521,6 +528,11 @@ export function explodeOnDeath(world: World, m: MonsterActor): void {
 
 /** レベルダウンの杖などで 1 段階下げる */
 export function devolveMonster(world: World, m: MonsterActor): boolean {
+  // ボスを消すと、その階の階段が永久に開かなくなって詰む
+  if (world.defOf(m).isBoss) {
+    world.log(`${world.nameOf(m)}には 効かなかった。`);
+    return false;
+  }
   const prev = devolveOf(m.defId);
   if (!prev) {
     // これ以上下げられない敵は消える
@@ -543,6 +555,10 @@ export function devolveMonster(world: World, m: MonsterActor): boolean {
 
 /** 成長の杖などで 1 段階上げる */
 export function evolveMonster(world: World, m: MonsterActor): boolean {
+  if (world.defOf(m).isBoss) {
+    world.log(`${world.nameOf(m)}には 効かなかった。`);
+    return false;
+  }
   const next = world.defOf(m).evolveTo;
   if (!next) return false;
   const newDef = world.defOfId(next);

@@ -21,6 +21,7 @@ import {
 } from './rules.js';
 import { World } from './world.js';
 import { activeBraceletEffect } from './bracelets.js';
+import { onMonsterDefeated } from './deathHooks.js';
 
 /**
  * World に「アイテム／モンスターを作る関数」を注入する。
@@ -31,6 +32,7 @@ import { activeBraceletEffect } from './bracelets.js';
 export function attachFactories(world: World): void {
   world.itemFactory = (defId) => makeSpecificItem(world, defId, world.run.depth);
   world.braceletEffectLookup = (p) => activeBraceletEffect(world, p);
+  world.onMonsterDefeated = (m) => onMonsterDefeated(world, m);
   world.spawnAt = (defId, pos) => {
     if (world.actorAt(pos)) return null;
     return world.addMonster(makeMonster(world, defId, pos));
@@ -303,9 +305,18 @@ function showFloorGuide(world: World, depth: number): void {
   for (const line of guides[depth] ?? []) world.log(line, 'system');
 }
 
-/** 階段を降りる */
+/**
+ * 次の階へ降りる。階段でも落とし穴でも、下へ行く経路はすべてここを通る。
+ *
+ * ボスの関門はここに置く。階段側だけで見ていると、落とし穴で
+ * 最下層を抜けてボス未撃破のままクリアできてしまう。
+ */
 export function descend(world: World): void {
   const d = world.dungeon;
+  if (!world.bossesCleared()) {
+    world.log('強い 気配に 阻まれて 先へ 進めない！', 'bad');
+    return;
+  }
   if (world.run.depth >= d.depth) {
     world.finished = { kind: 'clear', reason: 'クリア' };
     world.emit({ t: 'dungeonClear' });

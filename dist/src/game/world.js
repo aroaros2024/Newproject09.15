@@ -35,6 +35,11 @@ export class World {
     monsterFactory = null;
     /** 指定のモンスターを指定位置に出す（ボスの形態変化などで使う） */
     spawnAt = null;
+    /**
+     * モンスターが倒れた瞬間に呼ばれる。フロアから取り除く直前。
+     * 爆発とボスの撃破記録をここで済ませる。
+     */
+    onMonsterDefeated = null;
     /** 聖域の巻物が敷かれているマス。敵はここに入れない */
     sanctuaries = [];
     /** 身代わりの杖で狙われるようになった敵の id */

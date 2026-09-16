@@ -93,6 +93,7 @@ export function makeMonster(
     disguise: null,
     tactic: 'follow',
     bossPhase: 0,
+    healsUsed: 0,
     lastSeen: null,
     angry: false,
     nameOverride: null,

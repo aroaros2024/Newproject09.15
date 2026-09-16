@@ -14,5 +14,5 @@ export const INCAPACITATING = [
 // ===========================================================================
 // 保存形式
 // ===========================================================================
-export const SAVE_VERSION = 1;
+export const SAVE_VERSION = 2;
 //# sourceMappingURL=types.js.map

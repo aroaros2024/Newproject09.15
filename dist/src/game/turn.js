@@ -16,7 +16,7 @@
 import { chebyshev, samePoint } from '../core/geom.js';
 import { naturalSpawn, triggerMonsterHouse } from '../dungeon/spawn.js';
 import { onEnterTile, performPlayerAction } from './actions.js';
-import { explodeOnDeath } from './monsterSkills.js';
+import { killActor } from './combat.js';
 import { AiContext, takeAllyTurn, takeMonsterTurn } from './monsterAI.js';
 import { detectAdjacentTraps } from './actions.js';
 import { tickHunger, tickRegen } from './hunger.js';
@@ -74,15 +74,12 @@ export function stepTurn(world, action) {
         return result;
     }
     resolvePendingEffects(world);
-    if (world.finished)
+    if (checkPlayerDeath(world, 'ちからつきた'))
         return result;
     // プレイヤーが乗ったマスの効果
-    if (onEnterTile(world, world.player)) {
-        if (handlePlayerDeath(world, 'ちからつきた'))
-            return result;
-    }
+    onEnterTile(world, world.player);
     resolvePendingEffects(world);
-    if (world.finished)
+    if (checkPlayerDeath(world, 'ちからつきた'))
         return result;
     detectAdjacentTraps(world, world.player);
     checkMonsterHouse(world);
@@ -111,11 +108,7 @@ function runOthers(world) {
                 continue;
             takeMonsterTurn(world, m, ctx);
             resolvePendingEffects(world);
-            if (world.player.hp <= 0) {
-                if (handlePlayerDeath(world, causeOfDeath(world, m)))
-                    return;
-            }
-            if (world.finished)
+            if (checkPlayerDeath(world, causeOfDeath(world, m)))
                 return;
         }
         cleanupDead(world);
@@ -125,46 +118,39 @@ function causeOfDeath(world, m) {
     return `${world.nameOf(m)}に やられた`;
 }
 /**
- * ボスを倒したときの処理。
- * その階にまだ次の形態が控えていれば、同じ場所に現れる。
+ * alive=false のまま残っている敵を片付ける。
+ *
+ * 通常の撃破は killActor() がその場でフックを呼んで取り除くので、
+ * ここに来るのは「HP を直接 0 にされた」ような経路だけ。
+ * 取りこぼしても後始末が二度走らないよう、フックは冪等にしてある。
  */
-function handleBossDefeated(world, m) {
-    if (!world.run.defeatedBosses.includes(m.defId)) {
-        world.run.defeatedBosses.push(m.defId);
-    }
-    const here = world.bossesHere();
-    const idx = here.findIndex((b) => b.monsterId === m.defId);
-    const next = idx >= 0 ? here[idx + 1] : undefined;
-    if (!next) {
-        if (here.length > 0) {
-            world.log('あたりの 気配が 静まった。階段が 開いている。', 'good');
-            world.sfx('fanfare');
-        }
-        return;
-    }
-    const spot = world.findDropSpot(m.pos, 4) ?? m.pos;
-    const boss = world.spawnAt?.(next.monsterId, spot);
-    if (!boss)
-        return;
-    world.log('しかし 相手は まだ 倒れていなかった！', 'bad');
-    world.emit({ t: 'bossAppear', actorId: boss.id });
-    world.sfx('bossAppear');
-}
-/** 死んだ敵の後始末（爆発する敵はここで爆発し、ボスは次の形態へ移る） */
 function cleanupDead(world) {
     for (const m of [...world.run.monsters]) {
         if (m.alive)
             continue;
-        if (world.defOf(m).skills.includes('explodeOnDeath'))
-            explodeOnDeath(world, m);
-        if (world.defOf(m).isBoss)
-            handleBossDefeated(world, m);
+        world.onMonsterDefeated?.(m);
         world.removeActor(m);
     }
     for (const a of [...world.run.allies]) {
         if (!a.alive)
             world.removeActor(a);
     }
+}
+/**
+ * プレイヤーが倒れていないか確かめる。
+ *
+ * ワナや爆発のダメージは killActor() を通るが、プレイヤーの場合
+ * killActor は alive=false にするだけで world.finished は立てない
+ * （復活判定があるため）。この確認を挟まないと、HP0・alive=false・
+ * finished=null という「幽霊状態」のまま行動し続けられてしまう。
+ */
+function checkPlayerDeath(world, cause) {
+    if (world.finished)
+        return true;
+    const p = world.player;
+    if (p.hp > 0 && p.alive)
+        return false;
+    return handlePlayerDeath(world, cause);
 }
 /** 行動中に積まれた「あとで処理するもの」を解決する */
 function resolvePendingEffects(world) {
@@ -205,26 +191,26 @@ function checkMonsterHouse(world) {
 function endOfTurn(world) {
     world.run.floorTurn++;
     world.run.totalTurn++;
-    // 状態異常
+    // 状態異常。火傷や猛毒で敵が倒れた場合も、通常の撃破と同じ経路を通して
+    // 経験値・ドロップ・盗まれた道具の返却が起きるようにする
     for (const a of [...world.livingActors()]) {
-        if (tickStatuses(world, a)) {
-            if (a.kind === 'player') {
-                if (handlePlayerDeath(world, '状態異常に 力尽きた'))
-                    return;
-            }
-            else {
-                a.alive = false;
-            }
+        if (!tickStatuses(world, a))
+            continue;
+        if (a.kind === 'player') {
+            if (handlePlayerDeath(world, '状態異常に 力尽きた'))
+                return;
+        }
+        else {
+            killActor(world, world.player, a);
         }
     }
     cleanupDead(world);
     if (world.finished)
         return;
     // 満腹度
-    if (tickHunger(world, world.player)) {
-        if (handlePlayerDeath(world, 'ちからつきた'))
-            return;
-    }
+    tickHunger(world, world.player);
+    if (checkPlayerDeath(world, 'ちからつきた'))
+        return;
     // HP 自然回復
     for (const a of world.livingActors())
         tickRegen(world, a);

@@ -42,6 +42,11 @@ export class World {
   monsterFactory: ((pos: Point) => MonsterActor | null) | null = null;
   /** 指定のモンスターを指定位置に出す（ボスの形態変化などで使う） */
   spawnAt: ((defId: string, pos: Point) => MonsterActor | null) | null = null;
+  /**
+   * モンスターが倒れた瞬間に呼ばれる。フロアから取り除く直前。
+   * 爆発とボスの撃破記録をここで済ませる。
+   */
+  onMonsterDefeated: ((m: MonsterActor) => void) | null = null;
   /** 聖域の巻物が敷かれているマス。敵はここに入れない */
   sanctuaries: Point[] = [];
   /** 身代わりの杖で狙われるようになった敵の id */

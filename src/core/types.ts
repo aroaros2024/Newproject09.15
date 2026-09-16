@@ -521,6 +521,8 @@ export interface MonsterActor extends ActorBase {
   tactic: AllyTactic;
   /** ボスの行動フェーズ */
   bossPhase: number;
+  /** 自己回復の特技を使った回数（無限に回復して不死身にならないための上限） */
+  healsUsed: number;
   /** 追跡のために最後にプレイヤーを見た位置 */
   lastSeen: Point | null;
   /** 店主が怒っているか */
@@ -826,7 +828,7 @@ export type ScreenId = 'title' | 'town' | 'dungeon' | 'result';
 // 保存形式
 // ===========================================================================
 
-export const SAVE_VERSION = 1;
+export const SAVE_VERSION = 2;
 
 export interface SaveFile {
   version: number;

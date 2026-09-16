@@ -373,6 +373,11 @@ export function killActor(world: World, src: Actor | null, target: Actor): void 
     // 成長の印
     growEquipment(world);
   }
+
+  // 爆発やボスの撃破記録は、フロアから取り除く前にここで済ませる。
+  // 取り除いたあとに turn.ts がまとめて面倒を見る作りだと、
+  // もう走査対象に居ないので永久に呼ばれない。
+  world.onMonsterDefeated?.(target);
   world.removeActor(target);
 }
 
