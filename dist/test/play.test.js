@@ -5,7 +5,7 @@ import { DIRS, chebyshev } from '../src/core/geom.js';
 import { startRun } from '../src/game/run.js';
 import { stepTurn } from '../src/game/turn.js';
 import { connectivityReport, at } from '../src/dungeon/tilemap.js';
-import { getDungeon } from '../src/data/registry.js';
+import { getDungeon, getItem } from '../src/data/registry.js';
 import { attackPower, defensePower, gainExp } from '../src/game/combat.js';
 import { EXP_TABLE, calcDamage, expectedDamage } from '../src/game/rules.js';
 function newTown(name = 'ナギ') {
@@ -207,7 +207,24 @@ test('素手の攻撃力はちからと等しい', () => {
     assert.equal(attackPower(world, world.player), 8);
     assert.equal(defensePower(world, world.player), 0);
 });
-test('丸腰では出発させない（村が木の棒と木の盾を貸してくれる）', () => {
+test('貸し出し装備はダンジョンが深いほど良くなる', () => {
+    const defOf = (id) => {
+        const world = startRun(id, newTown(), { seed: 900 });
+        const shield = world.player.inventory.find((i) => i.uid === world.player.shieldUid);
+        if (!shield)
+            return 0;
+        const d = getItem(shield.defId);
+        return d.kind === 'shield' ? d.def : 0;
+    };
+    const d1 = defOf('d1');
+    const d2 = defOf('d2');
+    const d4 = defOf('d4');
+    const dl = defOf('dl');
+    assert.ok(d1 < d2, `d1(${d1}) < d2(${d2}) になっていない`);
+    assert.ok(d2 < d4, `d2(${d2}) < d4(${d4}) になっていない`);
+    assert.ok(d4 < dl, `d4(${d4}) < dl(${dl}) になっていない`);
+});
+test('丸腰では出発させない（村が装備を貸してくれる）', () => {
     const world = startRun('d1', newTown(), { seed: 3 });
     const p = world.player;
     assert.notEqual(p.weaponUid, null, '武器を持たずに出発している');
@@ -227,9 +244,12 @@ test('持ち込んだ装備があれば貸し出し装備は付かない', () =>
     const world = startRun('d2', town, { seed: 4, bring });
     const ids = world.player.inventory.map((i) => i.defId);
     assert.ok(ids.includes('steelSword'));
-    assert.ok(!ids.includes('woodStick'), '武器を持っているのに木の棒を渡している');
-    // 盾は持っていないので貸してもらえる
-    assert.ok(ids.includes('woodShield'));
+    // 武器は持っているので貸し出されない
+    const weapons = world.player.inventory.filter((i) => getItem(i.defId).kind === 'weapon');
+    assert.equal(weapons.length, 1, '武器を持っているのに貸し出し装備が付いている');
+    // 盾は持っていないので、そのダンジョン相応の盾を貸してもらえる
+    const shields = world.player.inventory.filter((i) => getItem(i.defId).kind === 'shield');
+    assert.equal(shields.length, 1, '盾が貸し出されていない');
     // 持ち込んだ武器が自動で装備される
     const weapon = world.player.inventory.find((i) => i.defId === 'steelSword');
     assert.equal(world.player.weaponUid, weapon.uid, '持ち込んだ武器が装備されていない');

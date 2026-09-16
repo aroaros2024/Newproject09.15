@@ -138,7 +138,13 @@ export function populateFloor(world) {
             tile.trap = { defId: trapId, revealed: false, used: false };
     }
     // --- モンスター ---
-    const monsterCount = rng.range(d.gen.monsters[0], d.gen.monsters[1]);
+    // 序盤の階は少なめにして、装備も経験値も無いうちに囲まれないようにする。
+    // 最深部の 1/3 あたりで既定の数に達する。
+    const ramp = Math.min(1, (depth - 1) / Math.max(1, Math.floor(d.depth / 3)));
+    const lo = d.gen.monsters[0];
+    const hi = d.gen.monsters[1];
+    const cap = Math.round(lo + (hi - lo) * ramp);
+    const monsterCount = rng.range(Math.max(2, Math.floor(lo * (0.5 + 0.5 * ramp))), Math.max(2, cap));
     for (let i = 0; i < monsterCount; i++) {
         const id = pickMonsterId(d, depth, rng);
         if (!id)

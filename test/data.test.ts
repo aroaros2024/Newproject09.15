@@ -180,3 +180,56 @@ test('クリア報酬のアイテムが存在する', () => {
     assert.ok(d.reward.message.length > 0, `${d.id}: 報酬メッセージが空`);
   }
 });
+
+/**
+ * どのダンジョンでも Lv1・HP15 から始まるので、序盤の階で
+ * 「2 発で沈む」敵が出てはいけない。ここを緩めると、
+ * ラストダンジョンの 1F で即死するようなことが起きる。
+ */
+test('序盤の階は、想定装備で 3 発は耐えられる強さに収まっている', async () => {
+  const { expectedDamage } = await import('../src/game/rules.js');
+  const { START_HP } = await import('../src/game/rules.js');
+  // そのダンジョンへ潜るとき、倉庫から持ってくるであろう盾の防御力
+  const EXPECTED_SHIELD: Record<string, number> = {
+    d1: 2, d2: 4, d3: 8, d4: 11, dl: 15, ex: 0,
+  };
+  // 潜るにつれてレベルが上がるので、想定 HP も階層で伸ばす
+  const expectedHp = (depth: number): number => START_HP + (depth - 1) * 4;
+  const problems: string[] = [];
+  for (const d of allDungeons()) {
+    const shield = EXPECTED_SHIELD[d.id] ?? 0;
+    for (const depth of [1, 2, 3]) {
+      if (depth > d.depth) break;
+      const hp = expectedHp(depth);
+      for (const e of d.monsters) {
+        if (depth < e.from || depth > e.to) continue;
+        const m = getMonster(e.id);
+        const dmg = expectedDamage(m.atk, shield);
+        const hits = Math.ceil(hp / dmg);
+        if (hits < 3) {
+          problems.push(
+            `${d.id} ${depth}F: ${m.name}（攻撃${m.atk}）が ${dmg} ダメージ`
+            + `＝HP${hp} を ${hits}発で削り切る`,
+          );
+        }
+      }
+    }
+  }
+  assert.deepEqual(problems, [], `序盤が厳しすぎる:\n${[...new Set(problems)].join('\n')}`);
+});
+
+test('ダンジョンの難易度が階層とともに上がっていく', () => {
+  for (const d of allDungeons()) {
+    const threatAt = (depth: number): number => {
+      const avail = d.monsters.filter((e) => depth >= e.from && depth <= e.to);
+      if (avail.length === 0) return 0;
+      return Math.max(...avail.map((e) => getMonster(e.id).atk));
+    };
+    const early = threatAt(1);
+    const late = threatAt(d.depth);
+    assert.ok(
+      late > early * 1.5,
+      `${d.id}: 最深部(${late}) が序盤(${early}) と比べて強くなっていない`,
+    );
+  }
+});

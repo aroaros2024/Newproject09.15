@@ -3,6 +3,7 @@
  */
 import { Rng, hashSeed } from '../core/rng.js';
 import { ALIAS_POOLS, DEFAULT_PLAYER_NAME } from '../data/names.js';
+import { LOANER_GEAR } from '../data/dungeons.js';
 import { UNIDENTIFIED_KINDS, getDungeon, getItem, itemsOfKind } from '../data/registry.js';
 import { computeFov } from '../dungeon/fov.js';
 import { generateFloor } from '../dungeon/generator.js';
@@ -152,13 +153,16 @@ export function startRun(dungeonId, town, opts = {}) {
 function lendStartingGear(world) {
     const p = world.player;
     const has = (kind) => p.inventory.some((i) => getItem(i.defId).kind === kind);
+    const gear = LOANER_GEAR[world.dungeon.id];
+    if (!gear)
+        return;
     if (!has('weapon')) {
-        const stick = makeItem('woodStick', world.rng, { plusKnown: true }, () => world.nextUid());
-        p.inventory.push(stick);
-        p.weaponUid = stick.uid;
+        const weapon = makeItem(gear.weapon, world.rng, { plusKnown: true }, () => world.nextUid());
+        p.inventory.push(weapon);
+        p.weaponUid = weapon.uid;
     }
     if (!has('shield')) {
-        const shield = makeItem('woodShield', world.rng, { plusKnown: true }, () => world.nextUid());
+        const shield = makeItem(gear.shield, world.rng, { plusKnown: true }, () => world.nextUid());
         p.inventory.push(shield);
         p.shieldUid = shield.uid;
     }
