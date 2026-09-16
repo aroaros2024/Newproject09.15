@@ -384,7 +384,7 @@ export class DungeonScreen {
                 label: itemName(item, world.run.identify),
                 right: item.shopPrice > 0 ? `${item.shopPrice}G` : kindLabel(def.kind),
                 badges,
-                sprite: def.sprite,
+                sprite: spriteOfItem(item),
                 desc: world.run.identify.known[item.defId] || !isUnknownKind(def.kind)
                     ? def.desc
                     : 'まだ 何か 分からない。使ってみるか、識別するしかない。',

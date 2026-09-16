@@ -92,34 +92,70 @@ const trapTable = (depth: number, from = 1, exclude: string[] = []): SpawnEntry[
 // ---------------------------------------------------------------------------
 
 const THEME_CAVE: DungeonTheme = {
-  wall: '#3a2f26', wallTop: '#584639', floor: '#2b2620', floorAlt: '#332d25',
-  corridor: '#221e19', liquid: '#2a4a5c', liquidAlt: '#356a80',
-  gloom: '#0a0908', accent: '#c8a05a',
+  wall: '#4a3b2e',
+  wallTop: '#6d5744',
+  floor: '#3d362c',
+  floorAlt: '#463d31',
+  corridor: '#2e2822',
+  liquid: '#2a4a5c',
+  liquidAlt: '#356a80',
+  gloom: '#08070a',
+  accent: '#d8b06a',
 };
 const THEME_FOREST: DungeonTheme = {
-  wall: '#24402a', wallTop: '#3a6340', floor: '#1e2b20', floorAlt: '#253327',
-  corridor: '#18211a', liquid: '#1f5a70', liquidAlt: '#2f86a4',
-  gloom: '#060b07', accent: '#7fc47a',
+  wall: '#2d5034',
+  wallTop: '#47784e',
+  floor: '#2c3f30',
+  floorAlt: '#344a38',
+  corridor: '#212f24',
+  liquid: '#1f5a70',
+  liquidAlt: '#2f86a4',
+  gloom: '#050906',
+  accent: '#8fd489',
 };
 const THEME_VOLCANO: DungeonTheme = {
-  wall: '#43231c', wallTop: '#6d392a', floor: '#2e1d17', floorAlt: '#38241c',
-  corridor: '#241512', liquid: '#8c2c10', liquidAlt: '#e0641a',
-  gloom: '#0d0503', accent: '#e8843c',
+  wall: '#573024',
+  wallTop: '#84492f',
+  floor: '#432a20',
+  floorAlt: '#4e3226',
+  corridor: '#33201a',
+  liquid: '#8c2c10',
+  liquidAlt: '#e0641a',
+  gloom: '#0c0403',
+  accent: '#f0944c',
 };
 const THEME_WATERWAY: DungeonTheme = {
-  wall: '#1d2438', wallTop: '#2e3a58', floor: '#171c2a', floorAlt: '#1d2333',
-  corridor: '#12161f', liquid: '#16324f', liquidAlt: '#245078',
-  gloom: '#03040a', accent: '#6f8ed0',
+  wall: '#2a3350',
+  wallTop: '#3f4d72',
+  floor: '#28304a',
+  floorAlt: '#2f3856',
+  corridor: '#1d2337',
+  liquid: '#1b3d60',
+  liquidAlt: '#2a5f8e',
+  gloom: '#03040a',
+  accent: '#84a2e4',
 };
 const THEME_TOWER: DungeonTheme = {
-  wall: '#3b3a46', wallTop: '#5e5c6e', floor: '#2b2b33', floorAlt: '#33333d',
-  corridor: '#212027', liquid: '#3a4a70', liquidAlt: '#5a74a8',
-  gloom: '#08080c', accent: '#e4d189',
+  wall: '#4e4c5c',
+  wallTop: '#706e82',
+  floor: '#413f4d',
+  floorAlt: '#4a4857',
+  corridor: '#312f3b',
+  liquid: '#3a4a70',
+  liquidAlt: '#5a74a8',
+  gloom: '#07070c',
+  accent: '#efdc94',
 };
 const THEME_ABYSS: DungeonTheme = {
-  wall: '#2a1c33', wallTop: '#452e52', floor: '#1d1524', floorAlt: '#241a2c',
-  corridor: '#150f1a', liquid: '#2c1a45', liquidAlt: '#4a2a72',
-  gloom: '#040206', accent: '#b57fe0',
+  wall: '#3b2a48',
+  wallTop: '#573a68',
+  floor: '#2f2440',
+  floorAlt: '#372a4a',
+  corridor: '#231a30',
+  liquid: '#2c1a45',
+  liquidAlt: '#4a2a72',
+  gloom: '#030206',
+  accent: '#c58fef',
 };
 
 // ---------------------------------------------------------------------------

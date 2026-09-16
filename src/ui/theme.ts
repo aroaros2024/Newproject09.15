@@ -75,9 +75,9 @@ export const LAYOUT = {
 /** メニューの配置 */
 export const MENU_LAYOUT = {
   /** メインメニュー（右寄せの縦一列） */
-  main: { x: 980, y: 120, w: 240, itemH: 44 },
+  main: { x: 968, y: 120, w: 264, itemH: 44 },
   /** 道具一覧 */
-  items: { x: 300, y: 80, w: 560, h: 560, rowH: 34, rows: 15 },
+  items: { x: 300, y: 76, w: 580, h: 500, rowH: 34, rows: 13 },
   /** 道具のコンテキストメニュー */
   context: { w: 200, itemH: 38 },
   /** アイテムの説明パネル */

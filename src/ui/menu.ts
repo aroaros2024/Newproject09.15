@@ -10,7 +10,8 @@ import { Cmd, type InputManager } from '../core/input.js';
 import {
   type Ctx, drawBadge, drawCursor, drawPanel, drawScrollArrow, drawText, ellipsize, wrapText,
 } from './draw.js';
-import { UI } from './theme.js';
+import { UI, font } from './theme.js';
+import { getSprite, sprites } from './sprites.js';
 
 export interface Badge {
   text: string;
@@ -179,24 +180,44 @@ export class ListMenu {
         drawText(g, `${(index + 1) % 10}`, x, y + this.rowH / 2 + 2, {
           size: 13, color: UI.textDisabled, baseline: 'middle',
         });
-        x += 20;
+        x += 18;
       }
-      const labelMax = rowRect.w - (x - rowRect.x) - 140;
-      drawText(g, ellipsize(g, entry.label, labelMax, 17), x, y + this.rowH / 2, {
-        size: 17, color, baseline: 'middle',
-      });
+      // アイコン（ドット絵が登録されていれば）
+      if (entry.sprite) {
+        const icon = getSprite(entry.sprite);
+        if (icon) {
+          const size = this.rowH - 8;
+          sprites.draw(
+            g, entry.sprite, icon,
+            x + size / 2, y + this.rowH / 2, size,
+            entry.disabled ? { alpha: 0.45 } : {},
+          );
+          x += size + 6;
+        }
+      }
 
+      // 右側（補助表示とバッジ）を先に描いて、名前に使える幅を実測で決める。
+      // 固定幅を引くと、狭いメニューで名前が「全…」のように潰れてしまう。
       let bx = rowRect.x + rowRect.w - 12;
       if (entry.right) {
         drawText(g, entry.right, bx, y + this.rowH / 2, {
           size: 15, align: 'right', color: UI.textDim, baseline: 'middle',
         });
-        bx -= g.measureText(entry.right).width + 14;
+        g.save();
+        g.font = font(15);
+        bx -= g.measureText(entry.right).width + 12;
+        g.restore();
       }
       for (const badge of entry.badges ?? []) {
-        const w = drawBadge(g, badge.text, bx - 34, y + 6, badge.color, 12);
-        bx -= w + 6;
+        const bw = 28;
+        drawBadge(g, badge.text, bx - bw, y + 6, badge.color, 12);
+        bx -= bw + 6;
       }
+
+      const labelMax = Math.max(40, bx - x - 8);
+      drawText(g, ellipsize(g, entry.label, labelMax, 17), x, y + this.rowH / 2, {
+        size: 17, color, baseline: 'middle',
+      });
     });
 
     // スクロールの矢印
@@ -215,7 +236,10 @@ export class ListMenu {
   private drawDesc(g: Ctx): void {
     const entry = this.current;
     const r = this.rect;
-    const box = { x: r.x, y: r.y + r.h + 10, w: r.w, h: 92 };
+    // 画面からはみ出さない位置に置く
+    const h = 92;
+    const y = Math.min(r.y + r.h + 10, 720 - h - 12);
+    const box = { x: r.x, y, w: r.w, h };
     drawPanel(g, box, { alpha: 0.92 });
     const text = entry?.desc ?? '';
     const lines = wrapText(g, text, box.w - 36, 15).slice(0, 3);
