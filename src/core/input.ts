@@ -144,6 +144,14 @@ interface KeyState {
    * 生かしてから消すようにしている。
    */
   releasedPending: boolean;
+  /**
+   * 長押しのリピートを止める印。
+   *
+   * ダメージを受けた時などに立て、押し直すまで連射を再開しない。
+   * コマンドごとに持つ（共通のフラグにすると、無関係なキーを 1 回
+   * 押しただけで待機の連射まで復活してしまう）。
+   */
+  repeatBlocked: boolean;
 }
 
 export class InputManager {
@@ -207,6 +215,7 @@ export class InputManager {
     return {
       pressedAt: this.now, lastRepeatAt: this.now,
       repeatCount: 0, edge: true, releasedPending: false,
+      repeatBlocked: false,
     };
   }
 
@@ -472,7 +481,12 @@ export class InputManager {
   commandFires(cmd: Cmd, kind: keyof typeof REPEAT = 'menu'): boolean {
     const s = this.cmds.get(cmd);
     if (!s) return false;
-    if (s.edge) return true;
+    // 押し直し（エッジ）は必ず通す。止めるのは長押しの連射だけ
+    if (s.edge) {
+      s.repeatBlocked = false;
+      return true;
+    }
+    if (s.repeatBlocked) return false;
     return this.repeatFires(s, kind);
   }
 
@@ -495,8 +509,15 @@ export class InputManager {
    * 方向のリピートを止める。
    * 被弾・敵の出現・フロア移動のときに呼び、走り続ける事故を防ぐ。
    */
+  /**
+   * 危険が起きたので、押しっぱなしの移動と連射を止める。
+   *
+   * 押し直すまで復帰しない。これが無いと、「.」を押している間は
+   * 毎秒 8 ターン進み続け、殴られながら止まれない。
+   */
   latchDirection(): void {
     this.dirLatched = true;
+    for (const s of this.cmds.values()) s.repeatBlocked = true;
   }
 
   get isDirectionLatched(): boolean {

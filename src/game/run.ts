@@ -13,7 +13,8 @@ import { UNIDENTIFIED_KINDS, getDungeon, getItem, itemsOfKind } from '../data/re
 import { computeFov } from '../dungeon/fov.js';
 import { generateFloor } from '../dungeon/generator.js';
 import {
-  makeMonster, makeSpecificItem, naturalSpawn, pickMonsterId, placePlayer, populateFloor,
+  makeMonster, makeSpecificItem, naturalSpawn, pickMonsterId,
+  placePlayer, placeStairs, populateFloor,
 } from '../dungeon/spawn.js';
 import { canEnter, createMap } from '../dungeon/tilemap.js';
 import { makeItem } from './inventory.js';
@@ -131,7 +132,13 @@ export function startRun(
     monsters: [],
     floorItems: [],
     allies: [],
-    identify: makeIdentifyState(rng),
+    // 仮名は毎回シャッフルし直す（知らない物の正体当ては毎回まっさら）。
+    // 村が名前を知っている品目と、自分でつけた名前だけを引き継ぐ
+    identify: {
+      ...makeIdentifyState(rng),
+      known: { ...(town.knownItems ?? {}) },
+      nicknames: { ...(town.nicknames ?? {}) },
+    },
     rng: rng.serialize(),
     seed,
     nextUid: 1,
@@ -262,6 +269,9 @@ export function enterFloor(world: World, depth: number): void {
   // 「プレイヤーから何マス離れているか」で場所を選ぶので、
   // あとから置くと前の階の座標を基準にしてしまい、
   // 降りた目の前に敵が湧く
+  // 階段を先に置く。あとから置くと placePlayer の「階段から遠い場所を優先」が
+  // 未設定の (-1,-1) を基準にしてしまい、狙いどおりに働かない
+  placeStairs(world);
   world.run.player.pos = placePlayer(world);
 
   // 階の切り替えは、この階で起きることより先に知らせる。
@@ -273,6 +283,12 @@ export function enterFloor(world: World, depth: number): void {
 
   populateFloor(world);
   placeAllies(world, survivors);
+  // フロア生成で置いた顔ぶれは「湧いたばかり」ではない。
+  // ここを通さないと、階を降りるたびに全員が 1 ターン棒立ちになる。
+  // 降りた先がモンスターハウスだった場合の敵は、この後の
+  // resolvePendingEffects で湧くので、ちゃんと印が残る
+  for (const a of world.run.monsters) a.actedThisTurn = 0;
+  for (const a of world.run.allies) a.actedThisTurn = 0;
 
   // 前の階に置いた聖域と、身代わりの指定は持ち越さない
   world.sanctuaries = [];

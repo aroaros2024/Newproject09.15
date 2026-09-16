@@ -807,8 +807,17 @@ export interface TownState {
   unlocked: string[];
   /** ダンジョンごとの最高到達階 */
   bestDepth: Record<string, number>;
-  /** 識別済みの知識は村に持ち帰らない（毎回シャッフル）が、図鑑には残る */
+  /** 図鑑。見かけただけでも載るので、識別済みかどうかの判定には使えない */
   seenItems: Record<string, boolean>;
+  /**
+   * 村で名前を知っている品目と、自分でつけた名前。
+   *
+   * 名前を見て買った物・識別して持ち帰った物だけが入る。
+   * 仮名（alias）は冒険ごとにシャッフルし直すので、ここには持たない。
+   * 知識の置き場を村と冒険の 2 つに分けると、また食い違うので 1 つにする。
+   */
+  knownItems?: Record<string, boolean>;
+  nicknames?: Record<string, string>;
   seenMonsters: Record<string, boolean>;
   /** 冒険の記録 */
   history: AdventureRecord[];

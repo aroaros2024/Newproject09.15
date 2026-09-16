@@ -34,6 +34,8 @@ export function defaultTown(playerName = 'ナギ') {
         unlocked: ['d1'],
         bestDepth: {},
         seenItems: {},
+        knownItems: {},
+        nicknames: {},
         seenMonsters: {},
         history: [],
         totalRuns: 0,
@@ -125,6 +127,8 @@ function validateTown(t) {
             ? t.unlocked.filter((x) => typeof x === 'string') : ['d1'],
         bestDepth: typeof t.bestDepth === 'object' && t.bestDepth ? t.bestDepth : {},
         seenItems: typeof t.seenItems === 'object' && t.seenItems ? t.seenItems : {},
+        knownItems: typeof t.knownItems === 'object' && t.knownItems ? t.knownItems : {},
+        nicknames: typeof t.nicknames === 'object' && t.nicknames ? t.nicknames : {},
         seenMonsters: typeof t.seenMonsters === 'object' && t.seenMonsters ? t.seenMonsters : {},
         history: Array.isArray(t.history) ? t.history.slice(-50) : [],
         totalRuns: Number.isFinite(t.totalRuns) ? Math.max(0, Math.floor(t.totalRuns)) : 0,
@@ -171,6 +175,10 @@ export function loadRun() {
     if (!data.player || typeof data.player.hp !== 'number')
         return null;
     if (data.map.tiles.length !== data.map.width * data.map.height)
+        return null;
+    // 決着（死亡・クリア）は World 側の finished が持っていて RunState には載らない。
+    // 倒れた状態の中断データをそのまま読むと、生き返って冒険が続いてしまう
+    if (data.player.hp <= 0 || data.player.alive === false)
         return null;
     return data;
 }

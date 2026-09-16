@@ -3,8 +3,8 @@
  */
 import { Cmd } from '../../core/input.js';
 import { ALL_ITEMS, allMonsters, getItem } from '../../data/registry.js';
-import { BENTOU_PRICE, SMITH_PRICE, buyFromTown, depositItem, dungeonList, sellToTown, shopStock, smithTemper, smithUncurse, sortStorage, storageFull, withdrawItem, } from '../../game/town.js';
-import { itemName, kindLabel } from '../../game/naming.js';
+import { BENTOU_PRICE, SMITH_PRICE, buyFromTown, depositItem, dungeonList, sellToTown, shopStock, smithTemper, smithUncurse, sortStorage, storageFull, townIdentify, withdrawItem, } from '../../game/town.js';
+import { isUnidentifiableKind, itemName, kindLabel } from '../../game/naming.js';
 import { collectionRate } from '../../game/town.js';
 import { SELL_RATE } from '../../game/rules.js';
 import { drawPanel, drawText, drawOverlay } from '../draw.js';
@@ -23,6 +23,23 @@ export class TownScreen {
     stock = [];
     /** 持ち込むアイテムとして選んだもの */
     bring = [];
+    /**
+     * 村での表示に使う識別状態。
+     *
+     * 以前はここで revealAll していたため、村では「識別の巻物」と出るのに
+     * 持ち込むと「ピヨリン巻物」に戻る、という食い違いが起きていた。
+     * 村もダンジョンも、同じ「知っているかどうか」で表示する。
+     */
+    identify() {
+        return townIdentify(this.app.town);
+    }
+    /** 正体を知らない物の説明は伏せる（名前だけ伏せても割れてしまう） */
+    descOf(item) {
+        const def = getItem(item.defId);
+        if (!isUnidentifiableKind(def))
+            return def.desc;
+        return this.app.town.knownItems?.[item.defId] ? def.desc : 'まだ 正体が 分からない。';
+    }
     time = 0;
     constructor(app, onEnterDungeon, onTitle) {
         this.app = app;
@@ -288,10 +305,10 @@ export class TownScreen {
             const entries = town.storage.map((item) => {
                 const picked = this.bring.includes(item);
                 return {
-                    label: itemName(item, EMPTY_IDENTIFY, { revealAll: true }),
+                    label: itemName(item, this.identify()),
                     right: picked ? '持っていく' : kindLabel(getItem(item.defId).kind),
                     color: picked ? UI.cursorEdge : undefined,
-                    desc: getItem(item.defId).desc,
+                    desc: this.descOf(item),
                     onSelect: () => {
                         if (picked)
                             this.bring = this.bring.filter((i) => i !== item);
@@ -340,9 +357,9 @@ export class TownScreen {
         const town = this.app.town;
         sortStorage(town);
         const entries = town.storage.map((item) => ({
-            label: itemName(item, EMPTY_IDENTIFY, { revealAll: true }),
+            label: itemName(item, this.identify()),
             right: kindLabel(getItem(item.defId).kind),
-            desc: getItem(item.defId).desc,
+            desc: this.descOf(item),
             data: item,
         }));
         this.menus.push(new ListMenu({
@@ -364,6 +381,7 @@ export class TownScreen {
         const buildBuy = () => this.stock.map((item) => {
             const price = item.shopPrice;
             return {
+                // 店は名前を見て買う場なので、ここだけは本名を出す
                 label: itemName(item, EMPTY_IDENTIFY, { revealAll: true }),
                 right: `${price} G`,
                 disabled: this.app.town.gitan < price || storageFull(this.app.town),
@@ -423,9 +441,9 @@ export class TownScreen {
         const build = () => town.storage.map((item) => {
             const price = Math.max(1, Math.floor(getItem(item.defId).price * SELL_RATE * (item.count || 1)));
             return {
-                label: itemName(item, EMPTY_IDENTIFY, { revealAll: true }),
+                label: itemName(item, this.identify()),
                 right: `${price} G`,
-                desc: getItem(item.defId).desc,
+                desc: this.descOf(item),
                 onSelect: () => {
                     const got = sellToTown(town, item.uid);
                     this.say(`${got} ギタンに なった。`);
@@ -465,7 +483,7 @@ export class TownScreen {
                     const build = () => equipment().map((item) => {
                         const cost = SMITH_PRICE.temper(item.plus);
                         return {
-                            label: itemName(item, EMPTY_IDENTIFY, { revealAll: true }),
+                            label: itemName(item, this.identify()),
                             right: `${cost} G`,
                             disabled: town.gitan < cost,
                             desc: getItem(item.defId).desc,
@@ -502,7 +520,7 @@ export class TownScreen {
                     this.menus.push(new ListMenu({
                         title: '呪いを 解く',
                         entries: cursed.map((item) => ({
-                            label: itemName(item, EMPTY_IDENTIFY, { revealAll: true }),
+                            label: itemName(item, this.identify()),
                             right: `${SMITH_PRICE.uncurse} G`,
                             disabled: town.gitan < SMITH_PRICE.uncurse,
                             onSelect: () => {

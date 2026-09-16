@@ -10,7 +10,7 @@ import { equippedBracelet, isEquipped, mergeStacks, sortInventory, } from '../..
 import { isContainer, needsDirection, needsItemTarget, payDebt, shopDebt, throwGitan, } from '../../game/itemActions.js';
 import { itemName, kindLabel, useVerb } from '../../game/naming.js';
 import { SELL_RATE } from '../../game/rules.js';
-import { onStairs, restTurns, stepTurn } from '../../game/turn.js';
+import { onStairs, restTurns, stepTurn, whyCannotRest } from '../../game/turn.js';
 import { drawText, drawOverlay } from '../draw.js';
 import { Camera, DungeonRenderer } from '../renderer.js';
 import { FxSystem } from '../fx.js';
@@ -290,6 +290,25 @@ export class DungeonScreen {
             this.act({ type: 'wait' });
         }
         void dt;
+    }
+    /**
+     * 休む。
+     *
+     * 上限は 200 ターン。どのレベルでも HP が半分回復するのに約 70 ターンかかるので、
+     * 60 だと敵がいなくても必ず選び直しになっていた。
+     * 1 ターンも休めなかった時は必ず理由を出す。「0ターン 休んだ。」とだけ
+     * 出していたせいで、プレイヤーが何度も選び直して殴られ続けていた。
+     */
+    doRest() {
+        const world = this.world;
+        const why = whyCannotRest(world);
+        const n = restTurns(world, 200);
+        this.pumpEvents();
+        if (n === 0)
+            world.log(why ?? '休めなかった。', 'warning');
+        else
+            world.log(`${n}ターン 休んだ。`, 'system');
+        this.pumpEvents();
     }
     doDashStep() {
         const world = this.world;
@@ -684,10 +703,7 @@ export class DungeonScreen {
         entries.push({
             label: '足踏みして 休む',
             onSelect: () => {
-                const n = restTurns(world, 60);
-                this.pumpEvents();
-                world.log(`${n}ターン 休んだ。`, 'system');
-                this.pumpEvents();
+                this.doRest();
                 return true;
             },
         });
@@ -705,10 +721,7 @@ export class DungeonScreen {
             {
                 label: '休む（HP が回復するまで足踏み）',
                 onSelect: () => {
-                    const n = restTurns(world, 200);
-                    this.pumpEvents();
-                    world.log(`${n}ターン 休んだ。`, 'system');
-                    this.pumpEvents();
+                    this.doRest();
                     return true;
                 },
             },

@@ -58,7 +58,12 @@ test('中断データから再開すると、同じ続きが再現される', ()
   for (let i = 0; i < 80; i++) {
     stepTurn(world, { type: 'move', dir: rng.pick(DIRS) as Dir });
     world.drainEvents();
+    // ここで見たいのは「再開して同じ続きになるか」であって
+    // 「ランダムに 80 歩して生き延びられるか」ではない。
+    // 途中で倒れると中断データを作る前提が崩れるので、下ごしらえの間だけ支える
+    world.player.hp = world.player.maxHp;
   }
+  assert.ok(!world.finished, '下ごしらえの途中で決着してしまった');
   const snapshot = roundTrip(world.syncForSave());
   const mapBefore = renderAscii(world.map);
 

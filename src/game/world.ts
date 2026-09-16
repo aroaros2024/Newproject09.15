@@ -181,6 +181,12 @@ export class World {
   }
 
   addMonster(m: MonsterActor): MonsterActor {
+    // 生まれたターンには動かない。
+    // 「プレイヤーが状況を見て一手打つ前に殴られる」を構造的に禁じる。
+    // モンスターがフロアに入る道はここ 1 本しかないので、
+    // 湧き口を足す人が印を付け忘れても事故にならない。
+    // フロア生成で最初から居る顔ぶれだけ、enterFloor が印を外す。
+    m.actedThisTurn = 1;
     if (m.kind === 'ally') this.run.allies.push(m);
     else this.run.monsters.push(m);
     return m;

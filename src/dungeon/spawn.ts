@@ -151,9 +151,6 @@ export function populateFloor(world: World): PopulateResult {
   const depth = world.run.depth;
   const rng = world.rng;
 
-  // --- 階段 ---
-  placeStairs(world);
-
   // --- 店 ---
   let shopRoom: Room | null = null;
   if (map.rooms.length >= 2 && rng.percent(d.gen.shopRate)) {
@@ -242,25 +239,33 @@ export function populateFloor(world: World): PopulateResult {
 }
 
 /** プレイヤーの初期位置（階段から離れた部屋の床） */
+/**
+ * プレイヤーの初期位置。
+ *
+ * ここを呼ぶ時点でフロアにあるのは地形と階段だけで、ワナ・店・アイテム・敵は
+ * まだ置かれていない（それらは populateFloor がこの後で置く）。
+ * つまり「ワナを避ける」「敵と重ならない」はここでは保証できないので、
+ * 危険を作る側（randomTrapSpot / makeShop / randomSpawnTile）が
+ * プレイヤーのマスを外すことで成り立たせている。
+ */
 export function placePlayer(world: World): Point {
   const floors = allRoomFloors(world.map).filter(
-    (p) => !samePoint(p, world.map.stairs)
-      && !world.floorItemAt(p)
-      && !at(world.map, p.x, p.y)?.shop
-      // ワナの上に降ろすと、避けようのない一撃から階が始まってしまう
-      && !at(world.map, p.x, p.y)?.trap
-      && !world.actorAt(p),
+    (p) => !samePoint(p, world.map.stairs) && !world.actorAt(p),
   );
   if (floors.length === 0) {
     return world.map.stairs;
   }
-  // 階段から遠い場所を優先する（降りてすぐ次の階段、を避ける）
-  floors.sort((a, b) => chebyshev(b, world.map.stairs) - chebyshev(a, world.map.stairs));
-  const top = floors.slice(0, Math.max(1, Math.floor(floors.length / 3)));
-  return world.rng.pick(top);
+  // 階段とは別の部屋から始める（降りた目の前が次の階段、を避ける）。
+  // 「一番遠い場所」まで振り切ると毎フロア端から端まで歩かされて退屈なので、
+  // 別部屋の中では一様に選ぶ
+  const stairsRoom = at(world.map, world.map.stairs.x, world.map.stairs.y)?.roomId ?? -1;
+  const elsewhere = floors.filter(
+    (q) => at(world.map, q.x, q.y)?.roomId !== stairsRoom,
+  );
+  return world.rng.pick(elsewhere.length > 0 ? elsewhere : floors);
 }
 
-function placeStairs(world: World): void {
+export function placeStairs(world: World): void {
   const floors = allRoomFloors(world.map);
   if (floors.length === 0) return;
   const p = world.rng.pick(floors);
@@ -284,6 +289,9 @@ function randomTrapSpot(world: World): Point | null {
     const t = at(world.map, p.x, p.y);
     if (!t || t.kind !== 'floor') return false;
     if (t.shop || t.trap) return false;
+    // 降りた足元には置かない。ここで止めないと、1 手も打てないまま
+    // 必中のワナで階が始まる（placePlayer 側では地形しか見えないので防げない）
+    if (samePoint(p, world.player.pos)) return false;
     if (world.floorItemAt(p)) return false;
     // 部屋の出入口には置かない（避けられなくなるため）
     if (t.isDoor) return false;
@@ -327,7 +335,8 @@ function makeShop(world: World): Room | null {
 
   // 店主は出入口の内側に立つ
   const door = room.doors[0];
-  const inside = cells
+  const free = cells.filter((p) => !samePoint(p, world.player.pos));
+  const inside = (free.length > 0 ? free : cells)
     .slice()
     .sort((a, b) => chebyshev(a, door) - chebyshev(b, door))[0];
   const keeper = makeMonster(world, 'shopkeeper', inside, 'shopkeeper');
@@ -380,7 +389,9 @@ export function triggerMonsterHouse(world: World, room: Room): void {
   const cells = roomCells(room).filter(
     (p) => at(world.map, p.x, p.y)?.kind === 'floor'
       && !world.actorAt(p)
-      && !samePoint(p, world.player.pos),
+      // 真隣に湧かせない。他の湧き口は randomSpawnTile で 6〜10 マス
+      // 空けているのに、ここだけ足元に湧いて囲まれていた
+      && chebyshev(p, world.player.pos) > 1,
   );
   world.rng.shuffle(cells);
 
@@ -440,8 +451,11 @@ export function triggerMonsterHouse(world: World, room: Room): void {
   world.emit({ t: 'monsterHouse', kind });
   world.sfx('monsterHouse');
 
-  // モンスターハウスの敵は全員起きている
-  for (const m of world.run.monsters) m.asleep = false;
+  // 湧いた敵は起きている。ただしフロア中を起こすのは警報のワナの役目なので、
+  // ここでは部屋の中だけにとどめる
+  for (const m of world.run.monsters) {
+    if (roomCells(room).some((c) => samePoint(c, m.pos))) m.asleep = false;
+  }
 }
 
 /** 一定ターンごとの自然湧き */

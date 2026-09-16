@@ -4,7 +4,7 @@ import { Rng } from '../src/core/rng.js';
 import { DIRS, chebyshev } from '../src/core/geom.js';
 import { startRun } from '../src/game/run.js';
 import { stepTurn } from '../src/game/turn.js';
-import { connectivityReport, at } from '../src/dungeon/tilemap.js';
+import { connectivityReport, at, canEnter, canMoveDiagonally, distanceField, } from '../src/dungeon/tilemap.js';
 import { getDungeon, getItem } from '../src/data/registry.js';
 import { attackPower, defensePower, gainExp } from '../src/game/combat.js';
 import { EXP_TABLE, calcDamage, expectedDamage } from '../src/game/rules.js';
@@ -103,35 +103,47 @@ test('階段を降り続けるとダンジョンをクリアできる', () => {
     const rng = new Rng(3);
     let guard = 0;
     while (!world.finished && guard++ < 6000) {
-        if (world.player.pos.x === world.map.stairs.x
-            && world.player.pos.y === world.map.stairs.y) {
+        const p = world.player.pos;
+        if (p.x === world.map.stairs.x && p.y === world.map.stairs.y) {
             stepTurn(world, { type: 'stairs' });
+            world.drainEvents();
+            continue;
         }
-        else {
-            // 階段へ向かって歩く
-            const dx = Math.sign(world.map.stairs.x - world.player.pos.x);
-            const dy = Math.sign(world.map.stairs.y - world.player.pos.y);
-            const dir = dirFromVec(dx, dy) ?? rng.pick(DIRS);
-            stepTurn(world, { type: 'move', dir });
-            if (rng.percent(25))
-                stepTurn(world, { type: 'move', dir: rng.pick(DIRS) });
+        // 階段へ向かって歩く。
+        // 直線で寄るだけだと壁の形次第で詰まり、「クリアできるか」ではなく
+        // 「その地形が素朴な歩き方に都合がよいか」を測るテストになってしまう。
+        // 距離場に沿って歩き、通れる限り必ず階段へ着くようにする
+        const field = distanceField(world.map, world.map.stairs, 'ground');
+        let best = null;
+        let bestV = field[p.y * world.map.width + p.x];
+        if (bestV < 0)
+            bestV = Infinity;
+        for (const d of DIRS) {
+            const v = [
+                [0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1],
+            ][d];
+            const q = { x: p.x + v[0], y: p.y + v[1] };
+            if (!canEnter(world.map, q.x, q.y, 'ground'))
+                continue;
+            if (!canMoveDiagonally(world.map, p, v[0], v[1], 'ground'))
+                continue;
+            const val = field[q.y * world.map.width + q.x];
+            if (val >= 0 && val < bestV) {
+                bestV = val;
+                best = d;
+            }
         }
+        // 進めない（敵に塞がれている等）なら、そちらへ攻撃する
+        if (best === null)
+            stepTurn(world, { type: 'attack', dir: rng.pick(DIRS) });
+        else
+            stepTurn(world, { type: 'move', dir: best });
         world.drainEvents();
     }
     assert.ok(world.finished, `${guard} ターンでも決着しなかった`);
     // 死ぬこともあるが、クリアか死亡のどちらかには必ず到達する
     assert.ok(['clear', 'death', 'escape'].includes(world.finished.kind));
 });
-function dirFromVec(dx, dy) {
-    for (const d of DIRS) {
-        const v = [
-            [0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1],
-        ][d];
-        if (v[0] === dx && v[1] === dy)
-            return d;
-    }
-    return null;
-}
 test('もっと不思議のダンジョンは Lv1・持ち物ほぼ無しで始まる', () => {
     const town = newTown();
     town.gitan = 5000;

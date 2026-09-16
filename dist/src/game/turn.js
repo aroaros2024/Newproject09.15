@@ -73,6 +73,13 @@ function otherRoundsPerInput(world) {
 export function stepTurn(world, action) {
     if (world.finished)
         return { tookTurn: false, reason: '冒険は終わっている' };
+    // 「このターンぶんはもう動いた」印を落としてから始める。
+    // 印が立つのは addMonster（＝湧いた直後）だけなので、
+    // 湧いたその場で殴られることが無くなる
+    for (const a of world.run.monsters)
+        a.actedThisTurn = 0;
+    for (const a of world.run.allies)
+        a.actedThisTurn = 0;
     const result = performPlayerAction(world, action);
     if (!result.tookTurn) {
         refreshFov(world);
@@ -116,12 +123,20 @@ function runOthers(world) {
                 continue;
             if (!actsThisRound(world, ally, round))
                 continue;
+            // このターンに生まれた者は動かない。
+            // actedThisTurn は「抑止の印」であって行動回数ではない。
+            // takeAllyTurn / takeMonsterTurn の中で増やしてはいけない
+            // （増やすと倍速がラウンド 1 を失って壊れる）
+            if (ally.actedThisTurn > 0)
+                continue;
             takeAllyTurn(world, ally, ctx);
         }
         for (const m of [...world.run.monsters]) {
             if (!m.alive)
                 continue;
             if (!actsThisRound(world, m, round))
+                continue;
+            if (m.actedThisTurn > 0)
                 continue;
             takeMonsterTurn(world, m, ctx);
             resolvePendingEffects(world);
@@ -326,42 +341,93 @@ function updateShopAnger(world) {
  * 「気づいたら死んでいた」という一番やってはいけない事故になる。
  */
 export function restTurns(world, maxTurns) {
+    const p = world.player;
     const startDepth = world.run.depth;
+    const startItems = p.inventory.length;
+    const startStatuses = statusKey(p);
     let n = 0;
-    for (; n < maxTurns; n++) {
-        if (world.finished)
-            break;
-        const before = world.player.hp;
-        const beforeItems = world.player.inventory.length;
-        stepTurn(world, { type: 'wait' });
+    while (n < maxTurns) {
+        // 踏み出す前に確かめる。あとから見る作りだと、敵の真横で「休む」を
+        // 選ぶたびに必ず 1 ターン献上して 1 発もらう羽目になる
         if (world.finished)
             break;
         if (world.run.depth !== startDepth)
             break; // 風や落とし穴で階が変わった
-        if (world.player.hp >= world.player.maxHp)
+        if (p.hp >= p.maxHp)
             break; // 全快した
-        if (world.player.hp < before)
-            break; // 攻撃された
-        if (world.player.foodX10 <= 0)
-            break; // 空腹で削られ始めた
-        if (world.player.inventory.length !== beforeItems)
+        if (restIsPointless(world))
+            break; // 休んでも回復しない
+        if (p.inventory.length !== startItems)
             break; // 盗まれた
-        if (world.player.statuses.some((st) => st.turns !== 0 && st.id !== 'quick'))
-            break;
-        if (visibleEnemyNear(world))
-            break; // 敵が見えた
+        if (statusKey(p) !== startStatuses)
+            break; // 休んでいる間に状態が変わった
+        if (hostileNear(world))
+            break; // 敵がいる
+        const before = p.hp;
+        stepTurn(world, { type: 'wait' });
+        n++; // 進んだターンは必ず数える（表示が嘘をつかないように）
+        if (p.hp < before)
+            break; // 殴られた
     }
     return n;
 }
-function visibleEnemyNear(world) {
+/**
+ * 休んでも回復しない状態か。
+ * hunger.ts の自然回復の条件と揃えること。
+ * 「何か状態異常が付いている」で止めると、浮遊やちから上昇のような
+ * 無害なものでも永久に休めなくなる。
+ */
+function restIsPointless(world) {
+    const p = world.player;
+    return p.foodX10 <= 0
+        || world.hasStatus(p, 'poisoned')
+        || world.hasStatus(p, 'deadlyPoisoned');
+}
+/**
+ * 休憩をやめるべき「敵」が近くにいるか。
+ * 店主や仲間は敵ではないので、隣にいても休める。
+ */
+function hostileNear(world) {
+    const p = world.player;
     for (const m of world.run.monsters) {
-        if (!m.alive || m.asleep)
+        if (!m.alive)
+            continue;
+        if (!world.isHostile(p, m))
+            continue;
+        const d = chebyshev(m.pos, p.pos);
+        // 真隣は、寝ていても・見えていなくても危ない（隣接なら必ず起きる）
+        if (d <= 1)
+            return true;
+        if (m.asleep)
             continue;
         const t = world.map.tiles[m.pos.y * world.map.width + m.pos.x];
-        if (t?.visible && chebyshev(m.pos, world.player.pos) <= 6)
+        if (t?.visible && d <= 6)
             return true;
     }
     return false;
+}
+/** 休憩を中断すべき状態異常の顔ぶれ。疾風と永続のものは数えない */
+const statusKey = (p) => p.statuses.filter((st) => st.turns !== 0 && st.id !== 'quick')
+    .map((st) => st.id).sort().join(',');
+/**
+ * 1 ターンも休めない理由。休めるなら null。
+ * 「0 ターン 休んだ。」とだけ出して何も起きないように見えるのが、
+ * 「もう一度休む → また殴られる」を生んでいたので、理由を必ず言う。
+ */
+export function whyCannotRest(world) {
+    const p = world.player;
+    if (world.finished)
+        return null;
+    if (p.hp >= p.maxHp)
+        return 'HP は 満タンだ。';
+    if (p.foodX10 <= 0)
+        return 'おなかが 減りすぎて 休めない。';
+    if (world.hasStatus(p, 'poisoned') || world.hasStatus(p, 'deadlyPoisoned')) {
+        return '毒が 回っていて 休んでも 回復しない。';
+    }
+    if (hostileNear(world))
+        return '敵が 近くにいて 休めない。';
+    return null;
 }
 /** 階段の上にいるか */
 export const onStairs = (world) => samePoint(world.player.pos, world.map.stairs);

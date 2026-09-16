@@ -10,7 +10,7 @@
 
 import { Rng } from '../core/rng.js';
 import type {
-  AdventureRecord, DungeonDef, ItemInstance, PlayerActor, TownState,
+  AdventureRecord, DungeonDef, IdentifyState, ItemInstance, PlayerActor, TownState,
 } from '../core/types.js';
 import { ALL_ITEMS, allMonsters, getItem, getDungeon } from '../data/registry.js';
 import { DUNGEON_ORDER } from '../data/dungeons.js';
@@ -162,9 +162,29 @@ export function buyFromTown(town: TownState, item: ItemInstance): boolean {
   if (storageFull(town)) return false;
   town.gitan -= price;
   item.shopPrice = 0;
-  town.storage.push(item);
-  return true;
+  // 名前を見て買ったのだから、ダンジョンでも名前のまま持ち込める
+  learnItem(town, item.defId);
+  return depositItem(town, item);
 }
+
+/** 村がその品目の名前を覚える */
+export function learnItem(town: TownState, defId: string): void {
+  if (!town.knownItems) town.knownItems = {};
+  town.knownItems[defId] = true;
+}
+
+/**
+ * 村の表示に使う識別状態。
+ *
+ * 仮名（alias）は持たないので、知らない物は「草？」のように
+ * 種類だけが出る。村が勝手に本名を出すと、ダンジョンで未識別に
+ * 戻った時に「さっきまで名前が出ていたのに」となる。
+ */
+export const townIdentify = (town: TownState): IdentifyState => ({
+  alias: {},
+  known: { ...(town.knownItems ?? {}) },
+  nicknames: { ...(town.nicknames ?? {}) },
+});
 
 export function sellToTown(town: TownState, uid: number): number {
   const item = withdrawItem(town, uid);
@@ -261,6 +281,9 @@ export function finishRun(
   if (keepItems) {
     for (const item of collectCarried(p)) {
       item.shopPrice = 0;
+      // 正体を知ったまま持ち帰った物は、村が名前を覚える。
+      // 途中で倒れて失えば覚えないので、持ち帰る価値になる
+      if (world.run.identify.known[item.defId]) learnItem(town, item.defId);
       if (!depositItem(town, item)) lost++;
     }
     town.gitan += p.gitan;
@@ -274,9 +297,13 @@ export function finishRun(
 
   // 倉庫の壺に入れた物は、死んでも届く
   for (const item of world.pendingWarehouse) {
+    if (world.run.identify.known[item.defId]) learnItem(town, item.defId);
     if (!depositItem(town, item)) lost++;
   }
   world.pendingWarehouse = [];
+
+  // 自分でつけた名前（「まちがえた」など）は、次の冒険にも持ち越す
+  town.nicknames = { ...(town.nicknames ?? {}), ...world.run.identify.nicknames };
 
   town.bestDepth[d.id] = Math.max(town.bestDepth[d.id] ?? 0, world.run.stats.maxDepth);
   town.totalRuns++;

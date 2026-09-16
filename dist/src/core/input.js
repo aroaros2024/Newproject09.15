@@ -163,6 +163,7 @@ export class InputManager {
         return {
             pressedAt: this.now, lastRepeatAt: this.now,
             repeatCount: 0, edge: true, releasedPending: false,
+            repeatBlocked: false,
         };
     }
     /**
@@ -444,8 +445,13 @@ export class InputManager {
         const s = this.cmds.get(cmd);
         if (!s)
             return false;
-        if (s.edge)
+        // 押し直し（エッジ）は必ず通す。止めるのは長押しの連射だけ
+        if (s.edge) {
+            s.repeatBlocked = false;
             return true;
+        }
+        if (s.repeatBlocked)
+            return false;
         return this.repeatFires(s, kind);
     }
     repeatFires(s, kind) {
@@ -466,8 +472,16 @@ export class InputManager {
      * 方向のリピートを止める。
      * 被弾・敵の出現・フロア移動のときに呼び、走り続ける事故を防ぐ。
      */
+    /**
+     * 危険が起きたので、押しっぱなしの移動と連射を止める。
+     *
+     * 押し直すまで復帰しない。これが無いと、「.」を押している間は
+     * 毎秒 8 ターン進み続け、殴られながら止まれない。
+     */
     latchDirection() {
         this.dirLatched = true;
+        for (const s of this.cmds.values())
+            s.repeatBlocked = true;
     }
     get isDirectionLatched() {
         return this.dirLatched;
