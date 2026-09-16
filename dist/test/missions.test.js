@@ -42,21 +42,11 @@ test('ミッションの条件は、実在するものだけを指す', () => {
             assert.ok(c.monsters <= monsters, `図鑑の敵 ${c.monsters} > ${monsters}`);
             assert.ok(c.items <= items, `図鑑の道具 ${c.items} > ${items}`);
         }
-        if (m.after) {
-            assert.ok(tryGetMission(m.after), `${m.id}: after ${m.after} が居ない`);
-        }
     }
 });
-test('after は循環せず、必ず先頭にたどり着く', () => {
-    for (const m of MISSIONS) {
-        const seen = new Set([m.id]);
-        let cur = m.after;
-        while (cur) {
-            assert.ok(!seen.has(cur), `${m.id}: after が循環している`);
-            seen.add(cur);
-            cur = tryGetMission(cur)?.after;
-        }
-    }
+test('ミッションは最初から全部見える', () => {
+    const town = newTown();
+    assert.equal(visibleMissions(town).length, MISSIONS.length, '順番の縛りで隠れているものがある');
 });
 test('達成していないミッションは受け取れない', () => {
     const town = newTown();
@@ -79,23 +69,25 @@ test('知らない id は受け取れない', () => {
     assert.equal(claimMission(town, 'そんなものは無い'), 0);
     assert.equal(town.stones, 0);
 });
-test('after を受け取るまで、次のミッションは出てこない', () => {
-    const town = newTown({ tally: { walk: 50, kill: 5 } });
-    const ids = () => visibleMissions(town).map((v) => v.def.id);
-    assert.ok(ids().includes('walk50'), '最初の 1 個が出ていない');
-    assert.ok(!ids().includes('firstKill'), '受け取る前に次が出ている');
-    claimMission(town, 'walk50');
-    assert.ok(ids().includes('firstKill'), '受け取っても次が出ない');
+test('達成したものは、順番に関係なく受け取れる', () => {
+    // 最初のミッションを飛ばして、後ろのものだけを達成した状態
+    const town = newTown({ cleared: ['d1', 'd2'], tally: {} });
+    const ids = visibleMissions(town).filter((v) => v.done && !v.claimed)
+        .map((v) => v.def.id);
+    assert.ok(ids.includes('clearD1'), '前のミッションが未達成だと受け取れない');
+    assert.ok(ids.includes('clearD2'), '前のミッションが未達成だと受け取れない');
+    // 直接その id を指して受け取れる
+    assert.ok(claimMission(town, 'clearD2') > 0, '順番を飛ばして受け取れない');
 });
-test('まとめて受け取ると、繋がったミッションも最後まで受け取れる', () => {
-    // 序盤 6 個ぶんを一度に満たした状態
+test('まとめて受け取ると、達成している全部が 1 度で受け取れる', () => {
     const town = newTown({
-        tally: { walk: 50, kill: 1, pickup: 1, equip: 1, use: 1, shortcut: 1, descend: 3 },
+        cleared: ['d1', 'd2'],
+        tally: { walk: 999, kill: 99, pickup: 99, equip: 9, use: 9, shortcut: 9, descend: 99 },
     });
-    // 一覧には最初の 1 個しか出ていない
-    assert.equal(visibleMissions(town).filter((v) => v.done && !v.claimed).length, 1);
+    const ready = visibleMissions(town).filter((v) => v.done && !v.claimed).length;
+    assert.ok(ready > 1, '達成済みが 1 個しか無い');
     const got = claimAll(town);
-    assert.equal(got.ids.length, 7, `受け取れたのは ${got.ids.join(',')}`);
+    assert.equal(got.ids.length, ready, `${ready} 個 達成しているのに ${got.ids.length} 個しか受け取れない`);
     assert.equal(town.stones, got.stones);
     assert.equal(got.stones, got.ids.reduce((a, id) => a + tryGetMission(id).stones, 0), '石の合計が定義と食い違う');
     // 二度目は何も出ない
@@ -128,11 +120,11 @@ test('進み具合は目標を超えて表示されない', () => {
     // 一覧の表示は Math.min するので、ここでは素の値でよい
 });
 test('受け取れる件数のバッジは、受け取ると減る', () => {
-    const town = newTown({ tally: { walk: 50 } });
-    assert.equal(claimableCount(town), 1);
-    claimMission(town, 'walk50');
-    // 次の 1 個（firstKill）はまだ達成していないので 0 に戻る
-    assert.equal(claimableCount(town), 0);
+    const town = newTown({ cleared: ['d1'] });
+    const before = claimableCount(town);
+    assert.ok(before > 0, '達成済みが無い');
+    claimMission(town, 'clearD1');
+    assert.equal(claimableCount(town), before - 1);
 });
 test('壊れた数えでミッションが達成にならない', () => {
     const def = tryGetMission('walk50');

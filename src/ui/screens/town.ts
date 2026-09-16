@@ -23,7 +23,10 @@ import { GachaAnim } from '../gachaAnim.js';
 import { Rng } from '../../core/rng.js';
 import { makeItem } from '../../game/inventory.js';
 import { learnItem } from '../../game/town.js';
-import { claimAll, claimMission, claimableCount, visibleMissions } from '../../game/missions.js';
+import {
+  type MissionView, claimAll, claimMission, claimableCount, isClaimed, visibleMissions,
+} from '../../game/missions.js';
+import type { MissionDef } from '../../data/missions.js';
 import { SELL_RATE } from '../../game/rules.js';
 import { type Ctx, drawPanel, drawText, drawOverlay } from '../draw.js';
 import {
@@ -416,59 +419,146 @@ export class TownScreen implements Screen {
 
   // ------------------------------------------------------------ ミッション
 
+  /**
+   * ミッションの入口。
+   *
+   * 100 個を 1 枚の一覧に流すと、自分がいまどれに近いのかが分からなくなる。
+   * 「受け取れる」「あと少し」「区分ごと」「受け取り済み」に分けて、
+   * 数字だけ見れば次にどこを開けばよいか分かるようにする。
+   */
   private openMissions(): void {
     const town = this.app.town;
-    const views = visibleMissions(town);
-    const ready = views.filter((v) => v.done && !v.claimed);
+    const all = () => visibleMissions(town);
+    const ready = () => all().filter((v) => v.done && !v.claimed);
+    const open = () => all().filter((v) => !v.done);
+    const GROUPS: { key: MissionDef['group']; label: string }[] = [
+      { key: 'tutorial', label: '序盤' },
+      { key: 'mid', label: '中盤' },
+      { key: 'late', label: '終盤' },
+    ];
 
-    const entries: MenuEntry[] = [];
-    if (ready.length > 0) {
-      entries.push({
-        label: `まとめて 受け取る（${ready.length} 件）`,
-        color: UI.good,
-        right: `${ready.reduce((a, v) => a + v.def.stones, 0)} 石`,
-        desc: '達成した ぶんを すべて 受け取ります。',
+    const entries: MenuEntry[] = [
+      {
+        label: 'まとめて 受け取る',
+        color: () => (ready().length > 0 ? UI.good : undefined),
+        right: () => {
+          const r = ready();
+          return r.length > 0
+            ? `${r.length} 件　${r.reduce((a, v) => a + v.def.stones, 0)} 石`
+            : 'なし';
+        },
+        disabled: ready().length === 0,
+        desc: '達成した ぶんを すべて 受け取ります。順番は 関係ありません。',
         onSelect: () => {
           const got = claimAll(town);
+          if (got.stones <= 0) return false;
           this.app.persist();
-          this.say(`${got.stones} 石を 受け取った。`);
-          this.menus.pop();
-          this.openMissions();
+          this.say(`${got.ids.length} 件　${got.stones} 石を 受け取った。`);
+          return false;
+        },
+      },
+      {
+        label: '受け取れる もの',
+        right: () => `${ready().length} 件`,
+        disabled: ready().length === 0,
+        desc: '達成ずみで まだ 受け取っていない ミッション。',
+        onSelect: () => {
+          this.openMissionList('受け取れる もの', ready);
+          return false;
+        },
+      },
+      {
+        label: 'あと 少し',
+        right: () => `${Math.min(15, open().length)} 件`,
+        disabled: open().length === 0,
+        desc: 'いま いちばん 近い ミッションを 近い順に。',
+        onSelect: () => {
+          this.openMissionList('あと 少し', () => open().slice(0, 15));
+          return false;
+        },
+      },
+    ];
+
+    for (const gp of GROUPS) {
+      entries.push({
+        label: gp.label,
+        right: () => {
+          const list = all().filter((v) => v.def.group === gp.key);
+          return `${list.filter((v) => v.claimed).length} / ${list.length}`;
+        },
+        desc: `${gp.label}の ミッション。`,
+        onSelect: () => {
+          this.openMissionList(gp.label, () => all().filter((v) => v.def.group === gp.key));
           return false;
         },
       });
     }
 
-    for (const v of views) {
-      const rate = v.goal > 1 ? `${Math.min(v.progress, v.goal)} / ${v.goal}` : '';
-      entries.push({
-        label: v.claimed ? `済　${v.def.name}` : v.def.name,
-        right: v.claimed ? '' : v.done ? `${v.def.stones} 石` : rate,
-        color: v.claimed ? UI.textDim : v.done ? UI.good : undefined,
-        disabled: v.claimed || !v.done,
-        desc: v.claimed
-          ? `受け取り済み（${v.def.stones} 石）。`
+    entries.push({
+      label: 'すべて',
+      right: () => {
+        const list = all();
+        return `${list.filter((v) => v.claimed).length} / ${list.length}`;
+      },
+      desc: '全部の ミッションを 近い順に。',
+      onSelect: () => {
+        this.openMissionList('すべて', all);
+        return false;
+      },
+    });
+
+    this.menus.push(new ListMenu({
+      title: () => `ミッション　所持 ${this.app.town.stones ?? 0} 石`,
+      entries,
+      rect: { x: 340, y: 130, w: 560, h: 420 },
+      rows: 8,
+      showDesc: true,
+    }));
+  }
+
+  /**
+   * ミッションの一覧。
+   *
+   * 中身は毎フレーム作り直すのではなく、受け取ったときだけ組み直す。
+   * ただし行の表示（進み具合・色）は関数で渡すので、
+   * 受け取った瞬間にその行が「済」に変わる。
+   */
+  private openMissionList(title: string, pick: () => MissionView[]): void {
+    const town = this.app.town;
+    const views = pick();
+    const rateOf = (v: MissionView): string =>
+      (v.goal > 1 ? `${Math.min(v.progress, v.goal)} / ${v.goal}` : '');
+
+    const entries: MenuEntry[] = views.map((v) => {
+      // 受け取った後も同じ行を見せたいので、状態はその都度読み直す
+      const claimed = () => isClaimed(this.app.town, v.def.id);
+      return {
+        label: () => (claimed() ? `済　${v.def.name}` : v.def.name),
+        right: () => (claimed() ? `${v.def.stones} 石` : v.done ? `${v.def.stones} 石` : rateOf(v)),
+        color: () => (claimed() ? UI.textDim : v.done ? UI.good : undefined),
+        disabled: claimed() || !v.done,
+        desc: () => (claimed()
+          ? `受け取りずみ（${v.def.stones} 石）。`
           : v.done
             ? `達成。${v.def.stones} 石を 受け取れます。`
-            : `未達成${rate ? `（${rate}）` : ''}。`,
+            : `未達成${rateOf(v) ? `（${rateOf(v)}）` : ''}。`),
         onSelect: () => {
           const got = claimMission(town, v.def.id);
           if (got <= 0) return false;
           this.app.persist();
           this.say(`${got} 石を 受け取った。`);
-          this.menus.pop();
-          this.openMissions();
           return false;
         },
-      });
-    }
+      };
+    });
 
     this.menus.push(new ListMenu({
-      title: `ミッション　所持 ${town.stones ?? 0} 石`,
+      title: () => `${title}　${views.length} 件`,
       entries,
-      rect: { x: 300, y: 76, w: 580, h: 500 },
-      rows: 11,
+      rect: { x: 280, y: 60, w: 620, h: 540 },
+      rows: 12,
       showDesc: true,
+      emptyText: '何も 無い',
     }));
   }
 

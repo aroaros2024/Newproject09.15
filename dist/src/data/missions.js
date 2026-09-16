@@ -22,14 +22,14 @@
  */
 const TUTORIAL = [
     { id: 'walk50', name: '50 歩 歩く', cond: { t: 'tally', key: 'walk', n: 50 }, stones: 30, group: 'tutorial' },
-    { id: 'firstKill', name: '敵を 1 体 倒す', cond: { t: 'tally', key: 'kill', n: 1 }, stones: 30, group: 'tutorial', after: 'walk50' },
-    { id: 'firstPickup', name: '道具を 1 個 拾う', cond: { t: 'tally', key: 'pickup', n: 1 }, stones: 30, group: 'tutorial', after: 'firstKill' },
-    { id: 'firstEquip', name: '武器か 盾を 装備する', cond: { t: 'tally', key: 'equip', n: 1 }, stones: 40, group: 'tutorial', after: 'firstPickup' },
-    { id: 'firstUse', name: '道具を 1 回 使う', cond: { t: 'tally', key: 'use', n: 1 }, stones: 40, group: 'tutorial', after: 'firstEquip' },
-    { id: 'firstShortcut', name: '道具を ショートカットに 入れる', cond: { t: 'tally', key: 'shortcut', n: 1 }, stones: 50, group: 'tutorial', after: 'firstUse' },
+    { id: 'firstKill', name: '敵を 1 体 倒す', cond: { t: 'tally', key: 'kill', n: 1 }, stones: 30, group: 'tutorial' },
+    { id: 'firstPickup', name: '道具を 1 個 拾う', cond: { t: 'tally', key: 'pickup', n: 1 }, stones: 30, group: 'tutorial' },
+    { id: 'firstEquip', name: '武器か 盾を 装備する', cond: { t: 'tally', key: 'equip', n: 1 }, stones: 40, group: 'tutorial' },
+    { id: 'firstUse', name: '道具を 1 回 使う', cond: { t: 'tally', key: 'use', n: 1 }, stones: 40, group: 'tutorial' },
+    { id: 'firstShortcut', name: '道具を ショートカットに 入れる', cond: { t: 'tally', key: 'shortcut', n: 1 }, stones: 50, group: 'tutorial' },
     // 1F への入場は数えないので、5F のダンジョンを踏破しても descend は 4
-    { id: 'descend3', name: '階段を 3 回 降りる', cond: { t: 'tally', key: 'descend', n: 3 }, stones: 60, group: 'tutorial', after: 'firstShortcut' },
-    { id: 'clearD1', name: '始まりの洞窟を クリアする', cond: { t: 'cleared', dungeon: 'd1' }, stones: 150, group: 'tutorial', after: 'descend3' },
+    { id: 'descend3', name: '階段を 3 回 降りる', cond: { t: 'tally', key: 'descend', n: 3 }, stones: 60, group: 'tutorial' },
+    { id: 'clearD1', name: '始まりの洞窟を クリアする', cond: { t: 'cleared', dungeon: 'd1' }, stones: 150, group: 'tutorial' },
 ];
 /**
  * 中盤 18 個。

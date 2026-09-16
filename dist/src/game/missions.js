@@ -54,25 +54,33 @@ export const isClaimed = (town, id) => (town.claimed ?? []).includes(id);
 /**
  * 一覧に出すぶん。
  *
- * `after` が受け取り済みになるまでは出さない。チュートリアルを一度に
- * 8 個並べると、どれから手を付ければよいのか分からなくなる。
- * 受け取り済みのものは、達成した記録として後ろに残す。
+ * 順番の縛りは無い。100 個が最初から全部見えていて、
+ * 達成したものは順番に関係なく受け取れる。
+ *
+ * 並びは「受け取れる → 近い → 遠い → 受け取り済み」。
+ * 未達成のものは達成率の高い順に並べるので、
+ * 100 個あっても「いま自分に届くもの」が自然と上に来る。
  */
 export function visibleMissions(town) {
-    const out = [];
-    for (const def of MISSIONS) {
-        if (def.after && !isClaimed(town, def.after))
-            continue;
+    const out = MISSIONS.map((def) => {
         const { progress, goal } = missionProgress(town, def);
-        out.push({
+        return {
             def, progress, goal,
             done: progress >= goal,
             claimed: isClaimed(town, def.id),
-        });
-    }
-    // 受け取れるものを先頭に、次に未達成、受け取り済みは最後
+        };
+    });
     const rank = (v) => (v.claimed ? 2 : v.done ? 0 : 1);
-    return out.sort((a, b) => rank(a) - rank(b));
+    const rate = (v) => (v.goal > 0 ? v.progress / v.goal : 0);
+    return out.sort((a, b) => {
+        const d = rank(a) - rank(b);
+        if (d !== 0)
+            return d;
+        // 同じ段の中では、近いものが上
+        if (rank(a) === 1)
+            return rate(b) - rate(a);
+        return 0;
+    });
 }
 /** 受け取れる石の合計。バッジの数字に使う */
 export function claimableCount(town) {
@@ -96,25 +104,23 @@ export function claimMission(town, id) {
     town.stones = (town.stones ?? 0) + def.stones;
     return def.stones;
 }
-/** 受け取れるものを全部まとめて受け取る。返すのは合計の石 */
+/**
+ * 受け取れるものを全部まとめて受け取る。返すのは合計の石。
+ *
+ * 順番の縛りが無いので 1 周で足りる。
+ * 受け取ったことで新しく出てくるミッションは存在しない。
+ */
 export function claimAll(town) {
     const ids = [];
     let stones = 0;
-    for (const v of visibleMissions(town)) {
-        if (!v.done || v.claimed)
+    for (const def of MISSIONS) {
+        if (isClaimed(town, def.id))
             continue;
-        const got = claimMission(town, v.def.id);
+        const got = claimMission(town, def.id);
         if (got > 0) {
             stones += got;
-            ids.push(v.def.id);
+            ids.push(def.id);
         }
-    }
-    // 受け取ったことで after が解けて、新しく達成済みのものが出てくることがある。
-    // 一度で全部受け取れないと「全部受け取る」を何度も押すことになる
-    if (ids.length > 0) {
-        const more = claimAll(town);
-        stones += more.stones;
-        ids.push(...more.ids);
     }
     return { stones, ids };
 }
