@@ -17,16 +17,23 @@ export class Camera {
     targetY = 0;
     /** 追従の速さ（0〜1、1 で即座） */
     follow = 0.18;
+    /**
+     * カメラの行き過ぎを許す量（画面サイズに対する割合）。
+     *
+     * 0 にするとマップの端でカメラが止まり、プレイヤーが画面の隅に
+     * 寄ってしまう。マップの外は探索前の闇と同じ黒なので、少しはみ出して
+     * でもプレイヤーを中央付近に置いた方が見やすい。
+     */
+    static OVERSCROLL = 0.22;
     setTarget(center, map, viewW, viewH) {
-        const halfW = viewW / 2;
-        const halfH = viewH / 2;
         const mapW = map.width * TILE;
         const mapH = map.height * TILE;
-        let cx = center.x * TILE + TILE / 2 - halfW;
-        let cy = center.y * TILE + TILE / 2 - halfH;
-        // マップが画面より小さいときは中央に寄せる
-        cx = mapW <= viewW ? (mapW - viewW) / 2 : Math.max(0, Math.min(mapW - viewW, cx));
-        cy = mapH <= viewH ? (mapH - viewH) / 2 : Math.max(0, Math.min(mapH - viewH, cy));
+        const marginX = viewW * Camera.OVERSCROLL;
+        const marginY = viewH * Camera.OVERSCROLL;
+        let cx = center.x * TILE + TILE / 2 - viewW / 2;
+        let cy = center.y * TILE + TILE / 2 - viewH / 2;
+        cx = clampRange(cx, -marginX, mapW - viewW + marginX);
+        cy = clampRange(cy, -marginY, mapH - viewH + marginY);
         this.targetX = cx;
         this.targetY = cy;
     }
@@ -43,6 +50,12 @@ export class Camera {
         if (Math.abs(this.y - this.targetY) < 0.5)
             this.y = this.targetY;
     }
+}
+/** lo > hi のときは中央を返す（マップが画面より小さい場合） */
+function clampRange(v, lo, hi) {
+    if (lo > hi)
+        return (lo + hi) / 2;
+    return v < lo ? lo : v > hi ? hi : v;
 }
 /** 地形を焼いたキャンバス。フロアが変わるまで使い回す */
 class TerrainCache {
