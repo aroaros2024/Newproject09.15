@@ -11,7 +11,7 @@ import type { Dir, Point } from '../core/geom.js';
 import { chebyshev, samePoint } from '../core/geom.js';
 import type {
   Actor, DungeonDef, FloorItem, FloorMap, GameEvent, ItemInstance, LogStyle,
-  MonsterActor, MonsterDef, PlayerActor, RunState, StatusId,
+  MonsterActor, MonsterDef, PlayerActor, Room, RunState, StatusId,
 } from '../core/types.js';
 import { getMonster } from '../data/registry.js';
 import { at, canEnter, isOpen } from '../dungeon/tilemap.js';
@@ -29,6 +29,17 @@ export class World {
    * spawn 側から注入する（combat から spawn を直接 import すると循環するため）。
    */
   itemFactory: ((defId: string) => ItemInstance | null) | null = null;
+  /** 発動待ちのモンスターハウス。ターンエンジンが拾って処理する */
+  pendingMonsterHouse: Room | null = null;
+  /** 階段を降りる予約。行動の解決後にターンエンジンが処理する */
+  pendingDescend = false;
+  /** 発動待ちのワナ。効果の適用はターンエンジンが行う */
+  pendingTrap: { actor: Actor; trapId: string } | null = null;
+  /**
+   * その階に合ったモンスターを指定位置に湧かせる関数。
+   * spawn 側から注入する（循環参照を避けるため）。
+   */
+  monsterFactory: ((pos: Point) => MonsterActor | null) | null = null;
 
   constructor(run: RunState, dungeon: DungeonDef) {
     this.run = run;
@@ -94,6 +105,10 @@ export class World {
   /** モンスターの静的定義 */
   defOf(m: MonsterActor): MonsterDef {
     return getMonster(m.defId);
+  }
+
+  defOfId(id: string): MonsterDef {
+    return getMonster(id);
   }
 
   /** 表示名（ボスは固有名を優先） */

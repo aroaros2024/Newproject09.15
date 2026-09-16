@@ -53,6 +53,7 @@ export const BRACELETS = [
     br('floatBracelet', '浮遊の腕輪', 'levitate', 3800, 18, '宙に浮いて、ワナも溶岩も越えられる。'),
     br('blastWardBracelet', '爆発よけの腕輪', 'wardBlast', 2600, 20, '爆発のダメージを受けなくなる。'),
     br('healthBracelet', '竜脈の腕輪', 'maxHpUp', 4200, 16, '最大 HP が 30 増える。'),
+    br('reviveBracelet', '復活の腕輪', 'revive', 6000, 8, '力尽きた時、一度だけ砕けて身代わりになる。'),
     // --- 呪い専用（拾った時点で必ず呪われている） ---
     br('painBracelet', '痛恨の腕輪', 'painCurse', 100, 16, '敵の痛恨の一撃を受けやすくなる。'),
     br('starveBracelet', 'ハラペコの腕輪', 'starveCurse', 100, 16, '満腹度が一気に減っていく。'),

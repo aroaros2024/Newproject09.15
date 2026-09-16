@@ -170,6 +170,7 @@ export const STATUS_DURATION = {
     trapped: [99, 99],
     levitate: [30, 30],
     terrified: [8, 12],
+    invincible: [30, 30],
 };
 /** 混乱時に方向が狂う確率 */
 export const CONFUSE_MISDIRECT_RATE = 5 / 8;
