@@ -4,10 +4,10 @@
 import { chebyshev, samePoint, step } from '../../core/geom.js';
 import { Cmd } from '../../core/input.js';
 import { clearRun, saveRun } from '../../core/save.js';
-import { getItem } from '../../data/registry.js';
+import { getItem, getTrap } from '../../data/registry.js';
 import { at } from '../../dungeon/tilemap.js';
 import { equippedBracelet, isEquipped } from '../../game/inventory.js';
-import { isContainer, needsDirection, needsItemTarget, shopDebt, } from '../../game/itemActions.js';
+import { isContainer, needsDirection, needsItemTarget, payDebt, shopDebt, } from '../../game/itemActions.js';
 import { itemName, kindLabel, useVerb } from '../../game/naming.js';
 import { SELL_RATE } from '../../game/rules.js';
 import { onStairs, restTurns, stepTurn } from '../../game/turn.js';
@@ -628,10 +628,13 @@ export class DungeonScreen {
                 },
             });
         }
-        if (tile?.trap && tile.trap.revealed) {
+        if (tile?.trap && tile.trap.revealed && !tile.trap.used) {
+            const trap = getTrap(tile.trap.defId);
             entries.push({
-                label: `${tile.trap.defId} を 調べる`,
+                label: `${trap.name}`,
+                right: 'ワナ',
                 disabled: true,
+                desc: trap.desc,
             });
         }
         const debt = shopDebt(world);
@@ -641,7 +644,8 @@ export class DungeonScreen {
                 color: UI.gitan,
                 disabled: p.gitan < debt,
                 onSelect: () => {
-                    this.act({ type: 'none' });
+                    payDebt(world);
+                    this.pumpEvents();
                     return true;
                 },
             });

@@ -131,6 +131,13 @@ function stepTowardStairs(world, m) {
 }
 /** そのモンスターにとっての攻撃対象（プレイヤーまたは仲間） */
 function findTarget(world, m) {
+    // 身代わりの杖を当てられた敵がいれば、他の敵はそちらへ向かう
+    if (m.kind === 'monster' && world.decoyId !== null && world.decoyId !== m.id) {
+        const decoy = world.actorById(world.decoyId);
+        if (decoy && decoy.alive)
+            return decoy;
+        world.decoyId = null;
+    }
     const candidates = m.kind === 'ally'
         ? world.run.monsters.filter((x) => x.alive)
         : [world.player, ...world.run.allies].filter((x) => x.alive);

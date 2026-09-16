@@ -293,7 +293,6 @@ function updateShopAnger(world) {
 /** 足踏みで一定ターン休む（HP 回復のための「休憩」） */
 export function restTurns(world, maxTurns) {
     let n = 0;
-    const startHp = world.player.hp;
     for (; n < maxTurns; n++) {
         if (world.finished)
             break;
@@ -309,7 +308,6 @@ export function restTurns(world, maxTurns) {
         if (visibleEnemyNear(world))
             break;
     }
-    void startHp;
     return n;
 }
 function visibleEnemyNear(world) {

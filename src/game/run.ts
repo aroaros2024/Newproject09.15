@@ -254,6 +254,10 @@ export function enterFloor(world: World, depth: number): void {
     ally.pos = spot ?? world.run.player.pos;
   }
 
+  // 前の階に置いた聖域と、身代わりの指定は持ち越さない
+  world.sanctuaries = [];
+  world.decoyId = null;
+
   world.run.windLeft = d.windTurns > 0 ? d.windTurns : 0;
   refreshFov(world);
 
