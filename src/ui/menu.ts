@@ -18,19 +18,32 @@ export interface Badge {
   color: string;
 }
 
+/**
+ * 出すたびに変わる表示。
+ *
+ * 文字列で持つと、メニューを組んだ瞬間の値が固定される。
+ * 銀行で預けても「預り 0 G」のまま、ミッションを受け取っても
+ * 「受け取れる 2」のまま、といった食い違いが起きる。
+ * 変わりうるものは関数で渡すこと。
+ */
+export type Live<T> = T | (() => T);
+
+export const liveValue = <T,>(v: Live<T> | undefined): T | undefined =>
+  (typeof v === 'function' ? (v as () => T)() : v);
+
 export interface MenuEntry {
   /** 表示名 */
-  label: string;
+  label: Live<string>;
   /** 右端に薄く出す補助表示（個数・値段など） */
-  right?: string;
+  right?: Live<string>;
   /** 選べない項目（灰色にする） */
   disabled?: boolean;
   /** 文字色の上書き */
-  color?: string;
+  color?: Live<string | undefined>;
   /** 名前の後ろに付くバッジ（装備中・呪いなど） */
   badges?: Badge[];
   /** 下部の説明欄に出す文 */
-  desc?: string;
+  desc?: Live<string>;
   /** 左に出すアイコンのスプライト id */
   sprite?: string;
   /** 決定したときの処理。true を返すとこのメニューを閉じる */
@@ -173,7 +186,7 @@ export class ListMenu {
       const rowRect = { x: r.x + 14, y, w: r.w - 28, h: this.rowH - 4 };
       if (index === this.cursor) drawCursor(g, rowRect, time);
 
-      const color = entry.disabled ? UI.textDisabled : (entry.color ?? UI.text);
+      const color = entry.disabled ? UI.textDisabled : (liveValue(entry.color) ?? UI.text);
       let x = rowRect.x + 12;
       // 番号（ショートカット用）
       if (index < 10) {
@@ -199,13 +212,14 @@ export class ListMenu {
       // 右側（補助表示とバッジ）を先に描いて、名前に使える幅を実測で決める。
       // 固定幅を引くと、狭いメニューで名前が「全…」のように潰れてしまう。
       let bx = rowRect.x + rowRect.w - 12;
-      if (entry.right) {
-        drawText(g, entry.right, bx, y + this.rowH / 2, {
+      const right = liveValue(entry.right);
+      if (right) {
+        drawText(g, right, bx, y + this.rowH / 2, {
           size: 15, align: 'right', color: UI.textDim, baseline: 'middle',
         });
         g.save();
         g.font = font(15);
-        bx -= g.measureText(entry.right).width + 12;
+        bx -= g.measureText(right).width + 12;
         g.restore();
       }
       for (const badge of entry.badges ?? []) {
@@ -215,7 +229,7 @@ export class ListMenu {
       }
 
       const labelMax = Math.max(40, bx - x - 8);
-      drawText(g, ellipsize(g, entry.label, labelMax, 17), x, y + this.rowH / 2, {
+      drawText(g, ellipsize(g, liveValue(entry.label) ?? '', labelMax, 17), x, y + this.rowH / 2, {
         size: 17, color, baseline: 'middle',
       });
     });
@@ -241,7 +255,7 @@ export class ListMenu {
     const y = Math.min(r.y + r.h + 10, 720 - h - 12);
     const box = { x: r.x, y, w: r.w, h };
     drawPanel(g, box, { alpha: 0.92 });
-    const text = entry?.desc ?? '';
+    const text = liveValue(entry?.desc) ?? '';
     const lines = wrapText(g, text, box.w - 36, 15).slice(0, 3);
     lines.forEach((line, i) => {
       drawText(g, line, box.x + 18, box.y + 30 + i * 22, {

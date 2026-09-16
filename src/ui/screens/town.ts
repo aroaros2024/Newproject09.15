@@ -12,6 +12,7 @@ import {
 } from '../../game/town.js';
 import { isUnidentifiableKind, itemName, kindLabel } from '../../game/naming.js';
 import { collectionRate } from '../../game/town.js';
+import { claimAll, claimMission, claimableCount, visibleMissions } from '../../game/missions.js';
 import { SELL_RATE } from '../../game/rules.js';
 import { type Ctx, drawPanel, drawText, drawOverlay } from '../draw.js';
 import {
@@ -105,7 +106,8 @@ export class TownScreen implements Screen {
       },
       {
         label: '銀行',
-        desc: `ギタンを 預ける・引き出す。預けたぶんは 倒れても 残る（預り ${this.app.town.bankGitan} G）。`,
+        desc: () =>
+          `ギタンを 預ける・引き出す。預けたぶんは 倒れても 残る（預り ${this.app.town.bankGitan} G）。`,
         onSelect: () => {
           this.openBank();
           return false;
@@ -136,11 +138,24 @@ export class TownScreen implements Screen {
         },
       },
       {
+        label: 'ミッション',
+        right: () => {
+          const n = claimableCount(this.app.town);
+          return n > 0 ? `受け取れる ${n}` : `石 ${this.app.town.stones ?? 0}`;
+        },
+        color: () => (claimableCount(this.app.town) > 0 ? UI.good : undefined),
+        desc: '達成した ミッションの 石を 受け取る。',
+        onSelect: () => {
+          this.openMissions();
+          return false;
+        },
+      },
+      {
         label: '図鑑',
-        right: (() => {
+        right: () => {
           const r = collectionRate(this.app.town);
           return `${r.monsters + r.items} 種`;
-        })(),
+        },
         desc: 'これまでに 出会った モンスターと 道具を 見る。',
         onSelect: () => {
           this.openCollection();
@@ -149,7 +164,7 @@ export class TownScreen implements Screen {
       },
       {
         label: '名前を 変える',
-        right: this.app.town.playerName,
+        right: () => this.app.town.playerName,
         desc: '風来人の 名前を 変えます。',
         onSelect: () => {
           this.changeName();
@@ -177,6 +192,64 @@ export class TownScreen implements Screen {
   }
 
   /** 図鑑。出会ったモンスターと道具を並べる */
+  // ------------------------------------------------------------ ミッション
+
+  private openMissions(): void {
+    const town = this.app.town;
+    const views = visibleMissions(town);
+    const ready = views.filter((v) => v.done && !v.claimed);
+
+    const entries: MenuEntry[] = [];
+    if (ready.length > 0) {
+      entries.push({
+        label: `まとめて 受け取る（${ready.length} 件）`,
+        color: UI.good,
+        right: `${ready.reduce((a, v) => a + v.def.stones, 0)} 石`,
+        desc: '達成した ぶんを すべて 受け取ります。',
+        onSelect: () => {
+          const got = claimAll(town);
+          this.app.persist();
+          this.say(`${got.stones} 石を 受け取った。`);
+          this.menus.pop();
+          this.openMissions();
+          return false;
+        },
+      });
+    }
+
+    for (const v of views) {
+      const rate = v.goal > 1 ? `${Math.min(v.progress, v.goal)} / ${v.goal}` : '';
+      entries.push({
+        label: v.claimed ? `済　${v.def.name}` : v.def.name,
+        right: v.claimed ? '' : v.done ? `${v.def.stones} 石` : rate,
+        color: v.claimed ? UI.textDim : v.done ? UI.good : undefined,
+        disabled: v.claimed || !v.done,
+        desc: v.claimed
+          ? `受け取り済み（${v.def.stones} 石）。`
+          : v.done
+            ? `達成。${v.def.stones} 石を 受け取れます。`
+            : `未達成${rate ? `（${rate}）` : ''}。`,
+        onSelect: () => {
+          const got = claimMission(town, v.def.id);
+          if (got <= 0) return false;
+          this.app.persist();
+          this.say(`${got} 石を 受け取った。`);
+          this.menus.pop();
+          this.openMissions();
+          return false;
+        },
+      });
+    }
+
+    this.menus.push(new ListMenu({
+      title: `ミッション　所持 ${town.stones ?? 0} 石`,
+      entries,
+      rect: { x: 300, y: 76, w: 580, h: 500 },
+      rows: 11,
+      showDesc: true,
+    }));
+  }
+
   private openCollection(): void {
     const town = this.app.town;
     const rate = collectionRate(town);

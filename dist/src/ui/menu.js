@@ -8,6 +8,7 @@ import { Cmd } from '../core/input.js';
 import { drawBadge, drawCursor, drawPanel, drawScrollArrow, drawText, ellipsize, wrapText, } from './draw.js';
 import { UI, font } from './theme.js';
 import { getSprite, sprites } from './sprites.js';
+export const liveValue = (v) => (typeof v === 'function' ? v() : v);
 export class ListMenu {
     title;
     entries;
@@ -118,7 +119,7 @@ export class ListMenu {
             const rowRect = { x: r.x + 14, y, w: r.w - 28, h: this.rowH - 4 };
             if (index === this.cursor)
                 drawCursor(g, rowRect, time);
-            const color = entry.disabled ? UI.textDisabled : (entry.color ?? UI.text);
+            const color = entry.disabled ? UI.textDisabled : (liveValue(entry.color) ?? UI.text);
             let x = rowRect.x + 12;
             // 番号（ショートカット用）
             if (index < 10) {
@@ -139,13 +140,14 @@ export class ListMenu {
             // 右側（補助表示とバッジ）を先に描いて、名前に使える幅を実測で決める。
             // 固定幅を引くと、狭いメニューで名前が「全…」のように潰れてしまう。
             let bx = rowRect.x + rowRect.w - 12;
-            if (entry.right) {
-                drawText(g, entry.right, bx, y + this.rowH / 2, {
+            const right = liveValue(entry.right);
+            if (right) {
+                drawText(g, right, bx, y + this.rowH / 2, {
                     size: 15, align: 'right', color: UI.textDim, baseline: 'middle',
                 });
                 g.save();
                 g.font = font(15);
-                bx -= g.measureText(entry.right).width + 12;
+                bx -= g.measureText(right).width + 12;
                 g.restore();
             }
             for (const badge of entry.badges ?? []) {
@@ -154,7 +156,7 @@ export class ListMenu {
                 bx -= bw + 6;
             }
             const labelMax = Math.max(40, bx - x - 8);
-            drawText(g, ellipsize(g, entry.label, labelMax, 17), x, y + this.rowH / 2, {
+            drawText(g, ellipsize(g, liveValue(entry.label) ?? '', labelMax, 17), x, y + this.rowH / 2, {
                 size: 17, color, baseline: 'middle',
             });
         });
@@ -177,7 +179,7 @@ export class ListMenu {
         const y = Math.min(r.y + r.h + 10, 720 - h - 12);
         const box = { x: r.x, y, w: r.w, h };
         drawPanel(g, box, { alpha: 0.92 });
-        const text = entry?.desc ?? '';
+        const text = liveValue(entry?.desc) ?? '';
         const lines = wrapText(g, text, box.w - 36, 15).slice(0, 3);
         lines.forEach((line, i) => {
             drawText(g, line, box.x + 18, box.y + 30 + i * 22, {
