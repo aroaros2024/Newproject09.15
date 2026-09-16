@@ -93,6 +93,15 @@ export class TownScreen {
                 },
             },
             {
+                label: '名前を 変える',
+                right: this.app.town.playerName,
+                desc: '風来人の 名前を 変えます。',
+                onSelect: () => {
+                    this.changeName();
+                    return false;
+                },
+            },
+            {
                 label: 'タイトルへ 戻る',
                 color: UI.textDim,
                 onSelect: () => {
@@ -109,6 +118,38 @@ export class TownScreen {
             rowH: 46,
             showDesc: false,
             closable: false,
+        }));
+    }
+    /** 名前の変更。候補から選ぶか、自分で打ち込む */
+    changeName() {
+        const presets = ['ナギ', 'シズカ', 'カゲロウ', 'ツムギ', 'ハヤテ', 'ミコト', 'リク', 'アオイ'];
+        const entries = presets.map((name) => ({
+            label: name,
+            onSelect: () => {
+                this.app.town.playerName = name;
+                this.app.persist();
+                this.say(`これからは ${name} と 名乗ります。`);
+                return true;
+            },
+        }));
+        entries.push({
+            label: '自分で 入力する',
+            color: UI.cursorEdge,
+            onSelect: () => {
+                const typed = window.prompt('名前を 入力してください（12 文字まで）', this.app.town.playerName);
+                if (typed && typed.trim().length > 0) {
+                    this.app.town.playerName = typed.trim().slice(0, 12);
+                    this.app.persist();
+                    this.say(`これからは ${this.app.town.playerName} と 名乗ります。`);
+                }
+                return true;
+            },
+        });
+        this.menus.push(new ListMenu({
+            title: '名前を 変える',
+            entries,
+            rect: { x: 460, y: 160, w: 360, h: 60 + entries.length * 40 },
+            rowH: 40,
         }));
     }
     // ------------------------------------------------------------ ダンジョン選択

@@ -267,6 +267,39 @@ export function enterFloor(world: World, depth: number): void {
 
   // 入った瞬間のモンスターハウス（プレイヤーがその部屋にいる場合）
   checkMonsterHouseAt(world);
+
+  showFloorGuide(world, depth);
+}
+
+/**
+ * 始まりの洞窟では、階ごとに操作の案内を出す。
+ * 初めて遊ぶ人が「何をすればいいか分からない」まま死ぬのを防ぐ。
+ */
+function showFloorGuide(world: World, depth: number): void {
+  if (world.dungeon.id !== 'd1') return;
+  const guides: Record<number, string[]> = {
+    1: [
+      '矢印キーか WASD で 歩ける。2 つ同時に押すと 斜めへ 進む。',
+      '敵に 向かって 歩けば 攻撃になる。緑の階段を 探して 降りよう。',
+    ],
+    2: [
+      'アイテムは 踏むだけで 拾える。E キーで メニューが 開く。',
+      '拾った草や巻物は 使ってみるまで 正体が 分からない。',
+    ],
+    3: [
+      'おなかが 減ると HP が 減り始める。食料は 大事に。',
+      'Shift を 押しながら 歩くと ダッシュできる。',
+    ],
+    4: [
+      'HP が 減ったら、敵のいない所で「.」を 押して 休むと 回復する。',
+      '武器と盾は 装備しないと 効かない。E →「道具」で 確かめよう。',
+    ],
+    5: [
+      'この階の 階段を 降りれば 踏破。持ち帰った物は 倉庫に 入る。',
+      '困ったら H キーで 操作の ヘルプが 見られる。',
+    ],
+  };
+  for (const line of guides[depth] ?? []) world.log(line, 'system');
 }
 
 /** 階段を降りる */
