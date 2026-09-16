@@ -738,6 +738,11 @@ export interface RunState {
   windLeft: number;
   /** すでに倒したボス */
   defeatedBosses: string[];
+  /**
+   * この冒険で出会ったもの。村へ帰ったときに図鑑へ記録する。
+   * Set は JSON に載らないので配列で持つ。
+   */
+  encountered: { monsters: string[]; items: string[] };
   /** 統計（結果画面用） */
   stats: RunStats;
 }

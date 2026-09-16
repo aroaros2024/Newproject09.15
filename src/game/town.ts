@@ -12,7 +12,7 @@ import { Rng } from '../core/rng.js';
 import type {
   AdventureRecord, DungeonDef, ItemInstance, PlayerActor, TownState,
 } from '../core/types.js';
-import { getItem, allDungeons, getDungeon } from '../data/registry.js';
+import { ALL_ITEMS, allMonsters, getItem, getDungeon } from '../data/registry.js';
 import { DUNGEON_ORDER } from '../data/dungeons.js';
 import { makeItem } from './inventory.js';
 import { mergeInto } from './itemEffects.js';
@@ -266,6 +266,13 @@ export function finishRun(
   town.bestDepth[d.id] = Math.max(town.bestDepth[d.id] ?? 0, world.run.stats.maxDepth);
   town.totalRuns++;
 
+  // 図鑑。出会った敵と、手にした／識別したアイテムを記録する
+  recordSeen(
+    town,
+    [...world.run.encountered.items, ...Object.keys(world.run.identify.known)],
+    world.run.encountered.monsters,
+  );
+
   let unlocked: string | null = null;
   let rewardMessage: string | null = null;
   if (kind === 'clear') {
@@ -328,7 +335,13 @@ export function recordSeen(town: TownState, itemIds: string[], monsterIds: strin
 }
 
 /** 図鑑の達成率 */
-export function collectionRate(town: TownState): { items: number; monsters: number } {
-  const totalItems = allDungeons().length > 0 ? Object.keys(town.seenItems).length : 0;
-  return { items: totalItems, monsters: Object.keys(town.seenMonsters).length };
+export function collectionRate(town: TownState): {
+  items: number; itemsTotal: number; monsters: number; monstersTotal: number;
+} {
+  return {
+    items: Object.keys(town.seenItems).length,
+    itemsTotal: ALL_ITEMS.filter((d) => d.kind !== 'gitan').length,
+    monsters: Object.keys(town.seenMonsters).length,
+    monstersTotal: allMonsters().filter((m) => m.family !== 'shop').length,
+  };
 }

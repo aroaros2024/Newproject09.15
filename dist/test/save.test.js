@@ -142,4 +142,40 @@ test('倉庫の壺に入れた物は、死んでも村に届く', () => {
     finishRun(world, town, 'death', 'やられた');
     assert.ok(town.storage.some((i) => i.defId === 'tenrinShield'), '倉庫の壺に入れた物が届いていない');
 });
+test('冒険で出会ったモンスターと道具が図鑑に残る', async () => {
+    const { refreshFov } = await import('../src/game/run.js');
+    const { collectionRate } = await import('../src/game/town.js');
+    const town = newTown();
+    const world = startRun('d2', town, { seed: 1357 });
+    // 目の前に敵を置いて視界に入れる
+    const spot = world.findDropSpot(world.player.pos, 2);
+    assert.ok(spot);
+    const before = collectionRate(town);
+    const m = world.run.monsters[0];
+    assert.ok(m);
+    m.pos = spot;
+    refreshFov(world);
+    assert.ok(world.run.encountered.monsters.includes(m.defId), '視界に入った敵が記録されていない');
+    // 草を持って識別する
+    addToInventory(world.player, makeItem('healHerb', world.rng, {}, () => world.nextUid()));
+    world.run.identify.known.healHerb = true;
+    refreshFov(world);
+    finishRun(world, town, 'escape', '脱出');
+    assert.ok(town.seenMonsters[m.defId], '図鑑にモンスターが残っていない');
+    assert.ok(town.seenItems.healHerb, '図鑑に道具が残っていない');
+    const after = collectionRate(town);
+    assert.ok(after.monsters > before.monsters, '図鑑のモンスター数が増えていない');
+    assert.ok(after.itemsTotal > 100, '道具の総数が数えられていない');
+    assert.ok(after.monstersTotal >= 60, 'モンスターの総数が数えられていない');
+});
+test('図鑑のデータもセーブに載る', () => {
+    const world = startRun('d1', newTown(), { seed: 2468 });
+    world.run.encountered.monsters.push('ratField');
+    world.run.encountered.items.push('healHerb');
+    const restored = roundTrip(world.syncForSave());
+    // 開始時点で見えている敵も既に記録されているので、含まれることだけ確かめる
+    assert.ok(restored.encountered.monsters.includes('ratField'));
+    assert.ok(restored.encountered.items.includes('healHerb'));
+    assert.equal(new Set(restored.encountered.monsters).size, restored.encountered.monsters.length, '同じ敵が重複して記録されている');
+});
 //# sourceMappingURL=save.test.js.map

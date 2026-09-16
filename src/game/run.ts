@@ -133,6 +133,7 @@ export function startRun(
     nextActorId: 1,
     windLeft: dungeon.windTurns > 0 ? dungeon.windTurns : WIND_DEFAULT_TURNS,
     defeatedBosses: [],
+    encountered: { monsters: [], items: [] },
     stats: {
       kills: 0, maxDepth: 1, itemsFound: 0, gitanEarned: 0,
       damageTaken: 0, damageDealt: 0, startedAt: 0,
@@ -313,12 +314,32 @@ export function descend(world: World): void {
   enterFloor(world, world.run.depth + 1);
 }
 
-/** 視界を計算し直す */
+/** 視界を計算し直し、見えた敵を図鑑に記録する */
 export function refreshFov(world: World): void {
   const p = world.player;
   computeFov(world.map, p.pos, {
     blind: world.hasStatus(p, 'blind'),
   });
+  recordVisible(world);
+}
+
+/** 見えている敵と足元のアイテムを、この冒険の「出会ったもの」に足す */
+function recordVisible(world: World): void {
+  const seen = world.run.encountered;
+  for (const m of world.run.monsters) {
+    if (!m.alive) continue;
+    const tile = world.map.tiles[m.pos.y * world.map.width + m.pos.x];
+    if (!tile?.visible) continue;
+    if (!seen.monsters.includes(m.defId)) seen.monsters.push(m.defId);
+  }
+  for (const f of world.run.floorItems) {
+    const tile = world.map.tiles[f.pos.y * world.map.width + f.pos.x];
+    if (!tile?.visible) continue;
+    if (!seen.items.includes(f.item.defId)) seen.items.push(f.item.defId);
+  }
+  for (const it of world.player.inventory) {
+    if (!seen.items.includes(it.defId)) seen.items.push(it.defId);
+  }
 }
 
 /** プレイヤーのいる部屋がモンスターハウスなら発動させる */

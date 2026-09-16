@@ -2,9 +2,10 @@
  * 風の村。冒険の支度をする画面。
  */
 import { Cmd } from '../../core/input.js';
-import { getItem } from '../../data/registry.js';
+import { ALL_ITEMS, allMonsters, getItem } from '../../data/registry.js';
 import { BENTOU_PRICE, SMITH_PRICE, buyFromTown, depositItem, dungeonList, sellToTown, shopStock, smithTemper, smithUncurse, sortStorage, storageFull, withdrawItem, } from '../../game/town.js';
 import { itemName, kindLabel } from '../../game/naming.js';
+import { collectionRate } from '../../game/town.js';
 import { SELL_RATE } from '../../game/rules.js';
 import { drawPanel, drawText, drawOverlay } from '../draw.js';
 import { ConfirmDialog, ListMenu, MenuStack } from '../menu.js';
@@ -93,6 +94,18 @@ export class TownScreen {
                 },
             },
             {
+                label: '図鑑',
+                right: (() => {
+                    const r = collectionRate(this.app.town);
+                    return `${r.monsters + r.items} 種`;
+                })(),
+                desc: 'これまでに 出会った モンスターと 道具を 見る。',
+                onSelect: () => {
+                    this.openCollection();
+                    return false;
+                },
+            },
+            {
                 label: '名前を 変える',
                 right: this.app.town.playerName,
                 desc: '風来人の 名前を 変えます。',
@@ -118,6 +131,73 @@ export class TownScreen {
             rowH: 46,
             showDesc: false,
             closable: false,
+        }));
+    }
+    /** 図鑑。出会ったモンスターと道具を並べる */
+    openCollection() {
+        const town = this.app.town;
+        const rate = collectionRate(town);
+        const entries = [
+            {
+                label: `モンスター　${rate.monsters} / ${rate.monstersTotal}`,
+                color: UI.cursorEdge,
+                onSelect: () => {
+                    const rows = allMonsters()
+                        .filter((m) => m.family !== 'shop')
+                        .map((m) => {
+                        const seen = !!town.seenMonsters[m.id];
+                        return {
+                            label: seen ? m.name : '？？？',
+                            right: seen ? `Lv${m.level}` : '',
+                            disabled: !seen,
+                            sprite: seen ? m.id : undefined,
+                            desc: seen
+                                ? `${m.desc}\nHP ${m.hp}　攻撃 ${m.atk}　防御 ${m.def}　経験値 ${m.exp}`
+                                : 'まだ 出会っていない。',
+                        };
+                    });
+                    this.menus.push(new ListMenu({
+                        title: 'モンスター図鑑',
+                        entries: rows,
+                        rect: { x: 300, y: 76, w: 580, h: 500 },
+                        rows: 13,
+                        showDesc: true,
+                    }));
+                    return false;
+                },
+            },
+            {
+                label: `道具　${rate.items} / ${rate.itemsTotal}`,
+                color: UI.cursorEdge,
+                onSelect: () => {
+                    const rows = ALL_ITEMS
+                        .filter((d) => d.kind !== 'gitan')
+                        .map((d) => {
+                        const seen = !!town.seenItems[d.id];
+                        return {
+                            label: seen ? d.name : '？？？',
+                            right: seen ? kindLabel(d.kind) : '',
+                            disabled: !seen,
+                            sprite: seen ? d.id : undefined,
+                            desc: seen ? `${d.desc}\n買値 ${d.price} ギタン` : 'まだ 手にしていない。',
+                        };
+                    });
+                    this.menus.push(new ListMenu({
+                        title: '道具図鑑',
+                        entries: rows,
+                        rect: { x: 300, y: 76, w: 580, h: 500 },
+                        rows: 13,
+                        showDesc: true,
+                    }));
+                    return false;
+                },
+            },
+        ];
+        this.menus.push(new ListMenu({
+            title: '図鑑',
+            entries,
+            rect: { x: 440, y: 250, w: 400, h: 170 },
+            rowH: 46,
         }));
     }
     /** 名前の変更。候補から選ぶか、自分で打ち込む */
