@@ -144,7 +144,10 @@ function findTarget(world, m) {
         world.decoyId = null;
     }
     const candidates = m.kind === 'ally'
-        ? world.run.monsters.filter((x) => x.alive)
+        // 店主は run.monsters に入っているが敵ではない。
+        // 除かないと、仲間が店主を最寄りの相手として選び、
+        // 当たらない攻撃を延々と繰り返してその場から動かなくなる
+        ? world.run.monsters.filter((x) => x.alive && world.isHostile(m, x))
         : [world.player, ...world.run.allies].filter((x) => x.alive);
     if (candidates.length === 0)
         return null;

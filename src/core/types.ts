@@ -796,6 +796,11 @@ export interface RunState {
    * 丸ごと消えてしまう（プレイヤーからは「壺に入れた物が消滅した」に見える）。
    */
   pendingWarehouse: ItemInstance[];
+  /**
+   * 落とし穴などで先に落ちた仲間。次の階で合流する。
+   * World の一時変数にすると中断セーブで消えるので RunState に置く。
+   */
+  pendingRejoin?: MonsterActor[];
   /** すでに倒したボス */
   defeatedBosses: string[];
   /**

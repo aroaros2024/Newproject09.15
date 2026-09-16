@@ -331,7 +331,12 @@ export function killActor(world, src, target) {
         return; // プレイヤーの死亡処理は turn.ts が拾う（復活判定があるため）
     }
     target.alive = false;
-    world.log(`${world.nameOf(target)}を たおした！`, 'good');
+    if (target.kind === 'ally') {
+        world.log(`${world.nameOf(target)}は 倒れた。`, 'bad');
+    }
+    else {
+        world.log(`${world.nameOf(target)}を たおした！`, 'good');
+    }
     world.emit({ t: 'defeat', actorId: target.id });
     world.sfx('defeat');
     dropOnDeath(world, target);

@@ -37,12 +37,19 @@ const TRAP_EFFECTS = {
             world.log('下の階へ 落ちた！', 'bad');
             world.sfx('warp');
             world.pendingDescend = true;
+            return;
         }
-        else {
+        // 仲間は下の階で合流する。落とし穴 1 つで消えると、
+        // 連れ歩くこと自体が成立しない
+        if (a.kind === 'ally') {
             world.log(`${world.nameOf(a)}は 落とし穴に 落ちた。`);
-            a.alive = false;
             world.removeActor(a);
+            world.pendingRejoin.push(a);
+            return;
         }
+        world.log(`${world.nameOf(a)}は 落とし穴に 落ちた。`);
+        a.alive = false;
+        world.removeActor(a);
     },
     trapSleep: (world, a) => {
         world.log('眠りガスが 噴き出した！', 'bad');

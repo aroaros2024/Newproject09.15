@@ -48,6 +48,14 @@ export class World {
      * 倉庫の壺に入れられ、帰還時に倉庫へ送られるアイテム。
      * 中断セーブを跨いでも消えないよう、実体は RunState に置いてある。
      */
+    /** 落とし穴で先に落ちた仲間。次の階で合流する */
+    get pendingRejoin() {
+        this.run.pendingRejoin ??= [];
+        return this.run.pendingRejoin;
+    }
+    set pendingRejoin(list) {
+        this.run.pendingRejoin = list;
+    }
     get pendingWarehouse() {
         // 古い中断セーブから復元した場合に備えて、無ければここで作る
         this.run.pendingWarehouse ??= [];

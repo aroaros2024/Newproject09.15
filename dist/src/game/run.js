@@ -234,8 +234,13 @@ export function enterFloor(world, depth) {
     const round = !bigRoom && world.rng.percent(8);
     const maze = !bigRoom && !round && world.rng.percent(6);
     world.run.map = generateFloor(d.gen, floorSeed, { bigRoom, round, maze });
-    // 仲間は連れて降りる
+    // 仲間は連れて降りる。落とし穴で先に落ちた者もここで合流する
     const survivors = world.run.allies.filter((a) => a.alive);
+    for (const a of world.pendingRejoin) {
+        if (a.alive)
+            survivors.push(a);
+    }
+    world.pendingRejoin = [];
     world.run.allies = survivors;
     // 敵を撒く前に立ち位置を決める。randomSpawnTile は
     // 「プレイヤーから何マス離れているか」で場所を選ぶので、
