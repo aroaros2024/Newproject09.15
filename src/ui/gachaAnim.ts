@@ -230,7 +230,7 @@ export class GachaAnim {
     if (r.prize.partnerId) return '冒険の 最初から 連れて行ける。倒れても 次の冒険で 戻る。';
     if (r.prize.boost) {
       if (r.refund > 0) return `これ以上は 効かない。${r.refund} 石に 戻した。`;
-      return '村に 残る 効果。真・もっと不思議では 効かない。';
+      return '村に 残る 効果。';
     }
     if (r.lost > 0) return '倉庫が いっぱいで 入らなかった。';
     const n = r.prize.count ?? 1;
