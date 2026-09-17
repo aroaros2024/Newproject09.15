@@ -391,16 +391,21 @@ export class TownScreen {
      * 「受け取れる」「あと少し」「区分ごと」「受け取り済み」に分けて、
      * 数字だけ見れば次にどこを開けばよいか分かるようにする。
      */
+    /**
+     * ミッション。
+     *
+     * 1 枚の一覧に 100 個を並べる。並びは visibleMissions が
+     * 「受け取れる → 近い → 遠い → 受け取りずみ」にしてあるので、
+     * いま自分に届くものが自然と上に来る。
+     *
+     * 行の表示は関数で渡す。受け取った瞬間にその行が「済」に変わり、
+     * メニューを開き直さなくても数字が合う。
+     */
     openMissions() {
         const town = this.app.town;
-        const all = () => visibleMissions(town);
-        const ready = () => all().filter((v) => v.done && !v.claimed);
-        const open = () => all().filter((v) => !v.done);
-        const GROUPS = [
-            { key: 'tutorial', label: '序盤' },
-            { key: 'mid', label: '中盤' },
-            { key: 'late', label: '終盤' },
-        ];
+        const views = visibleMissions(town);
+        const ready = () => views.filter((v) => !isClaimed(this.app.town, v.def.id) && v.done);
+        const rateOf = (v) => (v.goal > 1 ? `${Math.min(v.progress, v.goal)} / ${v.goal}` : '');
         const entries = [
             {
                 label: 'まとめて 受け取る',
@@ -422,78 +427,12 @@ export class TownScreen {
                     return false;
                 },
             },
-            {
-                label: '受け取れる もの',
-                right: () => `${ready().length} 件`,
-                disabled: ready().length === 0,
-                desc: '達成ずみで まだ 受け取っていない ミッション。',
-                onSelect: () => {
-                    this.openMissionList('受け取れる もの', ready);
-                    return false;
-                },
-            },
-            {
-                label: 'あと 少し',
-                right: () => `${Math.min(15, open().length)} 件`,
-                disabled: open().length === 0,
-                desc: 'いま いちばん 近い ミッションを 近い順に。',
-                onSelect: () => {
-                    this.openMissionList('あと 少し', () => open().slice(0, 15));
-                    return false;
-                },
-            },
         ];
-        for (const gp of GROUPS) {
-            entries.push({
-                label: gp.label,
-                right: () => {
-                    const list = all().filter((v) => v.def.group === gp.key);
-                    return `${list.filter((v) => v.claimed).length} / ${list.length}`;
-                },
-                desc: `${gp.label}の ミッション。`,
-                onSelect: () => {
-                    this.openMissionList(gp.label, () => all().filter((v) => v.def.group === gp.key));
-                    return false;
-                },
-            });
-        }
-        entries.push({
-            label: 'すべて',
-            right: () => {
-                const list = all();
-                return `${list.filter((v) => v.claimed).length} / ${list.length}`;
-            },
-            desc: '全部の ミッションを 近い順に。',
-            onSelect: () => {
-                this.openMissionList('すべて', all);
-                return false;
-            },
-        });
-        this.menus.push(new ListMenu({
-            title: () => `ミッション　所持 ${this.app.town.stones ?? 0} 石`,
-            entries,
-            rect: { x: 340, y: 130, w: 560, h: 420 },
-            rows: 8,
-            showDesc: true,
-        }));
-    }
-    /**
-     * ミッションの一覧。
-     *
-     * 中身は毎フレーム作り直すのではなく、受け取ったときだけ組み直す。
-     * ただし行の表示（進み具合・色）は関数で渡すので、
-     * 受け取った瞬間にその行が「済」に変わる。
-     */
-    openMissionList(title, pick) {
-        const town = this.app.town;
-        const views = pick();
-        const rateOf = (v) => (v.goal > 1 ? `${Math.min(v.progress, v.goal)} / ${v.goal}` : '');
-        const entries = views.map((v) => {
-            // 受け取った後も同じ行を見せたいので、状態はその都度読み直す
+        for (const v of views) {
             const claimed = () => isClaimed(this.app.town, v.def.id);
-            return {
+            entries.push({
                 label: () => (claimed() ? `済　${v.def.name}` : v.def.name),
-                right: () => (claimed() ? `${v.def.stones} 石` : v.done ? `${v.def.stones} 石` : rateOf(v)),
+                right: () => (claimed() || v.done ? `${v.def.stones} 石` : rateOf(v)),
                 color: () => (claimed() ? UI.textDim : v.done ? UI.good : undefined),
                 disabled: claimed() || !v.done,
                 desc: () => (claimed()
@@ -509,10 +448,10 @@ export class TownScreen {
                     this.say(`${got} 石を 受け取った。`);
                     return false;
                 },
-            };
-        });
+            });
+        }
         this.menus.push(new ListMenu({
-            title: () => `${title}　${views.length} 件`,
+            title: () => `ミッション　所持 ${this.app.town.stones ?? 0} 石`,
             entries,
             rect: { x: 280, y: 60, w: 620, h: 540 },
             rows: 12,
