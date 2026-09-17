@@ -8,19 +8,14 @@
 import type {
   DungeonDef, ItemDef, ItemKind, MonsterDef, RuneDef, TrapDef,
 } from '../core/types.js';
-import { ALL_ITEMS, WEAPONS, SHIELDS } from './items/all.js';
+import { ALL_ITEMS, UNIDENTIFIED_KINDS, WEAPONS, SHIELDS } from './items/all.js';
 import { RUNES } from './runes.js';
 import { TRAPS } from './traps.js';
 import { MONSTERS } from './monsters.js';
 import { DUNGEONS } from './dungeons.js';
 import { ALIAS_POOLS } from './names.js';
 
-/** 未識別になるカテゴリ（仮の名前が付くもの） */
-export const UNIDENTIFIED_KINDS: readonly ItemKind[] = [
-  'herb', 'scroll', 'staff', 'pot', 'bracelet',
-];
-
-export { ALL_ITEMS };
+export { ALL_ITEMS, UNIDENTIFIED_KINDS };
 
 const itemMap = new Map<string, ItemDef>(ALL_ITEMS.map((d) => [d.id, d]));
 const runeMap = new Map<string, RuneDef>(RUNES.map((d) => [d.id, d]));

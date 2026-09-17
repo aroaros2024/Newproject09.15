@@ -10,7 +10,7 @@ import { generateFloor } from '../dungeon/generator.js';
 import { makeMonster, makeSpecificItem, naturalSpawn, pickMonsterId, placePlayer, placeStairs, populateFloor, } from '../dungeon/spawn.js';
 import { canEnter, createMap } from '../dungeon/tilemap.js';
 import { SHORTCUT_SLOTS, makeItem } from './inventory.js';
-import { START_FOOD_X10, START_HP, START_LEVEL, START_STR, WIND_DEFAULT_TURNS, } from './rules.js';
+import { INVENTORY_LIMIT, START_FOOD_X10, START_HP, START_LEVEL, START_STR, WIND_DEFAULT_TURNS, } from './rules.js';
 import { World } from './world.js';
 import { activeBraceletEffect } from './bracelets.js';
 import { onMonsterDefeated } from './deathHooks.js';
@@ -137,7 +137,7 @@ export function startRun(dungeonId, town, opts = {}) {
     attachFactories(world);
     // 持ち込み
     if (dungeon.allowBring && opts.bring) {
-        for (const item of opts.bring.slice(0, 20)) {
+        for (const item of opts.bring.slice(0, player.bagLimit ?? INVENTORY_LIMIT)) {
             // uid を振り直して倉庫の実体と切り離す
             const copy = {
                 ...item,
@@ -166,10 +166,9 @@ export function startRun(dungeonId, town, opts = {}) {
     }
     // 加護。効かないダンジョン（真・もっと不思議）では全部 0 になる
     const boosts = activeBoosts(town, dungeon.allowBoosts);
-    for (const kind of boosts.known) {
-        for (const def of itemsOfKind(kind))
-            run.identify.known[def.id] = true;
-    }
+    for (const id of boosts.knownIds)
+        run.identify.known[id] = true;
+    player.bagLimit = boosts.bagLimit;
     if (boosts.food > 0) {
         player.maxFoodX10 += boosts.food * 10;
         player.foodX10 = player.maxFoodX10;

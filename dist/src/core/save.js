@@ -190,15 +190,15 @@ function sanitizePartners(raw) {
         if (typeof v !== 'object' || v === null)
             continue;
         const r = v;
-        const dupes = Number.isFinite(r.dupes) ? Math.max(0, Math.floor(r.dupes)) : 0;
+        // 古いセーブの dupes（絆）は読まない。相棒は 1 体 1 回になり、
+        // レベルの上限は最初から最大になった
         const rec = {
             id: k,
             level: 1,
             exp: Number.isFinite(r.exp) ? Math.max(0, Math.floor(r.exp)) : 0,
-            dupes,
         };
         const level = Number.isFinite(r.level) ? Math.floor(r.level) : 1;
-        rec.level = Math.max(1, Math.min(partnerLevelCap(rec), level));
+        rec.level = Math.max(1, Math.min(partnerLevelCap(), level));
         if (typeof r.nickname === 'string' && r.nickname.length > 0) {
             rec.nickname = r.nickname.slice(0, 8);
         }

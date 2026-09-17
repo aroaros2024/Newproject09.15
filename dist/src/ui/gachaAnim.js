@@ -22,6 +22,8 @@ import { SCREEN_H, SCREEN_W, UI } from './theme.js';
 /** レア度ごとの「ため」の長さ（ミリ秒） */
 const CHARGE_MS = { n: 420, r: 620, sr: 900, ssr: 1400 };
 const BURST_MS = 320;
+/** 出るものが尽きたあとのギタンの色 */
+const GITAN_COLOR = '#ffd98a';
 export class GachaAnim {
     results;
     onDone;
@@ -41,7 +43,7 @@ export class GachaAnim {
     get chargeMs() {
         if (this.skipped)
             return 60;
-        return CHARGE_MS[this.current?.prize.rarity ?? 'n'];
+        return CHARGE_MS[this.current?.prize?.rarity ?? 'n'];
     }
     /** 経過時間を進める。ミリ秒 */
     update(dt) {
@@ -97,7 +99,7 @@ export class GachaAnim {
             return;
         const cx = SCREEN_W / 2;
         const cy = SCREEN_H / 2 - 30;
-        const color = RARITY_COLOR[r.prize.rarity];
+        const color = r.prize ? RARITY_COLOR[r.prize.rarity] : GITAN_COLOR;
         if (this.phase === 'charge') {
             // 色はまだ出さない。何が出るか分かってしまう
             const p = Math.min(1, this.t / this.chargeMs);
@@ -149,23 +151,32 @@ export class GachaAnim {
         }
         g.restore();
     }
-    /** 景品の絵。加護には絵が無いので null */
+    /**
+     * 景品の絵。
+     *
+     * 知識はその道具の絵を出す。ただし未識別の道具は種類ごとに同じ絵なので
+     * （草 22 種 → herb 1 枚）、出るのは「草」「巻物」といった見た目まで。
+     * 何の草かは名前が伝える。
+     */
     spriteOf(r) {
-        if (r.prize.partnerId)
-            return tryGetPartner(r.prize.partnerId)?.baseId ?? null;
-        if (r.prize.itemId)
-            return tryGetItem(r.prize.itemId)?.sprite ?? r.prize.itemId;
+        const p = r.prize;
+        if (!p)
+            return null;
+        if (p.partnerId)
+            return tryGetPartner(p.partnerId)?.baseId ?? null;
+        if (p.boost?.t === 'knownItem')
+            return tryGetItem(p.boost.itemId)?.sprite ?? null;
         return null;
     }
     drawCard(g, cx, cy, r, now) {
-        const color = RARITY_COLOR[r.prize.rarity];
+        const color = r.prize ? RARITY_COLOR[r.prize.rarity] : GITAN_COLOR;
         const box = { x: cx - 210, y: cy - 160, w: 420, h: 330 };
         // SSR と SR は後ろで光り続ける
-        if (r.prize.rarity === 'ssr' || r.prize.rarity === 'sr') {
+        if (r.prize && (r.prize.rarity === 'ssr' || r.prize.rarity === 'sr')) {
             this.drawOrb(g, cx, cy, 200 + Math.sin(now / 200) * 16, color, 0.3);
         }
         drawPanel(g, box, { frame: color, alpha: 0.97 });
-        drawText(g, RARITY_LABEL[r.prize.rarity], cx, box.y + 40, {
+        drawText(g, r.prize ? RARITY_LABEL[r.prize.rarity] : 'ギタン', cx, box.y + 40, {
             size: 26, bold: true, align: 'center', color,
         });
         // 絵。SSR は大きく出す
@@ -173,7 +184,7 @@ export class GachaAnim {
         const icon = spriteId ? getSprite(spriteId) : null;
         const artY = box.y + 130;
         if (icon && spriteId) {
-            const size = r.prize.rarity === 'ssr' ? 104 : 76;
+            const size = r.prize?.rarity === 'ssr' ? 104 : 76;
             // 台座。絵が背景に溶けないように敷く
             g.save();
             g.globalAlpha = 0.16;
@@ -185,7 +196,7 @@ export class GachaAnim {
             sprites.draw(g, spriteId, icon, cx, artY, size, {});
         }
         else {
-            // 加護は絵の代わりに印を出す
+            // 加護とギタンは絵の代わりに印を出す
             g.save();
             g.globalAlpha = 0.9;
             g.strokeStyle = color;
@@ -194,11 +205,11 @@ export class GachaAnim {
             g.arc(cx, artY, 38, 0, Math.PI * 2);
             g.stroke();
             g.restore();
-            drawText(g, '加護', cx, artY + 7, {
+            drawText(g, r.prize ? '加護' : 'G', cx, artY + 7, {
                 size: 20, bold: true, align: 'center', color,
             });
         }
-        drawText(g, r.prize.name, cx, box.y + 218, {
+        drawText(g, r.prize ? r.prize.name : `${r.gitan} ギタン`, cx, box.y + 218, {
             size: 24, bold: true, align: 'center', color: UI.text,
         });
         const lines = wrapText(g, this.noteOf(r), box.w - 50, 15).slice(0, 3);
@@ -210,19 +221,14 @@ export class GachaAnim {
     }
     /** その 1 回で何が起きたかを 1 行で */
     noteOf(r) {
-        if (r.bond)
-            return '同じ 相棒。育てられる レベルの 上限が 上がった。';
+        if (!r.prize)
+            return '出るものは もう 無い。石が ギタンに 変わる。';
         if (r.prize.partnerId)
             return '冒険の 最初から 連れて行ける。倒れても 次の冒険で 戻る。';
-        if (r.prize.boost) {
-            if (r.refund > 0)
-                return `これ以上は 効かない。${r.refund} 石に 戻した。`;
-            return '村に 残る 効果。';
+        if (r.prize.boost?.t === 'knownItem') {
+            return 'これから ずっと、冒険の 最初から 名前が 見える。';
         }
-        if (r.lost > 0)
-            return '倉庫が いっぱいで 入らなかった。';
-        const n = r.prize.count ?? 1;
-        return n > 1 ? `倉庫に ${n} 個 届いた。` : '倉庫に 届いた。';
+        return '村に 残る 効果。';
     }
     drawSummary(g) {
         const box = { x: 240, y: 70, w: 800, h: 560 };
@@ -235,16 +241,9 @@ export class GachaAnim {
             const row = Math.floor(i / 2);
             const x = box.x + 30 + col * 390;
             const y = box.y + 80 + row * 46;
-            const color = RARITY_COLOR[r.prize.rarity];
-            drawText(g, RARITY_LABEL[r.prize.rarity], x, y, { size: 15, bold: true, color });
-            drawText(g, r.prize.name, x + 52, y, { size: 17, color: UI.text });
-            const tail = r.bond ? '絆 +1'
-                : r.refund > 0 ? `${r.refund} 石`
-                    : r.lost > 0 ? '入らず'
-                        : (r.prize.count ?? 1) > 1 ? `×${r.prize.count}` : '';
-            if (tail) {
-                drawText(g, tail, x + 360, y, { size: 15, align: 'right', color: UI.textDim });
-            }
+            const color = r.prize ? RARITY_COLOR[r.prize.rarity] : GITAN_COLOR;
+            drawText(g, r.prize ? RARITY_LABEL[r.prize.rarity] : 'G', x, y, { size: 15, bold: true, color });
+            drawText(g, r.prize ? r.prize.name : `${r.gitan} ギタン`, x + 52, y, { size: 17, color: UI.text });
         });
         drawText(g, 'A：閉じる', SCREEN_W / 2, box.y + box.h - 24, {
             size: 15, align: 'center', color: UI.textDim,

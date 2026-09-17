@@ -12,13 +12,15 @@ import { ALL_ITEMS, allMonsters, getItem, getDungeon } from '../data/registry.js
 import { DUNGEON_ORDER } from '../data/dungeons.js';
 import { keptItems, makeItem } from './inventory.js';
 import { addTally, maxTally, mergeTally } from './counters.js';
-import { activeBoosts } from './gacha.js';
+import { activeBoosts, townBoosts } from './gacha.js';
 import { mergePartnerExp } from './partner.js';
 import { mergeInto } from './itemEffects.js';
 import { losesItemsOnDeath } from './death.js';
 import { SELL_RATE, stonesForRun } from './rules.js';
 /** 倉庫に預けられる数 */
 export const STORAGE_LIMIT = 80;
+/** 村の道具屋に並ぶ数。加護「行商の つて」で増える */
+export const SHOP_SLOTS = 10;
 /** 鍛冶屋の料金 */
 export const SMITH_PRICE = {
     /** 合成 1 回（素材 1 つにつき加算） */
@@ -65,7 +67,9 @@ export function unlockNext(town, clearedId) {
 // ---------------------------------------------------------------------------
 // 倉庫
 // ---------------------------------------------------------------------------
-export const storageFull = (town) => town.storage.length >= STORAGE_LIMIT;
+/** いまの倉庫の上限。加護「倉庫の 棚」で増える */
+export const storageLimit = (town) => STORAGE_LIMIT + townBoosts(town).storage;
+export const storageFull = (town) => town.storage.length >= storageLimit(town);
 /**
  * 村での行動を数える。
  *
@@ -85,6 +89,10 @@ export function bumpTown(town, key, n = 1) {
  * 画面と帰還処理が別々に数えると「保持したはずなのに失う」が起きるので、
  * 数えるのはここ 1 箇所だけにする。
  */
+/** そのダンジョンでの持ち物の上限。加護「大きな 袋」で増える */
+export function inventoryLimitFor(town, d) {
+    return activeBoosts(town, d.allowBoosts).bagLimit;
+}
 export function keepSlotsFor(town, d) {
     return activeBoosts(town, d.allowBoosts).keepSlots;
 }
@@ -174,7 +182,7 @@ export function shopStock(town) {
         pool.push('synthesisPot', 'blessWeapon', 'blessShield');
     if (town.cleared.length >= 4)
         pool.push('tenrinSword', 'tenrinShield');
-    const picks = rng.sample(pool, Math.min(10, pool.length));
+    const picks = rng.sample(pool, Math.min(SHOP_SLOTS + townBoosts(town).shopSlots, pool.length));
     return picks.map((id) => {
         const item = makeItem(id, rng, {}, () => town.nextUid++);
         item.plusKnown = true;
@@ -395,8 +403,12 @@ export function finishRun(world, town, kind, cause) {
     town.stones = (town.stones ?? 0) + stones;
     town.bestDepth[d.id] = Math.max(prevBest, world.run.stats.maxDepth);
     town.totalRuns++;
-    // 図鑑。出会った敵と、手にした／識別したアイテムを記録する
-    recordSeen(town, [...world.run.encountered.items, ...Object.keys(world.run.identify.known)], world.run.encountered.monsters);
+    // 図鑑。出会った敵と道具を記録する。
+    //
+    // 識別済みの一覧（identify.known）は足さない。加護で名前を知っているだけの物まで
+    // 「出会った」ことにすると、1 歩も歩かずに出入りするだけで道具図鑑が
+    // 117 種 埋まってしまい、図鑑のミッションが潜らずに達成できる。
+    recordSeen(town, world.run.encountered.items, world.run.encountered.monsters);
     let unlocked = null;
     let rewardMessage = null;
     if (kind === 'clear') {

@@ -4,9 +4,10 @@
 
 import { Cmd } from '../../core/input.js';
 import type { IdentifyState, ItemInstance, PartnerRecord } from '../../core/types.js';
-import { ALL_ITEMS, allMonsters, getItem } from '../../data/registry.js';
+import { ALL_ITEMS, allMonsters, getDungeon, getItem } from '../../data/registry.js';
 import {
   BENTOU_PRICE, SMITH_PRICE, bumpTown, buyFromTown, depositItem, dungeonList,
+  inventoryLimitFor, storageLimit,
   depositGitan, sellToTown, shopStock, smithTemper, smithUncurse, sortStorage,
   storageFull, townIdentify, withdrawGitan, withdrawItem,
 } from '../../game/town.js';
@@ -16,13 +17,13 @@ import {
   RARITY_COLOR, RARITY_LABEL, RARITY_RATE, type Rarity, prizesOf,
 } from '../../data/gacha.js';
 import { tryGetPartner } from '../../data/partners.js';
-import { canPull, ownedCount, ownedPartners, pull } from '../../game/gacha.js';
+import { KNOWABLE_ITEMS } from '../../data/items/all.js';
+import {
+  activeBoosts, canPull, drawable, ownedPartners, owns, prizeTotal, pull, stockLeft,
+} from '../../game/gacha.js';
 import { partnerExpToNext, partnerLevelCap, partnerName } from '../../game/partner.js';
-import { GACHA_COST, GACHA_COST_10 } from '../../game/rules.js';
+import { GACHA_COST, GACHA_COST_10, GACHA_EMPTY_GITAN } from '../../game/rules.js';
 import { GachaAnim } from '../gachaAnim.js';
-import { Rng } from '../../core/rng.js';
-import { makeItem } from '../../game/inventory.js';
-import { learnItem } from '../../game/town.js';
 import {
   type MissionView, claimAll, claimMission, claimableCount, isClaimed, visibleMissions,
 } from '../../game/missions.js';
@@ -229,21 +230,6 @@ export class TownScreen implements Screen {
   /** 図鑑。出会ったモンスターと道具を並べる */
   // ------------------------------------------------------------ ガチャ
 
-  /** 倉庫へ届ける。いっぱいなら false（その景品は消える） */
-  private deliver = (itemId: string, count: number): boolean => {
-    const town = this.app.town;
-    let ok = true;
-    for (let i = 0; i < count; i++) {
-      const item = makeItem(itemId, new Rng(`gacha:${town.nextUid}:${i}`), { plusKnown: true },
-        () => town.nextUid++);
-      item.cursed = false;
-      // ガチャで出た物は名前が見えているので、村もその名前を覚える
-      learnItem(town, itemId);
-      if (!depositItem(town, item)) ok = false;
-    }
-    return ok;
-  };
-
   private openGacha(): void {
     const town = this.app.town;
     const entries: MenuEntry[] = [
@@ -287,7 +273,7 @@ export class TownScreen implements Screen {
   }
 
   private rollGacha(n: 1 | 10): void {
-    const results = pull(this.app.town, n, this.deliver);
+    const results = pull(this.app.town, n);
     if (results.length === 0) {
       this.say('石が 足りない。');
       return;
@@ -301,31 +287,62 @@ export class TownScreen implements Screen {
     });
   }
 
+  /**
+   * 出るものと確率。
+   *
+   * 知識は 114 種あるが、1 行ずつ並べると 10 ページになり、
+   * どの行も 1% 未満の同じ数字で情報にならない。種類ごとに 1 行へ畳む。
+   * 「どれを持っているか」は図鑑で見る。
+   */
   private openGachaOdds(): void {
+    const town = this.app.town;
     const entries: MenuEntry[] = [];
+
     for (const rarity of ['ssr', 'sr', 'r', 'n'] as Rarity[]) {
       const list = prizesOf(rarity);
+      if (list.length === 0) continue;
       const total = list.reduce((a, p) => a + p.weight, 0);
+      const left = drawable(town, rarity).length;
       entries.push({
         label: `${RARITY_LABEL[rarity]}　${RARITY_RATE[rarity]}%`,
         color: RARITY_COLOR[rarity],
         disabled: true,
-        desc: `${RARITY_LABEL[rarity]} の 中の 内訳。`,
+        desc: `残り ${left} / ${list.length}。出たものは 二度と 出ません。`,
       });
-      for (const p of list) {
-        const owned = ownedCount(this.app.town, p.id);
+
+      // 知識はまとめる。それ以外は 1 行ずつ
+      const knowledge = list.filter((p) => p.boost?.t === 'knownItem');
+      const others = list.filter((p) => p.boost?.t !== 'knownItem');
+
+      for (const p of others) {
+        const has = owns(town, p.id);
         entries.push({
           label: `　${p.name}`,
           right: `${(RARITY_RATE[rarity] * p.weight / total).toFixed(2)}%`,
-          color: owned > 0 ? undefined : UI.textDim,
-          desc: owned > 0
-            ? `${owned} 枚 持っている${p.cap !== undefined ? `（${p.cap} 枚まで 効く）` : ''}。`
-            : 'まだ 出ていない。',
+          color: has ? undefined : UI.textDim,
+          desc: has ? 'もう 出ました。' : 'まだ 出ていません。',
+        });
+      }
+
+      if (knowledge.length > 0) {
+        const got = knowledge.filter((p) => owns(town, p.id)).length;
+        entries.push({
+          label: '　道具の 知識',
+          right: `1 つ ${(RARITY_RATE[rarity] / total).toFixed(2)}%`,
+          color: UI.textDim,
+          desc: `${knowledge.length} 種のうち ${got} 種 出ました。`
+            + '引くと その道具の 名前が 冒険の 最初から 見えます。',
         });
       }
     }
+
     this.menus.push(new ListMenu({
-      title: '出るもの',
+      title: () => {
+        const left = stockLeft(this.app.town);
+        return left > 0
+          ? `出るもの　残り ${left} / ${prizeTotal()}`
+          : `出るものは もう 無い（1 回 ${GACHA_EMPTY_GITAN} ギタン）`;
+      },
       entries,
       rect: { x: 300, y: 60, w: 580, h: 520 },
       rows: 12,
@@ -354,7 +371,7 @@ export class TownScreen implements Screen {
 
     for (const rec of list) {
       const def = tryGetPartner(rec.id)!;
-      const cap = partnerLevelCap(rec);
+      const cap = partnerLevelCap();
       entries.push({
         label: () => partnerName(rec),
         sprite: def.baseId,
@@ -362,7 +379,6 @@ export class TownScreen implements Screen {
         color: () => (this.app.town.activePartner === rec.id ? UI.good : undefined),
         desc: () => [
           def.desc,
-          `絆 ${rec.dupes}（同じ 相棒を 引くと 上限が 伸びる）`,
           rec.level >= cap ? '上限' : `次の レベルまで ${partnerExpToNext(rec.level) - rec.exp}`,
         ].join('　'),
         onSelect: () => {
@@ -532,20 +548,30 @@ export class TownScreen implements Screen {
         label: `道具　${rate.items} / ${rate.itemsTotal}`,
         color: UI.cursorEdge,
         onSelect: () => {
+          // ガチャで知識を引いた物は、出会っていなくても名前が分かる。
+          // 加護の唯一の入口（activeBoosts）から取る。ここで
+          // 「k:<id> を持っているか」を自前で見ると、旧セーブの
+          // 「腕輪の 知識」を取りこぼす
+          const knownIds = activeBoosts(town, true).knownIds;
           const rows: MenuEntry[] = ALL_ITEMS
             .filter((d) => d.kind !== 'gitan')
             .map((d) => {
-              const seen = !!town.seenItems[d.id];
+              const known = knownIds.has(d.id);
+              const seen = !!town.seenItems[d.id] || known;
               return {
                 label: seen ? d.name : '？？？',
                 right: seen ? kindLabel(d.kind) : '',
+                badges: known ? [{ text: '知', color: RARITY_COLOR.r }] : undefined,
                 disabled: !seen,
                 sprite: seen ? d.id : undefined,
-                desc: seen ? `${d.desc}\n買値 ${d.price} ギタン` : 'まだ 手にしていない。',
+                desc: seen
+                  ? `${d.desc}\n買値 ${d.price} ギタン${known ? '　（知識あり）' : ''}`
+                  : 'まだ 手にしていない。',
               };
             });
           this.menus.push(new ListMenu({
-            title: '道具図鑑',
+            title: `道具図鑑　知識 ${KNOWABLE_ITEMS.filter((d) => knownIds.has(d.id)).length}`
+              + ` / ${KNOWABLE_ITEMS.length}`,
             entries: rows,
             rect: { x: 300, y: 76, w: 580, h: 500 },
             rows: 13,
@@ -666,9 +692,10 @@ export class TownScreen implements Screen {
           color: picked ? UI.cursorEdge : undefined,
           desc: this.descOf(item),
           onSelect: () => {
+            const limit = inventoryLimitFor(this.app.town, getDungeon(dungeonId));
             if (picked) this.bring = this.bring.filter((i) => i !== item);
-            else if (this.bring.length < 20) this.bring.push(item);
-            else this.say('持ち込めるのは 20 個までです。');
+            else if (this.bring.length < limit) this.bring.push(item);
+            else this.say(`持ち込めるのは ${limit} 個までです。`);
             this.app.audio.play('cursor');
             rebuild();
             return false;
@@ -718,7 +745,7 @@ export class TownScreen implements Screen {
       data: item,
     }));
     this.menus.push(new ListMenu({
-      title: `倉庫　${town.storage.length} / 80`,
+      title: () => `倉庫　${this.app.town.storage.length} / ${storageLimit(this.app.town)}`,
       entries,
       rect: { x: 300, y: 90, w: 640, h: 500 },
       showDesc: true,
@@ -1101,7 +1128,7 @@ export class TownScreen implements Screen {
       size: 40, bold: true, color: '#e8dcae', outline: '#12100a', outlineWidth: 6,
     });
     drawText(g, `所持ギタン ${this.app.town.gitan.toLocaleString('ja-JP')}　`
-      + `倉庫 ${this.app.town.storage.length}/80`, 92, 128, {
+      + `倉庫 ${this.app.town.storage.length}/${storageLimit(this.app.town)}`, 92, 128, {
       size: 16, color: UI.textDim,
     });
 

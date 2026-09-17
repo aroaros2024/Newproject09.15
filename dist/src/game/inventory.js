@@ -95,8 +95,8 @@ export const isEquipped = (p, uid) => p.weaponUid === uid || p.shieldUid === uid
 export const equippedWeapon = (p) => p.weaponUid === null ? null : findItem(p, p.weaponUid);
 export const equippedShield = (p) => p.shieldUid === null ? null : findItem(p, p.shieldUid);
 export const equippedBracelet = (p) => p.braceletUid === null ? null : findItem(p, p.braceletUid);
-/** 持ち物が満杯か */
-export const isInventoryFull = (p) => p.inventory.length >= INVENTORY_LIMIT;
+/** 持ち物が満杯か。加護で上限が伸びていればそれを見る */
+export const isInventoryFull = (p) => p.inventory.length >= (p.bagLimit ?? INVENTORY_LIMIT);
 /**
  * 持ち物に加える。まとめられるものは既存の山へ足す。
  * 満杯で入らなければ false。

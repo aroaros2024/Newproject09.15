@@ -522,6 +522,14 @@ export interface PlayerActor extends ActorBase {
    */
   keptUids: number[];
   /**
+   * 持ち物の上限。加護「大きな 袋」で増える。
+   *
+   * 差分ではなく実数で持つ。上限を見る場所が 3 つ（持ち物・持ち込みの選択・
+   * 持ち込みの実行）あるので、差分にすると足し忘れた場所だけ 20 のままになる。
+   * 古い中断セーブには無いので、読む側は INVENTORY_LIMIT を既定にすること。
+   */
+  bagLimit?: number;
+  /**
    * 竜脈の腕輪などが maxHp に上乗せしている量。
    *
    * 「着けたら足す・外したら引く」を各所で手動に行うと、置く／投げる／売る／
@@ -869,8 +877,6 @@ export interface PartnerRecord {
   id: string;
   level: number;
   exp: number;
-  /** 同じ相棒をもう一度引いた回数。レベルの上限が伸びる */
-  dupes: number;
   /** 自分でつけた名前。無ければ既定の名前 */
   nickname?: string;
 }

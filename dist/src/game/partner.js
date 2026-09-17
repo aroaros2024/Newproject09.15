@@ -13,11 +13,7 @@
  *    ダンジョンの方が消えてなくなる。
  */
 import { tryGetPartner } from '../data/partners.js';
-/** 村で伸ばせるレベルの下限（相棒を引いた直後の上限） */
-export const PARTNER_BASE_CAP = 10;
-/** 同じ相棒を引き直すごとに伸びる上限 */
-export const PARTNER_CAP_PER_DUPE = 5;
-/** レベルの上限の上限 */
+/** 相棒のレベルの上限 */
 export const PARTNER_MAX_LEVEL = 50;
 /**
  * プレイヤーより何レベルまで先に行けるか。
@@ -26,10 +22,13 @@ export const PARTNER_MAX_LEVEL = 50;
  * 「1 体ぶん多い」くらいの手応えに収まる幅にしてある。
  */
 export const PARTNER_LEAD = 3;
-/** 村で伸ばせる上限 */
-export function partnerLevelCap(rec) {
-    return Math.min(PARTNER_MAX_LEVEL, PARTNER_BASE_CAP + Math.max(0, Math.floor(rec.dupes)) * PARTNER_CAP_PER_DUPE);
-}
+/**
+ * 村で伸ばせる上限。
+ *
+ * 相棒は 1 体 1 回しか出ないので、上限は最初から最大。
+ * 育つのは冒険で得た経験値だけ。
+ */
+export const partnerLevelCap = () => PARTNER_MAX_LEVEL;
 /** 次のレベルまでに要る経験値 */
 export function partnerExpToNext(level) {
     const l = Math.max(1, Math.floor(level));
@@ -132,7 +131,7 @@ export const PARTNER_SHARE = 0.5;
  * 上限に達したぶんの経験値は切り捨てる（貯めても意味が無いので見せない）。
  */
 export function mergePartnerExp(rec, gained) {
-    const cap = partnerLevelCap(rec);
+    const cap = partnerLevelCap();
     let levels = 0;
     rec.exp += Math.max(0, Math.floor(gained));
     while (rec.level < cap && rec.exp >= partnerExpToNext(rec.level)) {
@@ -161,7 +160,7 @@ export function refreshPartnerLevel(world, p) {
     const def = tryGetPartner(rp.id);
     if (!def)
         return;
-    const want = effectivePartnerLevel({ id: rp.id, level: rp.level, exp: 0, dupes: 0 }, p.level);
+    const want = effectivePartnerLevel({ id: rp.id, level: rp.level, exp: 0 }, p.level);
     if (want <= m.level)
         return;
     const before = partnerStats(def, m.level);

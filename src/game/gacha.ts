@@ -7,35 +7,68 @@
  */
 
 import { Rng } from '../core/rng.js';
-import type { ItemKind, PartnerRecord, TownState } from '../core/types.js';
+import type { PartnerRecord, TownState } from '../core/types.js';
 import {
-  DUP_STONES, type GachaPrize, RARITY_RATE, type Rarity, prizesOf, tryGetPrize,
+  type BoostKind, type GachaPrize, RARITY_RATE, type Rarity, prizesOf, tryGetPrize,
 } from '../data/gacha.js';
 import { tryGetPartner } from '../data/partners.js';
-import { GACHA_COST, GACHA_COST_10, MAX_KEEP_SLOTS, BASE_KEEP_SLOTS } from './rules.js';
+import { itemsOfKind } from '../data/registry.js';
+import {
+  BASE_KEEP_SLOTS, GACHA_COST, GACHA_COST_10, GACHA_EMPTY_GITAN,
+  INVENTORY_LIMIT, MAX_KEEP_SLOTS,
+} from './rules.js';
 
 /** 10 連の何回目を SR 以上にするか（1 始まり） */
 const GUARANTEE_AT = 10;
 
-/** 1 回ぶんの結果 */
+const RARITIES: readonly Rarity[] = ['ssr', 'sr', 'r', 'n'];
+
+/**
+ * 1 回ぶんの結果。
+ *
+ * 景品が出たか、ギタンが出たかのどちらか。
+ * 同じ景品は二度と出ないので「重複」という結果は存在しない。
+ */
 export interface PullResult {
-  prize: GachaPrize;
-  /** 既に持っていたか */
-  dup: boolean;
-  /** 重複で戻ってきた石 */
-  refund: number;
-  /** 相棒の絆が上がったか（同じ相棒の重複） */
-  bond: boolean;
-  /** 倉庫に入らずに消えた個数 */
-  lost: number;
+  /** 出た景品。出るものが尽きていたら null */
+  prize: GachaPrize | null;
+  /** 出るものが尽きていたときに出たギタン */
+  gitan: number;
 }
 
 export const ownedCount = (town: TownState, prizeId: string): number =>
   Math.max(0, Math.floor(town.gachaOwned?.[prizeId] ?? 0));
 
-/** レア度を 1 つ選ぶ。合計が 100 でなくても比で選べるようにしてある */
-function rollRarity(rng: Rng, forceSrUp: boolean): Rarity {
-  const pool: Rarity[] = forceSrUp ? ['ssr', 'sr'] : ['ssr', 'sr', 'r', 'n'];
+export const owns = (town: TownState, prizeId: string): boolean =>
+  ownedCount(town, prizeId) > 0;
+
+/**
+ * まだ出ていない景品。ここがガチャの在庫。
+ *
+ * 一度出た物を除くので、引くほど在庫が減り、最後は空になる。
+ */
+export const drawable = (town: TownState, rarity: Rarity): GachaPrize[] =>
+  prizesOf(rarity).filter((p) => !owns(town, p.id));
+
+/** 残っている景品の数 */
+export const stockLeft = (town: TownState): number =>
+  RARITIES.reduce((a, r) => a + drawable(town, r).length, 0);
+
+/** 景品の総数（引けるもののみ） */
+export const prizeTotal = (): number =>
+  RARITIES.reduce((a, r) => a + prizesOf(r).length, 0);
+
+/**
+ * レア度を 1 つ選ぶ。
+ *
+ * **在庫のある段だけ**を対象にして、その中で確率を比例配分する。
+ * 空になった段のぶんは、残っている段へ自動的に配り直される。
+ * 空の段を選ぶと引く物が無くなって落ちるので、ここは在庫を見ないといけない。
+ */
+function rollRarity(town: TownState, rng: Rng, forceSrUp: boolean): Rarity | null {
+  const wanted: Rarity[] = forceSrUp ? ['ssr', 'sr'] : [...RARITIES];
+  const pool = wanted.filter((r) => drawable(town, r).length > 0);
+  if (pool.length === 0) return null;
   const total = pool.reduce((a, r) => a + RARITY_RATE[r], 0);
   let x = rng.float() * total;
   for (const r of pool) {
@@ -45,9 +78,9 @@ function rollRarity(rng: Rng, forceSrUp: boolean): Rarity {
   return pool[pool.length - 1];
 }
 
-/** そのレア度の中から重みで 1 つ選ぶ */
-function rollPrize(rng: Rng, rarity: Rarity): GachaPrize {
-  const list = prizesOf(rarity);
+/** その段の在庫から重みで 1 つ選ぶ */
+function rollPrize(town: TownState, rng: Rng, rarity: Rarity): GachaPrize {
+  const list = drawable(town, rarity);
   const total = list.reduce((a, p) => a + p.weight, 0);
   let x = rng.float() * total;
   for (const p of list) {
@@ -57,12 +90,7 @@ function rollPrize(rng: Rng, rarity: Rarity): GachaPrize {
   return list[list.length - 1];
 }
 
-/**
- * 引ける回数。
- *
- * 石が足りない・倉庫がいっぱいでも引けること自体は止めない。
- * 倉庫からあふれた道具は消える（その旨を結果で返す）。
- */
+/** 石が足りているか。出るものが尽きていても、ギタンが出るので引ける */
 export const canPull = (town: TownState, n: 1 | 10): boolean =>
   (town.stones ?? 0) >= (n === 10 ? GACHA_COST_10 : GACHA_COST);
 
@@ -71,13 +99,11 @@ export const pullCost = (n: 1 | 10): number => (n === 10 ? GACHA_COST_10 : GACHA
 /**
  * 引く。石は呼ぶ前ではなくここで引き落とす。
  *
- * deliver は景品の道具を倉庫へ入れる処理。倉庫がいっぱいなら false を返す。
- * 倉庫の都合をここに持ち込むと、ガチャの検査に倉庫の準備が要るようになる。
+ * 出るものが尽きていたら、1 回につき GACHA_EMPTY_GITAN ギタンを払う。
+ * 10 連の途中で尽きたときも 1 回ずつ判定するので、
+ * 「景品 3 個 ＋ ギタン 7 回」のような結果になる。
  */
-export function pull(
-  town: TownState, n: 1 | 10,
-  deliver: (itemId: string, count: number) => boolean,
-): PullResult[] {
+export function pull(town: TownState, n: 1 | 10): PullResult[] {
   const cost = pullCost(n);
   if ((town.stones ?? 0) < cost) return [];
   town.stones = (town.stones ?? 0) - cost;
@@ -86,57 +112,33 @@ export function pull(
   const rng = new Rng(`gacha:${town.playerName}:${town.gachaPulls ?? 0}:${town.stones}`);
   const out: PullResult[] = [];
   for (let i = 0; i < n; i++) {
-    // 10 連の最後は SR 以上
+    // 10 連の最後は SR 以上。SR も SSR も在庫が無ければ普通に引く
     const forced = n === 10 && i === GUARANTEE_AT - 1
-      && !out.some((r) => r.prize.rarity === 'ssr' || r.prize.rarity === 'sr');
-    out.push(grant(town, rollPrize(rng, rollRarity(rng, forced)), deliver));
+      && !out.some((r) => r.prize?.rarity === 'ssr' || r.prize?.rarity === 'sr');
+    const rarity = rollRarity(town, rng, forced) ?? rollRarity(town, rng, false);
+    if (rarity === null) {
+      town.gitan += GACHA_EMPTY_GITAN;
+      out.push({ prize: null, gitan: GACHA_EMPTY_GITAN });
+      continue;
+    }
+    out.push(grant(town, rollPrize(town, rng, rarity)));
   }
   town.gachaPulls = (town.gachaPulls ?? 0) + n;
   return out;
 }
 
 /** 景品 1 つを村に反映する */
-function grant(
-  town: TownState, prize: GachaPrize,
-  deliver: (itemId: string, count: number) => boolean,
-): PullResult {
-  const had = ownedCount(town, prize.id);
+function grant(town: TownState, prize: GachaPrize): PullResult {
   town.gachaOwned ??= {};
-  town.gachaOwned[prize.id] = had + 1;
-
-  const res: PullResult = { prize, dup: had > 0, refund: 0, bond: false, lost: 0 };
+  town.gachaOwned[prize.id] = 1;
 
   if (prize.partnerId) {
     town.partners ??= {};
-    const rec = town.partners[prize.partnerId];
-    if (rec) {
-      // 同じ相棒を引き直したら、強さではなく「一緒に潜れる上限」が伸びる
-      rec.dupes++;
-      res.bond = true;
-    } else {
-      town.partners[prize.partnerId] = { id: prize.partnerId, level: 1, exp: 0, dupes: 0 };
-      // 初めての相棒は、そのまま連れて行けるようにしておく
-      town.activePartner ??= prize.partnerId;
-      if (town.activePartner === undefined) town.activePartner = prize.partnerId;
-    }
+    town.partners[prize.partnerId] ??= { id: prize.partnerId, level: 1, exp: 0 };
+    // 初めての相棒は、そのまま連れて行けるようにしておく
     if (!town.activePartner) town.activePartner = prize.partnerId;
-    return res;
   }
-
-  if (prize.boost) {
-    // 上限を超えたぶんは効き目にならないので石に戻す
-    if (prize.cap !== undefined && had >= prize.cap) {
-      res.refund = DUP_STONES[prize.rarity];
-      town.stones = (town.stones ?? 0) + res.refund;
-    }
-    return res;
-  }
-
-  if (prize.itemId) {
-    const count = prize.count ?? 1;
-    if (!deliver(prize.itemId, count)) res.lost = count;
-  }
-  return res;
+  return { prize, gitan: 0 };
 }
 
 // ---------------------------------------------------------------------------
@@ -153,58 +155,106 @@ function grant(
 export interface Boosts {
   /** 保持枠の数 */
   keepSlots: number;
-  /** 最初から識別済みになる道具の種類 */
-  known: ItemKind[];
+  /** 最初から識別済みになる道具の defId */
+  knownIds: ReadonlySet<string>;
   /** 出発時に増えるギタン（持ち込み可のダンジョンのみ） */
   gitan: number;
   /** 最大満腹度の上乗せ */
   food: number;
+  /** 持ち物の上限 */
+  bagLimit: number;
   /** 連れて行く相棒。連れて行かないなら null */
   partner: PartnerRecord | null;
 }
 
 const NO_BOOSTS: Boosts = {
-  keepSlots: 0, known: [], gitan: 0, food: 0, partner: null,
+  keepSlots: 0, knownIds: new Set(), gitan: 0, food: 0,
+  bagLimit: INVENTORY_LIMIT, partner: null,
 };
+
+/** 村に残る効き目。ダンジョンの中の話ではないので、加護なしでも効く */
+export interface TownBoosts {
+  /** 倉庫の上乗せ */
+  storage: number;
+  /** 村の道具屋に並ぶ数の上乗せ */
+  shopSlots: number;
+}
 
 /** 加護がまったく効かないダンジョンか */
 export const boostsAllowed = (allowBoosts: boolean | undefined): boolean =>
   allowBoosts !== false;
 
+/**
+ * 持っている加護を 1 つずつ見る。
+ *
+ * 同じ景品は二度と出ないので、枚数は必ず 0 か 1。
+ * 効き目は景品 1 枚に畳んであるので、掛け算は要らない。
+ */
+function eachBoost(town: TownState, fn: (b: BoostKind) => void): void {
+  for (const prizeId of Object.keys(town.gachaOwned ?? {})) {
+    if (!owns(town, prizeId)) continue;
+    const prize = tryGetPrize(prizeId);
+    if (prize?.boost) fn(prize.boost);
+  }
+}
+
+/**
+ * ダンジョンの中で効く加護。
+ *
+ * ここが加護の唯一の入口。冒険の準備をする側が
+ * 「このダンジョンでは効くんだっけ」を自分で判断し始めると、
+ * 必ずどこかで判断が食い違う。
+ */
 export function activeBoosts(town: TownState, allowBoosts: boolean | undefined): Boosts {
-  if (!boostsAllowed(allowBoosts)) return { ...NO_BOOSTS };
+  if (!boostsAllowed(allowBoosts)) return { ...NO_BOOSTS, knownIds: new Set() };
 
   let keepSlots = BASE_KEEP_SLOTS;
-  const known: ItemKind[] = [];
+  const knownIds = new Set<string>();
   let gitan = 0;
   let food = 0;
+  let bagLimit = INVENTORY_LIMIT;
 
-  for (const [prizeId, rawCount] of Object.entries(town.gachaOwned ?? {})) {
-    const prize = tryGetPrize(prizeId);
-    if (!prize?.boost) continue;
-    // 上限を超えたぶんは石に戻してあるので、効き目としては数えない
-    const owned = Math.max(0, Math.floor(rawCount));
-    const n = prize.cap !== undefined ? Math.min(owned, prize.cap) : owned;
-    if (n <= 0) continue;
-    const b = prize.boost;
+  eachBoost(town, (b) => {
     switch (b.t) {
-      case 'keepSlot': keepSlots += n; break;
-      case 'known': known.push(b.kind); break;
-      case 'gitan': gitan += b.amount * n; break;
-      case 'food': food += b.amount * n; break;
+      case 'keepSlot': keepSlots += b.amount; break;
+      case 'knownItem': knownIds.add(b.itemId); break;
+      // 引けなくなった「種類まるごと」の加護。持っている人のために効かせ続ける
+      case 'known': for (const d of itemsOfKind(b.kind)) knownIds.add(d.id); break;
+      case 'gitan': gitan += b.amount; break;
+      case 'food': food += b.amount; break;
+      case 'bag': bagLimit += b.amount; break;
+      // 村の設備。ダンジョンには関係しない
+      case 'storage': case 'shopSlot': break;
     }
-  }
+  });
 
   const partnerId = town.activePartner;
   const rec = partnerId ? town.partners?.[partnerId] : undefined;
 
   return {
     keepSlots: Math.min(MAX_KEEP_SLOTS, keepSlots),
-    known,
+    knownIds,
     gitan,
     food,
+    bagLimit,
     partner: rec && tryGetPartner(rec.id) ? rec : null,
   };
+}
+
+/**
+ * 村に残る効き目。
+ *
+ * ダンジョンを引数に取らないので、加護なしダンジョンで消える事故が起きない。
+ * 倉庫や道具屋は村の設備であって、ダンジョンの中の加護ではない。
+ */
+export function townBoosts(town: TownState): TownBoosts {
+  let storage = 0;
+  let shopSlots = 0;
+  eachBoost(town, (b) => {
+    if (b.t === 'storage') storage += b.amount;
+    else if (b.t === 'shopSlot') shopSlots += b.amount;
+  });
+  return { storage, shopSlots };
 }
 
 /** 持っている相棒の一覧（村の画面用） */

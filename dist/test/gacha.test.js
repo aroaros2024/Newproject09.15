@@ -1,13 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { PRIZES, RARITY_RATE, prizesOf } from '../src/data/gacha.js';
+import { KNOWABLE_ITEMS } from '../src/data/items/all.js';
 import { PARTNERS, tryGetPartner } from '../src/data/partners.js';
 import { getDungeon, tryGetItem, tryGetMonster } from '../src/data/registry.js';
-import { activeBoosts, canPull, ownedCount, ownedPartners, pull } from '../src/game/gacha.js';
+import { activeBoosts, canPull, drawable, ownedPartners, prizeTotal, pull, stockLeft, townBoosts, } from '../src/game/gacha.js';
 import { PARTNER_LEAD, effectivePartnerLevel, mergePartnerExp, partnerExpToNext, partnerLevelCap, partnerStats, } from '../src/game/partner.js';
-import { BASE_KEEP_SLOTS, GACHA_COST, GACHA_COST_10, MAX_KEEP_SLOTS } from '../src/game/rules.js';
+import { BASE_KEEP_SLOTS, GACHA_COST, GACHA_COST_10, GACHA_EMPTY_GITAN, INVENTORY_LIMIT, MAX_KEEP_SLOTS, } from '../src/game/rules.js';
 import { attachFactories, startRun } from '../src/game/run.js';
-import { finishRun } from '../src/game/town.js';
+import { STORAGE_LIMIT, finishRun, inventoryLimitFor, storageLimit } from '../src/game/town.js';
 import { killActor } from '../src/game/combat.js';
 import { World } from '../src/game/world.js';
 /**
@@ -26,24 +27,19 @@ function newTown(over = {}) {
         ...over,
     };
 }
-/** 倉庫の代わり。届いた数だけ数える */
-function collector() {
-    const got = [];
-    return { got, deliver: (id, n) => { for (let i = 0; i < n; i++)
-            got.push(id); return true; } };
-}
 test('景品はすべて実在するものを指す', () => {
     const ids = new Set();
     for (const p of PRIZES) {
         assert.ok(!ids.has(p.id), `景品 id が重複: ${p.id}`);
         ids.add(p.id);
         assert.ok(p.weight > 0, `${p.id}: 重みが 0`);
-        if (p.itemId)
-            assert.ok(tryGetItem(p.itemId), `${p.id}: 道具 ${p.itemId} が無い`);
         if (p.partnerId)
             assert.ok(tryGetPartner(p.partnerId), `${p.id}: 相棒 ${p.partnerId} が無い`);
+        if (p.boost?.t === 'knownItem') {
+            assert.ok(tryGetItem(p.boost.itemId), `${p.id}: 道具 ${p.boost.itemId} が無い`);
+        }
         // 景品は 1 つの正体しか持たない
-        const kinds = [p.itemId, p.partnerId, p.boost].filter(Boolean).length;
+        const kinds = [p.partnerId, p.boost].filter(Boolean).length;
         assert.equal(kinds, 1, `${p.id}: 正体が ${kinds} 個`);
     }
 });
@@ -64,76 +60,73 @@ test('確率は合計 100%、どのレア度にも景品がある', () => {
 test('石が足りなければ引けない', () => {
     const town = newTown({ stones: GACHA_COST - 1 });
     assert.equal(canPull(town, 1), false);
-    const c = collector();
-    assert.deepEqual(pull(town, 1, c.deliver), []);
+    assert.deepEqual(pull(town, 1), []);
     assert.equal(town.stones, GACHA_COST - 1, '引けていないのに石が減った');
     assert.equal(town.gachaPulls, 0);
 });
 test('引くと石がちょうど減り、その回数だけ結果が出る', () => {
     const town = newTown({ stones: 5000 });
-    const c = collector();
-    const one = pull(town, 1, c.deliver);
+    const one = pull(town, 1);
     assert.equal(one.length, 1);
-    // 重複で石が戻ることがあるので、減った額は「値段 - 戻り」
-    const refund1 = one.reduce((a, r) => a + r.refund, 0);
-    assert.equal(town.stones, 5000 - GACHA_COST + refund1);
+    assert.equal(town.stones, 5000 - GACHA_COST, '石がちょうど減っていない');
     const before = town.stones ?? 0;
-    const ten = pull(town, 10, c.deliver);
+    const ten = pull(town, 10);
     assert.equal(ten.length, 10);
-    const refund10 = ten.reduce((a, r) => a + r.refund, 0);
-    assert.equal(town.stones, before - GACHA_COST_10 + refund10);
+    assert.equal(town.stones, before - GACHA_COST_10);
     assert.equal(town.gachaPulls, 11);
 });
 test('10 連には SR 以上が必ず 1 つ入る', () => {
     for (let i = 0; i < 30; i++) {
         const town = newTown({ stones: GACHA_COST_10, playerName: `村${i}` });
-        const c = collector();
-        const r = pull(town, 10, c.deliver);
-        assert.ok(r.some((x) => x.prize.rarity === 'sr' || x.prize.rarity === 'ssr'), `${i} 回目の 10 連に SR 以上が無い`);
+        const r = pull(town, 10);
+        assert.ok(r.some((x) => x.prize?.rarity === 'sr' || x.prize?.rarity === 'ssr'), `${i} 回目の 10 連に SR 以上が無い`);
     }
 });
-test('引いた枚数はそのまま記録される', () => {
+test('出た景品はそのまま記録される', () => {
     const town = newTown({ stones: 100000 });
-    const c = collector();
-    let pulls = 0;
+    let prizes = 0;
     for (let i = 0; i < 50; i++) {
-        pulls += pull(town, 10, c.deliver).length;
+        prizes += pull(town, 10).filter((r) => r.prize !== null).length;
     }
     const owned = Object.values(town.gachaOwned ?? {}).reduce((a, n) => a + n, 0);
-    assert.equal(owned, pulls, `引いた ${pulls} 回に対し記録は ${owned} 枚`);
+    // 同じものは二度と出ないので、出た回数と持っている枚数は必ず一致する
+    assert.equal(owned, prizes, `景品が ${prizes} 回 出たのに記録は ${owned} 枚`);
+    assert.equal(owned, prizeTotal(), '引き切ったのに全部そろっていない');
 });
-test('加護は枚数から計算する。上限を超えたぶんは効かない', () => {
-    const town = newTown({ gachaOwned: { 'b:keep': 1 } });
-    assert.equal(activeBoosts(town, true).keepSlots, BASE_KEEP_SLOTS + 1);
-    town.gachaOwned = { 'b:keep': 2 };
+test('加護は持っているかどうかだけを見る', () => {
+    const town = newTown({});
+    assert.equal(activeBoosts(town, true).keepSlots, BASE_KEEP_SLOTS, '持っていないのに増えた');
+    town.gachaOwned = { 'b:keep': 1 };
     assert.equal(activeBoosts(town, true).keepSlots, MAX_KEEP_SLOTS);
-    // 上限（cap 2）を超えて持っていても 5 のまま
+    // 同じものは二度と出ないが、壊れたセーブで枚数が増えていても効き目は変わらない
     town.gachaOwned = { 'b:keep': 50 };
     assert.equal(activeBoosts(town, true).keepSlots, MAX_KEEP_SLOTS);
 });
 test('加護の効かないダンジョンでは何も乗らない', () => {
     const town = newTown({
-        gachaOwned: { 'b:keep': 2, 'b:herb': 1, 'b:gitan': 3, 'b:food': 3 },
-        partners: { koro: { id: 'koro', level: 9, exp: 0, dupes: 1 } },
+        gachaOwned: { 'b:keep': 1, 'k:healHerb': 1, 'b:gitan': 1, 'b:food': 1, 'b:bag': 1 },
+        partners: { koro: { id: 'koro', level: 9, exp: 0 } },
         activePartner: 'koro',
     });
     const on = activeBoosts(town, true);
     assert.equal(on.keepSlots, MAX_KEEP_SLOTS);
-    assert.deepEqual(on.known, ['herb']);
+    assert.deepEqual([...on.knownIds], ['healHerb']);
     assert.equal(on.gitan, 900);
     assert.equal(on.food, 30);
+    assert.ok(on.bagLimit > INVENTORY_LIMIT, '袋が効いていない');
     assert.ok(on.partner, '相棒が乗っていない');
     const off = activeBoosts(town, false);
     assert.equal(off.keepSlots, 0);
-    assert.deepEqual(off.known, []);
+    assert.deepEqual([...off.knownIds], []);
     assert.equal(off.gitan, 0);
     assert.equal(off.food, 0);
+    assert.equal(off.bagLimit, INVENTORY_LIMIT, '加護なしで袋が増えている');
     assert.equal(off.partner, null, '加護なしなのに相棒が居る');
 });
 test('真・もっと不思議では相棒も加護も出ない', () => {
     const town = newTown({
-        gachaOwned: { 'b:herb': 1 },
-        partners: { koro: { id: 'koro', level: 10, exp: 0, dupes: 1 } },
+        gachaOwned: { 'k:healHerb': 1 },
+        partners: { koro: { id: 'koro', level: 10, exp: 0 } },
         activePartner: 'koro',
     });
     const pure = startRun('exPure', town, { seed: 5 });
@@ -151,29 +144,25 @@ test('持っていない相棒を指していても壊れない', () => {
     assert.equal(activeBoosts(town, true).partner, null);
     assert.equal(ownedPartners(town).length, 0);
 });
-test('同じ相棒を引き直すと、強さではなく上限が伸びる', () => {
-    const rec = { id: 'koro', level: 1, exp: 0, dupes: 0 };
-    assert.equal(partnerLevelCap(rec), 10);
-    rec.dupes = 1;
-    assert.equal(partnerLevelCap(rec), 15);
-    rec.dupes = 100;
-    assert.equal(partnerLevelCap(rec), 50, '上限の上限を超えた');
+test('相棒のレベル上限は最初から最大', () => {
+    // 相棒は 1 体 1 回しか出ないので、引き直して上限を伸ばす仕組みは無い
+    assert.equal(partnerLevelCap(), 50);
 });
 test('相棒はプレイヤーのレベルより先へ行けない', () => {
-    const rec = { id: 'koro', level: 40, exp: 0, dupes: 6 };
+    const rec = { id: 'koro', level: 40, exp: 0 };
     assert.equal(effectivePartnerLevel(rec, 1), 1 + PARTNER_LEAD);
     assert.equal(effectivePartnerLevel(rec, 20), 20 + PARTNER_LEAD);
     // 育っていない相棒は、プレイヤーが強くても育った以上にはならない
     assert.equal(effectivePartnerLevel({ ...rec, level: 5 }, 50), 5);
 });
 test('経験値は上限まで。上限に着いたら貯めない', () => {
-    const rec = { id: 'koro', level: 1, exp: 0, dupes: 0 };
+    const rec = { id: 'koro', level: 1, exp: 0 };
     const levels = mergePartnerExp(rec, partnerExpToNext(1) + partnerExpToNext(2));
     assert.equal(levels, 2, `上がったのは ${levels} レベル`);
     assert.equal(rec.level, 3);
-    // 上限（10）を超えて入れても止まる
+    // 上限（50）を超えて入れても止まる
     mergePartnerExp(rec, 10_000_000);
-    assert.equal(rec.level, partnerLevelCap(rec));
+    assert.equal(rec.level, partnerLevelCap());
     assert.equal(rec.exp, 0, '上限なのに経験値を貯めている');
 });
 test('相棒の能力値はレベルとともに単調に増える', () => {
@@ -190,7 +179,7 @@ test('相棒の能力値はレベルとともに単調に増える', () => {
 });
 test('相棒は倒しても経験値にならない', () => {
     const town = newTown({
-        partners: { koro: { id: 'koro', level: 5, exp: 0, dupes: 0 } },
+        partners: { koro: { id: 'koro', level: 5, exp: 0 } },
         activePartner: 'koro',
     });
     const world = startRun('d2', town, { seed: 7 });
@@ -200,7 +189,7 @@ test('相棒は倒しても経験値にならない', () => {
 });
 test('相棒は味方の列にだけ居る', () => {
     const town = newTown({
-        partners: { koro: { id: 'koro', level: 5, exp: 0, dupes: 0 } },
+        partners: { koro: { id: 'koro', level: 5, exp: 0 } },
         activePartner: 'koro',
     });
     const world = startRun('d2', town, { seed: 7 });
@@ -212,28 +201,19 @@ test('相棒は味方の列にだけ居る', () => {
 });
 test('相棒の名前は冒険に持ち込まれる', () => {
     const town = newTown({
-        partners: { koro: { id: 'koro', level: 3, exp: 0, dupes: 0, nickname: 'ぽち' } },
+        partners: { koro: { id: 'koro', level: 3, exp: 0, nickname: 'ぽち' } },
         activePartner: 'koro',
     });
     const world = startRun('d2', town, { seed: 8 });
     assert.equal(world.run.allies[0]?.nameOverride, 'ぽち');
 });
-test('倉庫がいっぱいでも引けるが、入らなかったことは分かる', () => {
-    const town = newTown({ stones: 100000 });
-    const results = pull(town, 10, () => false);
-    const items = results.filter((r) => r.prize.itemId);
-    assert.ok(items.length > 0, '道具が 1 つも出ていない');
-    assert.ok(items.every((r) => r.lost > 0), '入らなかったのに lost が 0');
-});
-test('加護の効きめは、持っている枚数だけを見る', () => {
-    // 実在しない景品 id が混ざっていても無視する
+test('実在しない景品 id が混ざっていても無視する', () => {
     const town = newTown({ gachaOwned: { 'b:keep': 1, 'そんな景品は無い': 99 } });
-    assert.equal(activeBoosts(town, true).keepSlots, BASE_KEEP_SLOTS + 1);
-    assert.equal(ownedCount(town, 'そんな景品は無い'), 99);
+    assert.equal(activeBoosts(town, true).keepSlots, MAX_KEEP_SLOTS);
 });
 test('相棒を連れて行っても、行けないダンジョンでは湧かない', () => {
     const town = newTown({
-        partners: { koro: { id: 'koro', level: 5, exp: 0, dupes: 0 } },
+        partners: { koro: { id: 'koro', level: 5, exp: 0 } },
         activePartner: 'koro',
         cleared: ['d1', 'd2', 'd3', 'd4', 'dl', 'exBring', 'ex'],
         unlocked: ['d1', 'd2', 'd3', 'd4', 'dl', 'exBring', 'ex', 'exPure'],
@@ -247,7 +227,7 @@ test('相棒を連れて行っても、行けないダンジョンでは湧か�
 });
 test('相棒は冒険で育ち、村へ持ち帰ったときに 1 度だけ反映される', () => {
     const town = newTown({
-        partners: { koro: { id: 'koro', level: 1, exp: 0, dupes: 2 } },
+        partners: { koro: { id: 'koro', level: 1, exp: 0 } },
         activePartner: 'koro',
     });
     const world = startRun('d2', town, { seed: 12 });
@@ -280,7 +260,7 @@ test('相棒は冒険で育ち、村へ持ち帰ったときに 1 度だけ反�
 });
 test('中断して再開しても、相棒はそのまま付いてくる', () => {
     const town = newTown({
-        partners: { koro: { id: 'koro', level: 6, exp: 0, dupes: 1, nickname: 'ぽち' } },
+        partners: { koro: { id: 'koro', level: 6, exp: 0, nickname: 'ぽち' } },
         activePartner: 'koro',
     });
     const world = startRun('d2', town, { seed: 13 });
@@ -293,5 +273,148 @@ test('中断して再開しても、相棒はそのまま付いてくる', () =>
     assert.equal(revived.run.allies[0].nameOverride, 'ぽち');
     assert.equal(revived.run.partner?.actorId, before.id, '相棒との紐付けが切れた');
     assert.equal(revived.run.monsters.some((m) => m.id === before.id), false, '再開したら敵の列にも居る');
+});
+// ---------------------------------------------------------------------------
+// 重複しないこと
+// ---------------------------------------------------------------------------
+test('同じ景品は二度と出ない', () => {
+    const town = newTown({ stones: 100_000 });
+    const seen = new Set();
+    for (let i = 0; i < 200; i++) {
+        for (const r of pull(town, 1)) {
+            if (!r.prize)
+                continue;
+            assert.ok(!seen.has(r.prize.id), `${r.prize.name}が 二度 出た`);
+            seen.add(r.prize.id);
+        }
+    }
+    // 記録も 1 枚ずつ
+    for (const [id, n] of Object.entries(town.gachaOwned ?? {})) {
+        assert.equal(n, 1, `${id} が ${n} 枚ある`);
+    }
+});
+test('出るものが尽きたら、1 回につき 3000 ギタン', () => {
+    const town = newTown({ stones: 1_000_000 });
+    const total = prizeTotal();
+    assert.ok(total > 0);
+    // 全部出るまで引く
+    let pulls = 0;
+    while (stockLeft(town) > 0 && pulls < total * 3) {
+        pull(town, 1);
+        pulls++;
+    }
+    assert.equal(stockLeft(town), 0, '引き切れなかった');
+    assert.equal(pulls, total, `${total} 個を ${pulls} 連で引いた（重複が出ている）`);
+    // そこから先はギタン
+    const gitanBefore = town.gitan;
+    const stonesBefore = town.stones ?? 0;
+    const after = pull(town, 1);
+    assert.equal(after.length, 1);
+    assert.equal(after[0].prize, null, '尽きたのに景品が出た');
+    assert.equal(after[0].gitan, GACHA_EMPTY_GITAN);
+    assert.equal(town.gitan, gitanBefore + GACHA_EMPTY_GITAN);
+    assert.equal(town.stones, stonesBefore - GACHA_COST, '石は普通に減る');
+    // 10 連なら 10 回ぶん
+    const g2 = town.gitan;
+    const ten = pull(town, 10);
+    assert.equal(ten.filter((r) => r.prize === null).length, 10);
+    assert.equal(town.gitan, g2 + GACHA_EMPTY_GITAN * 10);
+});
+test('段が尽きても落ちない。確率は残った段へ配り直される', () => {
+    const town = newTown({ stones: 1_000_000 });
+    // N を全部持っている状態にする
+    town.gachaOwned = {};
+    for (const p of drawable(town, 'n'))
+        town.gachaOwned[p.id] = 1;
+    assert.equal(drawable(town, 'n').length, 0, 'N が空になっていない');
+    const got = pull(town, 10);
+    assert.equal(got.length, 10);
+    for (const r of got) {
+        assert.ok(r.prize, '景品が出ていない');
+        assert.notEqual(r.prize.rarity, 'n', '空のはずの N が出た');
+    }
+});
+// ---------------------------------------------------------------------------
+// 知識
+// ---------------------------------------------------------------------------
+test('知識は 1 つの道具だけを識別する', () => {
+    const town = newTown({ gachaOwned: { 'k:healHerb': 1 } });
+    const world = startRun('d2', town, { seed: 41 });
+    const known = world.run.identify.known;
+    assert.equal(known.healHerb, true, '引いた草が識別されていない');
+    const others = KNOWABLE_ITEMS.filter((d) => d.id !== 'healHerb' && known[d.id]);
+    assert.equal(others.length, 0, `他の ${others.length} 種まで識別された`);
+});
+test('知識の景品は 1 道具につき 1 つだけ', () => {
+    const ids = new Set();
+    const items = new Set();
+    for (const p of PRIZES) {
+        if (p.boost?.t !== 'knownItem')
+            continue;
+        assert.ok(!ids.has(p.id), `景品 id が重複: ${p.id}`);
+        assert.ok(!items.has(p.boost.itemId), `道具が重複: ${p.boost.itemId}`);
+        ids.add(p.id);
+        items.add(p.boost.itemId);
+    }
+    assert.equal(items.size, KNOWABLE_ITEMS.length, `${KNOWABLE_ITEMS.length} 種に対し 知識は ${items.size} 個`);
+});
+test('R は N より本当にめずらしい', () => {
+    // R を青く塗って演出も長くしているので、実際にめずらしくないと嘘になる
+    const r = RARITY_RATE.r / prizesOf('r').length;
+    const n = RARITY_RATE.n / prizesOf('n').length;
+    assert.ok(n > r * 1.5, `R 1 つ ${r.toFixed(2)}% に対し N 1 つ ${n.toFixed(2)}%。差が小さすぎる`);
+});
+test('引けなくなった景品は、持っている人には効き続ける', () => {
+    // 「腕輪の 知識」を持っている古いセーブ
+    const town = newTown({ gachaOwned: { 'b:bracelet': 1 } });
+    const ids = activeBoosts(town, true).knownIds;
+    const bracelets = KNOWABLE_ITEMS.filter((d) => d.kind === 'bracelet');
+    assert.ok(bracelets.length > 0);
+    for (const d of bracelets) {
+        assert.ok(ids.has(d.id), `${d.name}が識別されていない`);
+    }
+    // ただし、もう抽選には出ない
+    assert.equal(prizesOf('sr').some((p) => p.id === 'b:bracelet'), false, '引けなくなった景品が抽選に出ている');
+});
+// ---------------------------------------------------------------------------
+// 村の設備と、袋
+// ---------------------------------------------------------------------------
+test('倉庫と道具屋の加護は、加護なしダンジョンでも消えない', () => {
+    // 村の設備であってダンジョンの中の加護ではない
+    const town = newTown({ gachaOwned: { 'b:shelf': 1, 'b:trade': 1 } });
+    const tb = townBoosts(town);
+    assert.ok(tb.storage > 0, '倉庫が増えていない');
+    assert.ok(tb.shopSlots > 0, '品揃えが増えていない');
+    // townBoosts はダンジョンを引数に取らないので、加護なしで消えようが無い
+    assert.equal(storageLimit(town), STORAGE_LIMIT + tb.storage);
+});
+test('袋は加護。加護なしダンジョンでは増えない', () => {
+    const town = newTown({ gachaOwned: { 'b:bag': 1 } });
+    assert.ok(inventoryLimitFor(town, getDungeon('d2')) > INVENTORY_LIMIT, '袋が効いていない');
+    assert.equal(inventoryLimitFor(town, getDungeon('exPure')), INVENTORY_LIMIT, '加護なしダンジョンで袋が増えている');
+    const w = startRun('d2', town, { seed: 5 });
+    assert.equal(w.player.bagLimit, inventoryLimitFor(town, getDungeon('d2')));
+    const pure = startRun('exPure', town, { seed: 5 });
+    assert.equal(pure.player.bagLimit, INVENTORY_LIMIT);
+});
+test('図鑑は知識では埋まらない', () => {
+    // 加護で名前を知っているだけの物を「出会った」ことにすると、
+    // 1 歩も歩かずに出入りするだけで道具図鑑が埋まってしまう
+    const town = newTown({ gachaOwned: { 'b:bracelet': 1 } });
+    const world = startRun('d2', town, { seed: 9 });
+    world.run.encountered.items = [];
+    world.run.encountered.monsters = [];
+    finishRun(world, town, 'escape', 'テスト');
+    assert.equal(Object.keys(town.seenItems).length, 0, `知識だけで図鑑が ${Object.keys(town.seenItems).length} 種 埋まった`);
+});
+test('知識は村の記録（knownItems）には入らない', () => {
+    // knownItems は allowBoosts に関係なく全ダンジョンへ入るので、
+    // そちらへ書くと真・もっと不思議にも効いてしまう
+    const town = newTown({ stones: 100_000 });
+    for (let i = 0; i < 30; i++)
+        pull(town, 10);
+    assert.deepEqual(town.knownItems, {}, '村の記録に知識が漏れている');
+    const pure = startRun('exPure', town, { seed: 12 });
+    assert.equal(Object.keys(pure.run.identify.known).length, 0, '加護なしダンジョンに知識が漏れている');
 });
 //# sourceMappingURL=gacha.test.js.map

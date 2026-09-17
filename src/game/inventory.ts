@@ -127,9 +127,9 @@ export const equippedShield = (p: PlayerActor): ItemInstance | null =>
 export const equippedBracelet = (p: PlayerActor): ItemInstance | null =>
   p.braceletUid === null ? null : findItem(p, p.braceletUid);
 
-/** 持ち物が満杯か */
+/** 持ち物が満杯か。加護で上限が伸びていればそれを見る */
 export const isInventoryFull = (p: PlayerActor): boolean =>
-  p.inventory.length >= INVENTORY_LIMIT;
+  p.inventory.length >= (p.bagLimit ?? INVENTORY_LIMIT);
 
 /**
  * 持ち物に加える。まとめられるものは既存の山へ足す。
