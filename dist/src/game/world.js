@@ -245,6 +245,13 @@ export class World {
         return 'ground';
     }
     /**
+     * この冒険で効いている護石。startRun が加護から受け取って置く。
+     *
+     * 加護の効かないダンジョン（真・もっと不思議）では null のままになるので、
+     * 護石の印を読む weaponRune / shieldRune も自動的に 0 を返す。
+     */
+    charm = null;
+    /**
      * 今効いている腕輪の効果 id。
      * bracelets.ts に実体があるが、World からも引けるよう関数を注入する。
      */

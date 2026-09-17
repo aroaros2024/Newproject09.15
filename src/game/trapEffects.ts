@@ -8,9 +8,9 @@ import { getItem, getTrap } from '../data/registry.js';
 import { at, neighbors8 } from '../dungeon/tilemap.js';
 import { dealDamage, loseStr } from './combat.js';
 import { loseFood } from './hunger.js';
-import { equippedShield, losableItems, removeFromInventory } from './inventory.js';
+import { losableItems, removeFromInventory } from './inventory.js';
 import { itemName } from './naming.js';
-import { equipRuneLevel } from './runes.js';
+import { equipRuneLevel, shieldRune } from './runes.js';
 import { applyStatus } from './status.js';
 import type { World } from './world.js';
 
@@ -97,7 +97,7 @@ const TRAP_EFFECTS: Record<string, TrapHandler> = {
       world.log('しかし 錆びる物が 無かった。');
       return;
     }
-    if (equipRuneLevel(equippedShield(a), 'antiRust') > 0 || w.runes.includes('antiRust')) {
+    if (shieldRune(world, a, 'antiRust') > 0 || equipRuneLevel(w, 'antiRust') > 0) {
       world.log('錆びよけの 印が 守った！', 'good');
       return;
     }

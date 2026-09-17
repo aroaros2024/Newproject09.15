@@ -7,11 +7,13 @@
  */
 
 import { Rng } from '../core/rng.js';
-import type { PartnerRecord, TownState } from '../core/types.js';
+import type { Charm, PartnerRecord, TownState } from '../core/types.js';
 import {
   type BoostKind, type GachaPrize, RARITY_RATE, type Rarity, prizesOf, tryGetPrize,
 } from '../data/gacha.js';
 import { tryGetPartner } from '../data/partners.js';
+import { CHARM_BOX_LIMIT } from '../data/charms.js';
+import { charmScore, rollCharm } from './charm.js';
 import { itemsOfKind } from '../data/registry.js';
 import {
   BASE_KEEP_SLOTS, GACHA_COST, GACHA_COST_10, GACHA_EMPTY_GITAN,
@@ -23,15 +25,31 @@ const GUARANTEE_AT = 10;
 
 const RARITIES: readonly Rarity[] = ['ssr', 'sr', 'r', 'n'];
 
+/** 護石が出る段。SSR と SR は相棒と加護のままにしてある */
+const CHARM_RARITIES: readonly Rarity[] = ['n', 'r'];
+
+/**
+ * その段のうち、護石が占める割合。
+ *
+ * 残り半分は表の景品（道具の知識）。表が尽きた段は全部が護石になる。
+ * 「N と R は半分が護石」と 1 文で言い切れる形にしてある。
+ */
+export const CHARM_SHARE = 0.5;
+
 /**
  * 1 回ぶんの結果。
  *
- * 景品が出たか、ギタンが出たかのどちらか。
- * 同じ景品は二度と出ないので「重複」という結果は存在しない。
+ * 表の景品・護石・ギタンのどれか 1 つ。
+ * 表の景品は二度と出ないので「重複」という結果は存在しない。
+ * 護石は毎回その場で作るので、こちらも同じものは出ない。
  */
 export interface PullResult {
-  /** 出た景品。出るものが尽きていたら null */
+  /** 出た景品。護石かギタンなら null */
   prize: GachaPrize | null;
+  /** 出た護石。表の景品かギタンなら null */
+  charm: Charm | null;
+  /** 演出に使うレア度。ギタンなら null */
+  rarity: Rarity | null;
   /** 出るものが尽きていたときに出たギタン */
   gitan: number;
 }
@@ -50,13 +68,27 @@ export const owns = (town: TownState, prizeId: string): boolean =>
 export const drawable = (town: TownState, rarity: Rarity): GachaPrize[] =>
   prizesOf(rarity).filter((p) => !owns(town, p.id));
 
-/** 残っている景品の数 */
+/** 残っている表の景品の数。護石は数に入らない（尽きないので） */
 export const stockLeft = (town: TownState): number =>
   RARITIES.reduce((a, r) => a + drawable(town, r).length, 0);
 
-/** 景品の総数（引けるもののみ） */
+/** 表の景品の総数（引けるもののみ）。護石は数に入らない */
 export const prizeTotal = (): number =>
   RARITIES.reduce((a, r) => a + prizesOf(r).length, 0);
+
+/** 護石の箱に空きがあるか。満杯のあいだ護石は出ない */
+export const charmRoom = (town: TownState): number =>
+  Math.max(0, CHARM_BOX_LIMIT - (town.charms?.length ?? 0));
+
+/** その段に護石が出るか */
+const charmTier = (r: Rarity): boolean => CHARM_RARITIES.includes(r);
+
+/** 次の護石の番号。護石どうしでしか比べないので、村の中で一意ならよい */
+function nextCharmUid(town: TownState): number {
+  let max = 0;
+  for (const c of town.charms ?? []) max = Math.max(max, c.uid);
+  return max + 1;
+}
 
 /**
  * レア度を 1 つ選ぶ。
@@ -67,7 +99,8 @@ export const prizeTotal = (): number =>
  */
 function rollRarity(town: TownState, rng: Rng, forceSrUp: boolean): Rarity | null {
   const wanted: Rarity[] = forceSrUp ? ['ssr', 'sr'] : [...RARITIES];
-  const pool = wanted.filter((r) => drawable(town, r).length > 0);
+  const pool = wanted.filter((r) => drawable(town, r).length > 0
+    || (charmTier(r) && charmRoom(town) > 0));
   if (pool.length === 0) return null;
   const total = pool.reduce((a, r) => a + RARITY_RATE[r], 0);
   let x = rng.float() * total;
@@ -97,11 +130,23 @@ export const canPull = (town: TownState, n: 1 | 10): boolean =>
 export const pullCost = (n: 1 | 10): number => (n === 10 ? GACHA_COST_10 : GACHA_COST);
 
 /**
+ * その段で護石を出すか。
+ *
+ * 表の景品が残っていれば半々。尽きた段は全部が護石になる。
+ * 護石の箱が満杯なら出さない（引いた護石を失う事故を作らないため）。
+ */
+function wantsCharm(town: TownState, rng: Rng, rarity: Rarity): boolean {
+  if (!charmTier(rarity) || charmRoom(town) <= 0) return false;
+  if (drawable(town, rarity).length === 0) return true;
+  return rng.chance(CHARM_SHARE);
+}
+
+/**
  * 引く。石は呼ぶ前ではなくここで引き落とす。
  *
  * 出るものが尽きていたら、1 回につき GACHA_EMPTY_GITAN ギタンを払う。
- * 10 連の途中で尽きたときも 1 回ずつ判定するので、
- * 「景品 3 個 ＋ ギタン 7 回」のような結果になる。
+ * 護石は在庫が尽きないので、ここに来るのは
+ * 「護石の箱が満杯で、かつ表の景品も集めきった」ときだけ。
  */
 export function pull(town: TownState, n: 1 | 10): PullResult[] {
   const cost = pullCost(n);
@@ -112,16 +157,19 @@ export function pull(town: TownState, n: 1 | 10): PullResult[] {
   const rng = new Rng(`gacha:${town.playerName}:${town.gachaPulls ?? 0}:${town.stones}`);
   const out: PullResult[] = [];
   for (let i = 0; i < n; i++) {
-    // 10 連の最後は SR 以上。SR も SSR も在庫が無ければ普通に引く
+    // 10 連の最後は SR 以上。SR も SSR も在庫が無ければ普通に引く。
+    // 護石は N と R にしか出ないので、この確定枠は相棒と加護のまま残る
     const forced = n === 10 && i === GUARANTEE_AT - 1
-      && !out.some((r) => r.prize?.rarity === 'ssr' || r.prize?.rarity === 'sr');
+      && !out.some((r) => r.rarity === 'ssr' || r.rarity === 'sr');
     const rarity = rollRarity(town, rng, forced) ?? rollRarity(town, rng, false);
     if (rarity === null) {
       town.gitan += GACHA_EMPTY_GITAN;
-      out.push({ prize: null, gitan: GACHA_EMPTY_GITAN });
+      out.push({ prize: null, charm: null, rarity: null, gitan: GACHA_EMPTY_GITAN });
       continue;
     }
-    out.push(grant(town, rollPrize(town, rng, rarity)));
+    out.push(wantsCharm(town, rng, rarity)
+      ? grantCharm(town, rng, rarity as 'n' | 'r')
+      : grant(town, rollPrize(town, rng, rarity)));
   }
   town.gachaPulls = (town.gachaPulls ?? 0) + n;
   return out;
@@ -138,7 +186,24 @@ function grant(town: TownState, prize: GachaPrize): PullResult {
     // 初めての相棒は、そのまま連れて行けるようにしておく
     if (!town.activePartner) town.activePartner = prize.partnerId;
   }
-  return { prize, gitan: 0 };
+  return { prize, charm: null, rarity: prize.rarity, gitan: 0 };
+}
+
+/**
+ * 護石を 1 つ作って箱に入れる。
+ *
+ * gachaOwned には入れない。護石は在庫が尽きないので、
+ * id を記録していくとセーブが際限なく膨らむ。
+ */
+function grantCharm(town: TownState, rng: Rng, rarity: 'n' | 'r'): PullResult {
+  town.charms ??= [];
+  const charm = rollCharm(rng, rarity, nextCharmUid(town));
+  town.charms.push(charm);
+  // 初めての護石は、そのまま着けておく
+  if (town.activeCharm === undefined || town.activeCharm === null) {
+    town.activeCharm = charm.uid;
+  }
+  return { prize: null, charm, rarity, gitan: 0 };
 }
 
 // ---------------------------------------------------------------------------
@@ -165,11 +230,13 @@ export interface Boosts {
   bagLimit: number;
   /** 連れて行く相棒。連れて行かないなら null */
   partner: PartnerRecord | null;
+  /** 着けている護石。着けていないなら null */
+  charm: Charm | null;
 }
 
 const NO_BOOSTS: Boosts = {
   keepSlots: 0, knownIds: new Set(), gitan: 0, food: 0,
-  bagLimit: INVENTORY_LIMIT, partner: null,
+  bagLimit: INVENTORY_LIMIT, partner: null, charm: null,
 };
 
 /** 村に残る効き目。ダンジョンの中の話ではないので、加護なしでも効く */
@@ -238,6 +305,7 @@ export function activeBoosts(town: TownState, allowBoosts: boolean | undefined):
     food,
     bagLimit,
     partner: rec && tryGetPartner(rec.id) ? rec : null,
+    charm: activeCharm(town),
   };
 }
 
@@ -255,6 +323,32 @@ export function townBoosts(town: TownState): TownBoosts {
     else if (b.t === 'shopSlot') shopSlots += b.amount;
   });
   return { storage, shopSlots };
+}
+
+/**
+ * 着けている護石。無ければ null。
+ *
+ * 加護の入口（activeBoosts）の外からも村の画面が引くので、別に出してある。
+ * ここは村の話なので、ダンジョンの allowBoosts は見ない。
+ */
+export function activeCharm(town: TownState): Charm | null {
+  const uid = town.activeCharm;
+  if (uid === undefined || uid === null) return null;
+  return (town.charms ?? []).find((c) => c.uid === uid) ?? null;
+}
+
+/**
+ * 持っている護石の一覧。着けているものが先頭、あとは強い順。
+ *
+ * 30 個を目で比べられないと厳選がただの作業になるので、並べ替えは要る。
+ */
+export function ownedCharms(town: TownState): Charm[] {
+  const worn = town.activeCharm;
+  return [...(town.charms ?? [])].sort((a, b) => {
+    if (a.uid === worn) return -1;
+    if (b.uid === worn) return 1;
+    return charmScore(b) - charmScore(a);
+  });
 }
 
 /** 持っている相棒の一覧（村の画面用） */

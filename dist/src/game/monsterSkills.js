@@ -12,7 +12,7 @@ import { hasLineOfFire } from '../dungeon/fov.js';
 import { dealDamage, healActor, levelDown, resolveAttack } from './combat.js';
 import { equippedShield, equippedWeapon, losableItems, removeFromInventory } from './inventory.js';
 import { itemName } from './naming.js';
-import { equipRuneLevel } from './runes.js';
+import { equipRuneLevel, shieldRune } from './runes.js';
 import { applyStatus } from './status.js';
 import { loseFood } from './hunger.js';
 const adjacent = (m, t) => chebyshev(m.pos, t.pos) === 1;
@@ -40,8 +40,7 @@ function crowdLimit(world) {
 function blocksTheft(world, t) {
     if (t.kind !== 'player')
         return false;
-    const shield = equippedShield(world.player);
-    if (equipRuneLevel(shield, 'antiSteal') > 0)
+    if (shieldRune(world, world.player, 'antiSteal') > 0)
         return true;
     const b = world.player.braceletUid !== null
         ? world.player.inventory.find((i) => i.uid === world.player.braceletUid) : null;
@@ -460,7 +459,7 @@ export const MONSTER_SKILLS = {
         const w = equippedWeapon(t);
         if (!w)
             return false;
-        if (equipRuneLevel(equippedShield(t), 'antiRust') > 0 || w.runes.includes('antiRust')) {
+        if (shieldRune(world, t, 'antiRust') > 0 || equipRuneLevel(w, 'antiRust') > 0) {
             world.log('錆びよけの 印が 守った！', 'good');
             return true;
         }
@@ -478,7 +477,7 @@ export const MONSTER_SKILLS = {
         const s = equippedShield(t);
         if (!s)
             return false;
-        if (equipRuneLevel(s, 'antiRust') > 0) {
+        if (shieldRune(world, t, 'antiRust') > 0) {
             world.log('錆びよけの 印が 守った！', 'good');
             return true;
         }

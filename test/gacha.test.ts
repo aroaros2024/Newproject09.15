@@ -3,10 +3,12 @@ import assert from 'node:assert/strict';
 import type { PartnerRecord, RunState, TownState } from '../src/core/types.js';
 import { PRIZES, RARITY_RATE, type Rarity, prizesOf } from '../src/data/gacha.js';
 import { KNOWABLE_ITEMS } from '../src/data/items/all.js';
+import { CHARM_BOX_LIMIT } from '../src/data/charms.js';
 import { PARTNERS, tryGetPartner } from '../src/data/partners.js';
 import { getDungeon, tryGetItem, tryGetMonster } from '../src/data/registry.js';
 import {
-  activeBoosts, canPull, drawable, ownedPartners, prizeTotal, pull, stockLeft, townBoosts,
+  activeBoosts, canPull, charmRoom, drawable, ownedPartners, prizeTotal, pull,
+  stockLeft, townBoosts,
 } from '../src/game/gacha.js';
 import {
   PARTNER_LEAD, effectivePartnerLevel, mergePartnerExp, partnerExpToNext,
@@ -348,19 +350,27 @@ test('同じ景品は二度と出ない', () => {
   }
 });
 
-test('出るものが尽きたら、1 回につき 3000 ギタン', () => {
+test('表の景品も護石の箱も尽きたら、1 回につき 300 ギタン', () => {
   const town = newTown({ stones: 1_000_000 });
   const total = prizeTotal();
   assert.ok(total > 0);
 
-  // 全部出るまで引く
+  // 表の景品が全部出るまで引く。護石が混ざるので回数は総数より多くなる
   let pulls = 0;
-  while (stockLeft(town) > 0 && pulls < total * 3) {
+  while (stockLeft(town) > 0 && pulls < total * 20) {
     pull(town, 1);
     pulls++;
   }
   assert.equal(stockLeft(town), 0, '引き切れなかった');
-  assert.equal(pulls, total, `${total} 個を ${pulls} 連で引いた（重複が出ている）`);
+  assert.ok(pulls >= total, `${total} 個を ${pulls} 連で引いた（表の景品に重複が出ている）`);
+  assert.equal(
+    Object.keys(town.gachaOwned ?? {}).length, total, '表の景品がそろっていない',
+  );
+
+  // 護石の箱も満杯にする
+  town.charms = [];
+  for (let i = 0; i < CHARM_BOX_LIMIT; i++) town.charms.push({ uid: i + 1, runes: ['crit'], slots: 0 });
+  assert.equal(charmRoom(town), 0);
 
   // そこから先はギタン
   const gitanBefore = town.gitan;
@@ -368,6 +378,7 @@ test('出るものが尽きたら、1 回につき 3000 ギタン', () => {
   const after = pull(town, 1);
   assert.equal(after.length, 1);
   assert.equal(after[0].prize, null, '尽きたのに景品が出た');
+  assert.equal(after[0].charm, null, '箱が満杯なのに護石が出た');
   assert.equal(after[0].gitan, GACHA_EMPTY_GITAN);
   assert.equal(town.gitan, gitanBefore + GACHA_EMPTY_GITAN);
   assert.equal(town.stones, stonesBefore - GACHA_COST, '石は普通に減る');
@@ -375,16 +386,18 @@ test('出るものが尽きたら、1 回につき 3000 ギタン', () => {
   // 10 連なら 10 回ぶん
   const g2 = town.gitan;
   const ten = pull(town, 10);
-  assert.equal(ten.filter((r) => r.prize === null).length, 10);
+  assert.equal(ten.filter((r) => r.prize === null && r.charm === null).length, 10);
   assert.equal(town.gitan, g2 + GACHA_EMPTY_GITAN * 10);
 });
 
 test('段が尽きても落ちない。確率は残った段へ配り直される', () => {
   const town = newTown({ stones: 1_000_000 });
-  // N を全部持っている状態にする
+  // N を全部持っていて、護石の箱も満杯の状態にする
   town.gachaOwned = {};
   for (const p of drawable(town, 'n')) town.gachaOwned[p.id] = 1;
   assert.equal(drawable(town, 'n').length, 0, 'N が空になっていない');
+  town.charms = [];
+  for (let i = 0; i < CHARM_BOX_LIMIT; i++) town.charms.push({ uid: i + 1, runes: ['crit'], slots: 0 });
 
   const got = pull(town, 10);
   assert.equal(got.length, 10);

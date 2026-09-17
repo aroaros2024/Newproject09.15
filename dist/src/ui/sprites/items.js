@@ -600,6 +600,33 @@ export const ITEM_SPRITES = {
         ],
     },
     /** 腕輪（金のリングに石をひとつ） */
+    /**
+     * 護石。ガチャで出る、印を持った恒久の加護。
+     *
+     * 道具ではないので道具の絵とは形を変えてある（勾玉に紐）。
+     * 中身（どの印か）は名前の記号で伝えるので、絵は 1 枚だけ。
+     */
+    charm: {
+        palette: { k: '#241a30', v: '#8a6cc8', w: '#c8a8f0', h: '#f0e4ff', c: '#5a4a80' },
+        rows: [
+            '................',
+            '......kkkk......',
+            '.....kcccck.....',
+            '.....kc..ck.....',
+            '....kkc..ckk....',
+            '...kkvvvvvvkk...',
+            '..kvvvhhwvvvvk..',
+            '..kvvhhwwvvvvk..',
+            '..kvvhwwvvvvvk..',
+            '..kvvwwvvvvvvk..',
+            '...kvvvvvvvvk...',
+            '....kvvvvvvk....',
+            '.....kvvvvk.....',
+            '......kkkk......',
+            '................',
+            '................',
+        ],
+    },
     bracelet: {
         palette: { k: '#2a2010', g: '#e0b850', h: '#fff0b0', e: '#6fd8e8' },
         rows: [

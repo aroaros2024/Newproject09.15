@@ -881,6 +881,27 @@ export interface PartnerRecord {
   nickname?: string;
 }
 
+/**
+ * 護石。村で 1 つだけ着ける、印を持った恒久の加護。
+ *
+ * ガチャで生成され、同じものは二度と出ない。持ち物ではないので
+ * 持ち込み不可のダンジョンでも効く（加護が無効な真・もっと不思議だけ消える）。
+ *
+ * 軸は 3 本だけ。どの印か・レベル・空きスロット。
+ * 軸を増やすと「当たり」が何なのかプレイヤーに言えなくなる。
+ */
+export interface Charm {
+  /** 村の中で一意な番号 */
+  uid: number;
+  /**
+   * 埋まっている印。装備と同じく重複ありで、出現回数がレベル。
+   * こうすると印のレベルを別フィールドで持たずに済む。
+   */
+  runes: RuneId[];
+  /** 鍛冶屋で印を足せる空きスロットの数 */
+  slots: number;
+}
+
 export interface TownState {
   playerName: string;
   /** 倉庫 */
@@ -931,12 +952,16 @@ export interface TownState {
   activePartner?: string | null;
 
   /**
-   * 相棒の育ち具合。
+   * 持っている護石。上限は CHARM_BOX_LIMIT。
    *
-   * dupes（同じ相棒を引き直した回数）がレベルの上限を決める。
-   * 引くたびに強くなるのではなく、「一緒に潜れる上限が上がる」形にしてある。
-   * 強さは冒険で育てるもので、石で買うものではない。
+   * ガチャの景品なのに gachaOwned に入れないのは、護石が生成物で
+   * 在庫が尽きないため。id を記録していくと際限なく膨らむ。
    */
+  charms?: Charm[];
+  /** 着けている護石の uid。null なら着けていない */
+  activeCharm?: number | null;
+
+  /** 図鑑。出会ったモンスター */
   seenMonsters: Record<string, boolean>;
   /** 冒険の記録 */
   history: AdventureRecord[];

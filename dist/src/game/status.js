@@ -3,8 +3,8 @@
  */
 import { INCAPACITATING } from '../core/types.js';
 import { STATUS_DURATION, DEADLY_POISON_DAMAGE, BURN_DAMAGE, TRAPPED_ESCAPE_RATE } from './rules.js';
-import { equipRuneLevel } from './runes.js';
-import { equippedBracelet, equippedShield } from './inventory.js';
+import { shieldRune } from './runes.js';
+import { equippedBracelet } from './inventory.js';
 import { getItem } from '../data/registry.js';
 import { at } from '../dungeon/tilemap.js';
 /** 状態異常の日本語名 */
@@ -40,8 +40,7 @@ function isWarded(world, a, id) {
                 return true;
         }
     }
-    const shield = equippedShield(p);
-    if (equipRuneLevel(shield, 'guardStr') > 0 && (id === 'poisoned' || id === 'deadlyPoisoned')) {
+    if (shieldRune(world, p, 'guardStr') > 0 && (id === 'poisoned' || id === 'deadlyPoisoned')) {
         return true;
     }
     return false;
@@ -68,7 +67,7 @@ export function applyStatus(world, a, id, turns, power = 0) {
     // 聖なる印で持続を短くする
     let t = turns ?? rollDuration(world, id);
     if (a.kind === 'player' && isAilment(id)) {
-        const holy = equipRuneLevel(equippedShield(world.player), 'holy');
+        const holy = shieldRune(world, world.player, 'holy');
         if (holy > 0)
             t = Math.max(1, Math.floor(t * (1 - holy * 0.25)));
     }

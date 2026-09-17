@@ -2,7 +2,11 @@
  * 印（ルーン）の定義。
  *
  * 武器・盾に埋め込まれる効果。合成の壺で移し替えられる。
- * 効果の実体は game/runeEffects.ts が id を見て処理する。
+ * 効果の実体は 1 つのファイルに集まっておらず、combat.ts / hunger.ts /
+ * status.ts / actions.ts などが game/runes.ts の入口を通して読んでいる。
+ *
+ * どの印が護石に乗るか（と、そのときの上限レベル）は data/charms.ts。
+ * 護石は倒れても失わないので、装備なら許される強さがそのままだと関門が消える。
  */
 export const RUNES = [
     // ------------------------------------------------------------- 武器の印
@@ -16,11 +20,11 @@ export const RUNES = [
     },
     {
         id: 'combo', symbol: '連', name: '連撃の印', target: 'weapon', stackable: true, maxLevel: 4,
-        desc: 'Lv×25% の確率でもう一度攻撃する。追撃の威力は 3/4。',
+        desc: 'Lv×25% の確率でもう一度攻撃する。',
     },
     {
         id: 'flame', symbol: '炎', name: '火炎の印', target: 'weapon', stackable: true, maxLevel: 3,
-        desc: '攻撃力の Lv×30% を炎ダメージとして上乗せする。水中の敵には倍。',
+        desc: '攻撃力の Lv×30% を炎ダメージとして上乗せする。濡れた敵には半分。',
     },
     {
         id: 'thunder', symbol: '雷', name: '雷光の印', target: 'weapon', stackable: true, maxLevel: 3,
@@ -125,7 +129,7 @@ export const RUNES = [
     },
     {
         id: 'guardStr', symbol: '力', name: '不屈の印', target: 'shield', stackable: false, maxLevel: 1,
-        desc: 'ちからを下げられなくなる。',
+        desc: 'ちからを下げられなくなる。毒も 効かなくなる。',
     },
     {
         id: 'guardLevel', symbol: '護', name: '不動の印', target: 'shield', stackable: false, maxLevel: 1,

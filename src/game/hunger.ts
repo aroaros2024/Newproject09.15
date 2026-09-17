@@ -11,8 +11,8 @@ import {
   FOOD_CAP_X10, HUNGER_CRITICAL_X10, HUNGER_DRAIN_BASE, HUNGER_DRAIN_CAP,
   HUNGER_WARN_X10, REGEN_BRACELET_MUL, STARVE_DAMAGE, regenPerTurnX1000,
 } from './rules.js';
-import { equipRuneLevel } from './runes.js';
-import { equippedBracelet, equippedShield, equippedWeapon } from './inventory.js';
+import { shieldRune, weaponRune } from './runes.js';
+import { equippedBracelet } from './inventory.js';
 import type { World } from './world.js';
 
 /** 満腹度の減りを数える細かさ。1 ターンぶんの基本値 = 1/10 単位の 1 */
@@ -44,13 +44,11 @@ export function hungerDrainX100(world: World, p: PlayerActor): number {
   if (world.hasStatus(p, 'hungryFast')) d *= 2;
 
   // 剛腕の印は余分に減り、疾風の印と腹持ちの印は減りを抑える
-  const weapon = equippedWeapon(p);
-  if (equipRuneLevel(weapon, 'heavy') > 0) d *= 2;
-  if (equipRuneLevel(weapon, 'swift') > 0) d = Math.max(0, Math.floor(d / 2));
-  const shield = equippedShield(p);
-  const satiety = equipRuneLevel(shield, 'satiety');
+  if (weaponRune(world, p, 'heavy') > 0) d *= 2;
+  if (weaponRune(world, p, 'swift') > 0) d = Math.max(0, Math.floor(d / 2));
+  const satiety = shieldRune(world, p, 'satiety');
   if (satiety > 0) d = Math.max(0, Math.floor(d / (1 + satiety)));
-  if (equipRuneLevel(shield, 'blunt') > 0) d *= 2;
+  if (shieldRune(world, p, 'blunt') > 0) d *= 2;
 
   return Math.min(HUNGER_DRAIN_CAP * DRAIN_SCALE, d);
 }
@@ -135,7 +133,7 @@ export function tickRegen(world: World, a: Actor): void {
         mul = bracelet.cursed ? 0 : REGEN_BRACELET_MUL;
       }
     }
-    const heal = equipRuneLevel(equippedShield(p), 'regenRune');
+    const heal = shieldRune(world, p, 'regenRune');
     if (heal > 0) mul *= 1 + heal * 0.5;
   } else {
     mul = 1;

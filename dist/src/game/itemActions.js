@@ -13,6 +13,7 @@ import { ITEM_EFFECTS, mergeInto, throwDamage } from './itemEffects.js';
 import { addToInventory, allCarriedItems, findItem, isEquipped, isInventoryFull, makeItem, removeFromInventory, splitOne, } from './inventory.js';
 import { itemName, shortItemName } from './naming.js';
 import { hasBracelet, syncBraceletBonus } from './bracelets.js';
+import { weaponRune } from './runes.js';
 import { THROW_HIT, SELL_RATE, gitanThrowDamage, hitRate } from './rules.js';
 const OK = { tookTurn: true };
 const NO = (reason) => ({ tookTurn: false, reason });
@@ -314,7 +315,7 @@ export function throwItem(world, uid, dir) {
     // 遠投の腕輪と遠投の印を着けていると、敵を貫通して飛ぶ
     const pierces = def.throwEffect === 'arrowPierce'
         || hasBracelet(world, p, 'farThrow')
-        || (p.weaponUid !== null && findItem(p, p.weaponUid)?.runes.includes('reach') === true);
+        || weaponRune(world, p, 'reach') > 0;
     const range = pierces ? 14 : 10;
     let cur = { ...p.pos };
     let victim = null;

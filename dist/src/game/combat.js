@@ -6,8 +6,8 @@
  */
 import { step } from '../core/geom.js';
 import { getItem } from '../data/registry.js';
-import { BASE_HIT, BLIND_ACC_PENALTY, CRIT_RATE_CAP, CRIT_RUNE_STEP, EXP_TABLE, FAINT_DAMAGE_MUL, INVISIBLE_EVADE_BONUS, MAX_EXP, MAX_HP_CAP, MAX_LEVEL, METAL_DAMAGE_REDUCTION, MONSTER_CRIT_RATE, PLAYER_CRIT_RATE, calcDamage, hitRate, hpGainForLevel, } from './rules.js';
-import { equipRuneLevel } from './runes.js';
+import { BASE_HIT, BLIND_ACC_PENALTY, CRIT_RATE_CAP, CRIT_RUNE_STEP, EXP_TABLE, FAINT_DAMAGE_MUL, INVISIBLE_EVADE_BONUS, MAX_EXP, MAX_HP_CAP, MAX_LEVEL, METAL_DAMAGE_REDUCTION, MONSTER_CRIT_RATE, PLAYER_CRIT_RATE, PLUS_MAX, calcDamage, hitRate, hpGainForLevel, } from './rules.js';
+import { equipRuneLevel, shieldRune, weaponRune } from './runes.js';
 import { equippedBracelet, equippedShield, equippedWeapon } from './inventory.js';
 import { applyStatus, removeStatus, wakeOnDamage } from './status.js';
 import { PARTNER_SHARE, gainPartnerExp, partnerActor, refreshPartnerLevel, } from './partner.js';
@@ -47,7 +47,7 @@ export function attackPower(world, a) {
         str += b && b.cursed ? -3 : 3;
     }
     let atk = str + wp;
-    atk += equipRuneLevel(weapon, 'heavy') * 2;
+    atk += weaponRune(world, p, 'heavy') * 2;
     return Math.max(0, Math.floor(atk));
 }
 /** 武器の攻撃力（基本値 + 修正値） */
@@ -79,8 +79,7 @@ function evadeRate(world, a) {
     if (world.hasStatus(a, 'invisible'))
         evade += INVISIBLE_EVADE_BONUS;
     if (a.kind === 'player') {
-        const shield = equippedShield(world.player);
-        evade += equipRuneLevel(shield, 'evade') * 0.12;
+        evade += shieldRune(world, world.player, 'evade') * 0.12;
     }
     return Math.min(0.95, evade);
 }
@@ -91,7 +90,7 @@ function accuracyBonus(world, a) {
         bonus += BLIND_ACC_PENALTY;
     if (a.kind === 'player') {
         const weapon = equippedWeapon(world.player);
-        if (equipRuneLevel(weapon, 'sure') > 0)
+        if (weaponRune(world, world.player, 'sure') > 0)
             bonus += 1;
         if (braceletEffect(world, world.player) === 'sureHit')
             bonus += 1;
@@ -109,10 +108,9 @@ function critRate(world, a) {
             r *= 3;
         return r;
     }
-    const weapon = equippedWeapon(world.player);
-    if (equipRuneLevel(weapon, 'sure') > 0)
+    if (weaponRune(world, world.player, 'sure') > 0)
         return 0; // 必中の印は会心が出ない
-    let r = PLAYER_CRIT_RATE + equipRuneLevel(weapon, 'crit') * CRIT_RUNE_STEP;
+    let r = PLAYER_CRIT_RATE + weaponRune(world, world.player, 'crit') * CRIT_RUNE_STEP;
     if (braceletEffect(world, world.player) === 'critUp')
         r += CRIT_RUNE_STEP * 2;
     return Math.min(CRIT_RATE_CAP, r);
@@ -156,7 +154,7 @@ export function resolveAttack(world, a, target, powerMul = 1) {
     let def = !critical ? rawDef
         : a.kind === 'player' ? 0 : Math.floor(rawDef / 2);
     // 砕きの印は相手の防御力を半分にする
-    if (a.kind === 'player' && equipRuneLevel(equippedWeapon(world.player), 'crush') > 0) {
+    if (a.kind === 'player' && weaponRune(world, world.player, 'crush') > 0) {
         def = Math.floor(def / 2);
     }
     let dmg = calcDamage(atk, def, world.rng);
@@ -165,7 +163,7 @@ export function resolveAttack(world, a, target, powerMul = 1) {
     // メタル系は固定で減算する
     if (target.kind !== 'player' && world.defOf(target).metal) {
         const pierce = a.kind === 'player'
-            && equipRuneLevel(equippedWeapon(world.player), 'slayMetal') > 0;
+            && weaponRune(world, world.player, 'slayMetal') > 0;
         if (!pierce)
             dmg = Math.max(0, dmg - METAL_DAMAGE_REDUCTION);
     }
@@ -186,19 +184,17 @@ export function resolveAttack(world, a, target, powerMul = 1) {
 function applyAttackRunes(world, a, target, dmg) {
     if (a.kind !== 'player')
         return dmg;
-    const weapon = equippedWeapon(world.player);
-    if (!weapon)
-        return dmg;
+    // 武器が無くても打ち切らない。護石の印は素手でも効く
     const atk = attackPower(world, a);
     let out = dmg;
-    const flame = equipRuneLevel(weapon, 'flame');
+    const flame = weaponRune(world, world.player, 'flame');
     if (flame > 0) {
         let bonus = Math.floor(atk * 0.3 * flame);
         if (world.hasStatus(target, 'wet'))
             bonus = Math.floor(bonus / 2);
         out += bonus;
     }
-    const thunder = equipRuneLevel(weapon, 'thunder');
+    const thunder = weaponRune(world, world.player, 'thunder');
     if (thunder > 0) {
         let bonus = Math.floor(atk * 0.3 * thunder);
         if (world.hasStatus(target, 'wet'))
@@ -207,10 +203,10 @@ function applyAttackRunes(world, a, target, dmg) {
     }
     if (target.kind !== 'player') {
         const def = world.defOf(target);
-        const dragon = equipRuneLevel(weapon, 'slayDragon');
+        const dragon = weaponRune(world, world.player, 'slayDragon');
         if (dragon > 0 && def.family === 'dragon')
             out = Math.floor(out * (1 + dragon * 0.5));
-        const ghost = equipRuneLevel(weapon, 'slayGhost');
+        const ghost = weaponRune(world, world.player, 'slayGhost');
         if (ghost > 0 && def.family === 'ghost')
             out = Math.floor(out * (1 + ghost * 0.5));
     }
@@ -220,9 +216,8 @@ function applyAttackRunes(world, a, target, dmg) {
 function applyDefenseRunes(world, a, target, dmg, critical = false) {
     if (target.kind !== 'player')
         return dmg;
-    const shield = equippedShield(world.player);
     let out = dmg;
-    const reduce = equipRuneLevel(shield, 'reduce');
+    const reduce = shieldRune(world, world.player, 'reduce');
     if (reduce > 0)
         out -= reduce * 2;
     // 気絶の割増は、盾を無視する痛恨の一撃には乗せない。
@@ -231,9 +226,9 @@ function applyDefenseRunes(world, a, target, dmg, critical = false) {
     if (world.hasStatus(target, 'fainted') && !critical) {
         out = Math.floor(out * FAINT_DAMAGE_MUL);
     }
-    out = Math.max(shield && equipRuneLevel(shield, 'evade') > 0 ? 0 : 1, out);
+    out = Math.max(shieldRune(world, world.player, 'evade') > 0 ? 0 : 1, out);
     // 返しの印
-    const reflect = equipRuneLevel(shield, 'reflect');
+    const reflect = shieldRune(world, world.player, 'reflect');
     if (reflect > 0 && a.alive && a !== target) {
         const back = Math.floor(out * Math.min(0.9, reflect * 0.25));
         if (back > 0) {
@@ -247,25 +242,23 @@ function applyDefenseRunes(world, a, target, dmg, critical = false) {
 function applyOnHitEffects(world, a, target, dmg) {
     if (a.kind !== 'player')
         return;
-    const weapon = equippedWeapon(world.player);
-    if (!weapon)
-        return;
-    const drain = equipRuneLevel(weapon, 'drain');
+    // 武器が無くても打ち切らない。護石の印は素手でも効く
+    const drain = weaponRune(world, world.player, 'drain');
     if (drain > 0) {
         const heal = Math.max(1, Math.floor(dmg * drain * 0.1));
         healActor(world, a, heal);
     }
-    const sleepRune = equipRuneLevel(weapon, 'sleepHit');
+    const sleepRune = weaponRune(world, world.player, 'sleepHit');
     if (sleepRune > 0 && world.rng.percent(sleepRune * 8)) {
         applyStatus(world, target, 'asleep');
         world.log(`${world.nameOf(target)}は 眠ってしまった！`, 'good');
     }
-    const confuseRune = equipRuneLevel(weapon, 'confuseHit');
+    const confuseRune = weaponRune(world, world.player, 'confuseHit');
     if (confuseRune > 0 && world.rng.percent(confuseRune * 8)) {
         applyStatus(world, target, 'confused');
         world.log(`${world.nameOf(target)}は 混乱した！`, 'good');
     }
-    const poisonRune = equipRuneLevel(weapon, 'poisonHit');
+    const poisonRune = weaponRune(world, world.player, 'poisonHit');
     if (poisonRune > 0 && world.rng.percent(poisonRune * 10)) {
         applyStatus(world, target, 'poisoned');
         world.log(`${world.nameOf(target)}に 毒が 回った！`, 'good');
@@ -289,7 +282,7 @@ export function dealDamage(world, src, target, amount, kind = 'physical') {
         return false;
     }
     if (kind === 'fire' && target.kind === 'player') {
-        const water = equipRuneLevel(equippedShield(world.player), 'antiFire');
+        const water = shieldRune(world, world.player, 'antiFire');
         if (water > 0)
             dmg = Math.floor(dmg * (1 - Math.min(0.9, water * 0.3)));
         if (world.hasStatus(target, 'wet'))
@@ -353,7 +346,7 @@ export function killActor(world, src, target) {
             gainPartnerExp(world, src === partner ? target.exp : target.exp * PARTNER_SHARE);
         }
         // 守銭の印
-        const gitanRune = equipRuneLevel(equippedWeapon(world.player), 'gitanHit');
+        const gitanRune = weaponRune(world, world.player, 'gitanHit');
         if (gitanRune > 0) {
             const gain = gitanRune * 20;
             world.player.gitan += gain;
@@ -409,7 +402,7 @@ function growEquipment(world) {
         if (!item || equipRuneLevel(item, 'growth') === 0)
             continue;
         item.growthCount = (item.growthCount ?? 0) + 1;
-        if (item.growthCount >= 20) {
+        if (item.growthCount >= 20 && item.plus < PLUS_MAX) {
             item.growthCount = 0;
             item.plus++;
             world.log('装備が 一回り 育った！', 'good');
@@ -446,9 +439,8 @@ export function levelDown(world, p) {
         world.log('しかし 何も 起こらなかった。');
         return false;
     }
-    const shield = equippedShield(p);
-    if (equipRuneLevel(shield, 'guardLevel') > 0) {
-        world.log('盾が レベルダウンを 防いだ！', 'good');
+    if (shieldRune(world, p, 'guardLevel') > 0) {
+        world.log('レベルダウンを 防いだ！', 'good');
         return false;
     }
     p.level--;
@@ -461,9 +453,8 @@ export function levelDown(world, p) {
 }
 /** ちからを下げる */
 export function loseStr(world, p, amount = 1) {
-    const shield = equippedShield(p);
-    if (equipRuneLevel(shield, 'guardStr') > 0) {
-        world.log('盾が ちからの低下を 防いだ！', 'good');
+    if (shieldRune(world, p, 'guardStr') > 0) {
+        world.log('ちからの低下を 防いだ！', 'good');
         return false;
     }
     const before = p.str;

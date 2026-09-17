@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { GACHA_COST_10 } from '../src/game/rules.js';
 import type { TownState } from '../src/core/types.js';
 import { MISSIONS, type MissionCond, tryGetMission } from '../src/data/missions.js';
 import type { Action, ItemInstance } from '../src/core/types.js';
@@ -174,8 +175,9 @@ test('石の総額が、想定した規模から外れていない', () => {
   const total = MISSIONS.reduce((a, m) => a + m.stones, 0);
   const tutorial = MISSIONS.filter((m) => m.group === 'tutorial')
     .reduce((a, m) => a + m.stones, 0);
-  // 最初のダンジョンを出る前に単発 2 回ぶん（200 石）は渡したい
-  assert.ok(tutorial >= 200, `序盤が ${tutorial} 石しかない`);
+  // 最初のダンジョンを出る前に 10 連 1 回ぶんは渡したい。
+  // 値段を直しても付いてくるように、定数から出す
+  assert.ok(tutorial >= GACHA_COST_10, `序盤が ${tutorial} 石しかない`);
   // 全部足しても、周回の主収入（冒険側）を食い潰す額にはしない。
   // ex の再クリアが毎回 945 石なので、一度きりのミッションが
   // その 40 周ぶんを超えると、潜る意味が薄くなる

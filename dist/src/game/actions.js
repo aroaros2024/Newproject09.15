@@ -7,7 +7,8 @@ import { DIR_VEC, chebyshev, samePoint, step } from '../core/geom.js';
 import { getItem, getTrap } from '../data/registry.js';
 import { at, canMoveDiagonally, canEnter, isOpen } from '../dungeon/tilemap.js';
 import { attackInDirection, dealDamage } from './combat.js';
-import { addToInventory, equippedBracelet, equippedShield, equippedWeapon, findItem, isEquipped, isInventoryFull, removeFromInventory, } from './inventory.js';
+import { addToInventory, equippedBracelet, findItem, isEquipped, isInventoryFull, removeFromInventory, } from './inventory.js';
+import { shieldRune, weaponRune } from './runes.js';
 import { itemName, shortItemName } from './naming.js';
 import { hasBracelet } from './bracelets.js';
 import { buyItem, equipItem, sellItem, takeOutOfPot, throwItem, unequipItem, useItem, } from './itemActions.js';
@@ -142,13 +143,10 @@ function playerAttack(world, rawDir) {
     const dir = applyConfusion(world, p, rawDir);
     attackInDirection(world, p, dir);
     // 連撃の印
-    const weapon = equippedWeapon(p);
-    if (weapon && !weapon.sealed) {
-        const combo = weapon.runes.filter((r) => r === 'combo').length;
-        if (combo > 0 && world.rng.percent(combo * 25)) {
-            world.log('続けざまに 斬りつけた！', 'good');
-            attackInDirection(world, p, dir);
-        }
+    const combo = weaponRune(world, p, 'combo');
+    if (combo > 0 && world.rng.percent(combo * 25)) {
+        world.log('続けざまに 斬りつけた！', 'good');
+        attackInDirection(world, p, dir);
     }
     return OK;
 }
@@ -345,12 +343,11 @@ export function triggerTrap(world, a, trapId) {
         return false;
     // ワナ師の印・腕輪はワナを踏んでも作動しない
     if (a.kind === 'player') {
-        const shield = equippedShield(world.player);
         const bracelet = equippedBracelet(world.player);
         const braceletDef = bracelet ? getItem(bracelet.defId) : null;
         const wardBracelet = braceletDef?.kind === 'bracelet'
             && braceletDef.effect === 'trapMaster' && !bracelet.cursed;
-        const wardRune = shield && !shield.sealed && shield.runes.includes('antiTrap');
+        const wardRune = shieldRune(world, world.player, 'antiTrap') > 0;
         if (wardBracelet || wardRune) {
             tile.trap.revealed = true;
             world.log(`${def.name}を 踏んだが 作動しなかった。`, 'good');

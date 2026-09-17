@@ -20,6 +20,7 @@ import { type Ctx, drawOverlay, drawPanel, drawText, wrapText } from './draw.js'
 import { getSprite, sprites } from './sprites.js';
 import { tryGetItem } from '../data/registry.js';
 import { tryGetPartner } from '../data/partners.js';
+import { charmName } from '../game/charm.js';
 import { SCREEN_H, SCREEN_W, UI } from './theme.js';
 
 type Phase = 'charge' | 'burst' | 'reveal' | 'summary';
@@ -49,7 +50,7 @@ export class GachaAnim {
 
   private get chargeMs(): number {
     if (this.skipped) return 60;
-    return CHARGE_MS[this.current?.prize?.rarity ?? 'n'];
+    return CHARGE_MS[this.current?.rarity ?? 'n'];
   }
 
   /** 経過時間を進める。ミリ秒 */
@@ -107,7 +108,7 @@ export class GachaAnim {
 
     const cx = SCREEN_W / 2;
     const cy = SCREEN_H / 2 - 30;
-    const color = r.prize ? RARITY_COLOR[r.prize.rarity] : GITAN_COLOR;
+    const color = r.rarity ? RARITY_COLOR[r.rarity] : GITAN_COLOR;
 
     if (this.phase === 'charge') {
       // 色はまだ出さない。何が出るか分かってしまう
@@ -172,6 +173,7 @@ export class GachaAnim {
    * 何の草かは名前が伝える。
    */
   private spriteOf(r: PullResult): string | null {
+    if (r.charm) return 'charm';
     const p = r.prize;
     if (!p) return null;
     if (p.partnerId) return tryGetPartner(p.partnerId)?.baseId ?? null;
@@ -179,17 +181,24 @@ export class GachaAnim {
     return null;
   }
 
+  /** カードに出す名前 */
+  private titleOf(r: PullResult): string {
+    if (r.charm) return charmName(r.charm);
+    if (r.prize) return r.prize.name;
+    return `${r.gitan} ギタン`;
+  }
+
   private drawCard(g: Ctx, cx: number, cy: number, r: PullResult, now: number): void {
-    const color = r.prize ? RARITY_COLOR[r.prize.rarity] : GITAN_COLOR;
+    const color = r.rarity ? RARITY_COLOR[r.rarity] : GITAN_COLOR;
     const box = { x: cx - 210, y: cy - 160, w: 420, h: 330 };
 
     // SSR と SR は後ろで光り続ける
-    if (r.prize && (r.prize.rarity === 'ssr' || r.prize.rarity === 'sr')) {
+    if (r.rarity === 'ssr' || r.rarity === 'sr') {
       this.drawOrb(g, cx, cy, 200 + Math.sin(now / 200) * 16, color, 0.3);
     }
     drawPanel(g, box, { frame: color, alpha: 0.97 });
 
-    drawText(g, r.prize ? RARITY_LABEL[r.prize.rarity] : 'ギタン', cx, box.y + 40, {
+    drawText(g, r.rarity ? RARITY_LABEL[r.rarity] : 'ギタン', cx, box.y + 40, {
       size: 26, bold: true, align: 'center', color,
     });
 
@@ -198,7 +207,7 @@ export class GachaAnim {
     const icon = spriteId ? getSprite(spriteId) : null;
     const artY = box.y + 130;
     if (icon && spriteId) {
-      const size = r.prize?.rarity === 'ssr' ? 104 : 76;
+      const size = r.rarity === 'ssr' ? 104 : 76;
       // 台座。絵が背景に溶けないように敷く
       g.save();
       g.globalAlpha = 0.16;
@@ -223,8 +232,8 @@ export class GachaAnim {
       });
     }
 
-    drawText(g, r.prize ? r.prize.name : `${r.gitan} ギタン`, cx, box.y + 218, {
-      size: 24, bold: true, align: 'center', color: UI.text,
+    drawText(g, this.titleOf(r), cx, box.y + 218, {
+      size: 22, bold: true, align: 'center', color: UI.text,
     });
 
     const lines = wrapText(g, this.noteOf(r), box.w - 50, 15).slice(0, 3);
@@ -237,6 +246,7 @@ export class GachaAnim {
 
   /** その 1 回で何が起きたかを 1 行で */
   private noteOf(r: PullResult): string {
+    if (r.charm) return '村で 1 つだけ 着けられる。冒険の 最初から 印が 効く。';
     if (!r.prize) return '出るものは もう 無い。石が ギタンに 変わる。';
     if (r.prize.partnerId) return '冒険の 最初から 連れて行ける。倒れても 次の冒険で 戻る。';
     if (r.prize.boost?.t === 'knownItem') {
@@ -257,11 +267,10 @@ export class GachaAnim {
       const row = Math.floor(i / 2);
       const x = box.x + 30 + col * 390;
       const y = box.y + 80 + row * 46;
-      const color = r.prize ? RARITY_COLOR[r.prize.rarity] : GITAN_COLOR;
-      drawText(g, r.prize ? RARITY_LABEL[r.prize.rarity] : 'G', x, y,
+      const color = r.rarity ? RARITY_COLOR[r.rarity] : GITAN_COLOR;
+      drawText(g, r.rarity ? RARITY_LABEL[r.rarity] : 'G', x, y,
         { size: 15, bold: true, color });
-      drawText(g, r.prize ? r.prize.name : `${r.gitan} ギタン`, x + 52, y,
-        { size: 17, color: UI.text });
+      drawText(g, this.titleOf(r), x + 52, y, { size: 16, color: UI.text });
     });
 
     drawText(g, 'A：閉じる', SCREEN_W / 2, box.y + box.h - 24, {

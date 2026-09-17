@@ -194,6 +194,8 @@ export function startRun(
   // 加護。効かないダンジョン（真・もっと不思議）では全部 0 になる
   const boosts = activeBoosts(town, dungeon.allowBoosts);
   for (const id of boosts.knownIds) run.identify.known[id] = true;
+  // 護石。印を読む weaponRune / shieldRune がここを見る
+  world.charm = boosts.charm;
   player.bagLimit = boosts.bagLimit;
   if (boosts.food > 0) {
     player.maxFoodX10 += boosts.food * 10;

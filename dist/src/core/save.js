@@ -8,6 +8,7 @@
 import { SAVE_VERSION } from './types.js';
 import { sanitizeTally } from '../game/counters.js';
 import { tryGetPrize } from '../data/gacha.js';
+import { CHARM_BOX_LIMIT, CHARM_MAX_SLOTS, charmRuneRule } from '../data/charms.js';
 import { tryGetPartner } from '../data/partners.js';
 import { partnerLevelCap } from '../game/partner.js';
 const PREFIX = 'fushigi-dungeon';
@@ -47,6 +48,8 @@ export function defaultTown(playerName = 'ナギ') {
         gachaPulls: 0,
         partners: {},
         activePartner: null,
+        charms: [],
+        activeCharm: null,
         seenMonsters: {},
         history: [],
         totalRuns: 0,
@@ -148,6 +151,8 @@ function validateTown(t) {
             ? Math.max(0, Math.floor(t.gachaPulls)) : 0,
         partners: sanitizePartners(t.partners),
         activePartner: typeof t.activePartner === 'string' ? t.activePartner : null,
+        charms: sanitizeCharms(t.charms),
+        activeCharm: Number.isFinite(t.activeCharm) ? Math.floor(t.activeCharm) : null,
         seenMonsters: typeof t.seenMonsters === 'object' && t.seenMonsters ? t.seenMonsters : {},
         history: Array.isArray(t.history) ? t.history.slice(-50) : [],
         totalRuns: Number.isFinite(t.totalRuns) ? Math.max(0, Math.floor(t.totalRuns)) : 0,
@@ -155,7 +160,60 @@ function validateTown(t) {
     };
     if (!out.unlocked.includes('d1'))
         out.unlocked.push('d1');
+    // 持っていない護石を指していたら外す
+    if (!(out.charms ?? []).some((c) => c.uid === out.activeCharm))
+        out.activeCharm = null;
     renumberStorage(out);
+    return out;
+}
+/**
+ * 護石。実在しない印と壊れた値を捨てる。
+ *
+ * 護石は表から引くのではなく生成物なので、id で実在を確かめられない。
+ * 中身（印・レベル・空きスロット）を 1 つずつ見て組み直す。
+ * ここが緩いと、セーブを書き換えるだけで上限を超えた印を着けられてしまう。
+ */
+function sanitizeCharms(raw) {
+    if (!Array.isArray(raw))
+        return [];
+    const out = [];
+    const usedUid = new Set();
+    for (const v of raw.slice(0, CHARM_BOX_LIMIT)) {
+        if (typeof v !== 'object' || v === null)
+            continue;
+        const c = v;
+        if (!Number.isFinite(c.uid) || !Array.isArray(c.runes))
+            continue;
+        const uid = Math.max(1, Math.floor(c.uid));
+        if (usedUid.has(uid))
+            continue;
+        // 印は「護石に乗る物」「護石での上限レベル」の両方で切り詰める
+        const level = new Map();
+        for (const r of c.runes) {
+            if (typeof r !== 'string')
+                continue;
+            const rule = charmRuneRule(r);
+            if (!rule)
+                continue;
+            const n = (level.get(r) ?? 0) + 1;
+            if (n > rule.maxLevel)
+                continue;
+            level.set(r, n);
+        }
+        const runes = [];
+        for (const [id, n] of level)
+            for (let i = 0; i < n; i++)
+                runes.push(id);
+        if (runes.length === 0)
+            continue;
+        usedUid.add(uid);
+        out.push({
+            uid,
+            runes,
+            slots: Number.isFinite(c.slots)
+                ? Math.max(0, Math.min(CHARM_MAX_SLOTS, Math.floor(c.slots))) : 0,
+        });
+    }
     return out;
 }
 /**

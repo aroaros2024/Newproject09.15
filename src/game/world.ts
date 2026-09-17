@@ -11,7 +11,7 @@ import { type MaxKey, type MissionKey, addTally, maxTally } from './counters.js'
 import type { Dir, Point } from '../core/geom.js';
 import { chebyshev, samePoint } from '../core/geom.js';
 import type {
-  Actor, DungeonDef, FloorItem, FloorMap, GameEvent, ItemInstance, LogStyle,
+  Actor, Charm, DungeonDef, FloorItem, FloorMap, GameEvent, ItemInstance, LogStyle,
   MonsterActor, MonsterDef, PlayerActor, Room, RunState, StatusId,
 } from '../core/types.js';
 import { getMonster } from '../data/registry.js';
@@ -263,6 +263,14 @@ export class World {
     if (effect === 'waterWalk') return 'water';
     return 'ground';
   }
+
+  /**
+   * この冒険で効いている護石。startRun が加護から受け取って置く。
+   *
+   * 加護の効かないダンジョン（真・もっと不思議）では null のままになるので、
+   * 護石の印を読む weaponRune / shieldRune も自動的に 0 を返す。
+   */
+  charm: Charm | null = null;
 
   /**
    * 今効いている腕輪の効果 id。

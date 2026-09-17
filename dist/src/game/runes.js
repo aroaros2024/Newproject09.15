@@ -9,6 +9,8 @@
  */
 import { getItem, tryGetRune } from '../data/registry.js';
 import { EXCLUSIVE_RUNE_PAIRS } from '../data/runes.js';
+import { charmRuneLevel } from './charm.js';
+import { equippedShield, equippedWeapon } from './inventory.js';
 /** 印のレベル（付いていなければ 0） */
 export function runeLevel(item, runeId) {
     let n = 0;
@@ -81,5 +83,35 @@ export function equipRuneLevel(item, runeId) {
     if (!item || item.sealed)
         return 0;
     return runeLevel(item, runeId);
+}
+/**
+ * 護石ぶんの印。
+ *
+ * 護石は道具ではないので、封印の巻物では止まらない。
+ * 加護なしのダンジョンでは world.charm が null になっているので、ここも 0 になる。
+ */
+function charmPart(world, runeId, want) {
+    const charm = world.charm;
+    if (!charm)
+        return 0;
+    const def = tryGetRune(runeId);
+    if (!def)
+        return 0;
+    if (def.target !== 'both' && def.target !== want)
+        return 0;
+    return charmRuneLevel(charm, runeId);
+}
+/**
+ * 武器の印のレベル。**印を読むときはここを通す。**
+ *
+ * 装備の印と護石の印を足した値を返す。読み手がどちらか一方だけを見ると、
+ * 護石が効いたり効かなかったりする場所ができる。
+ */
+export function weaponRune(world, p, runeId) {
+    return equipRuneLevel(equippedWeapon(p), runeId) + charmPart(world, runeId, 'weapon');
+}
+/** 盾の印のレベル。**印を読むときはここを通す。** */
+export function shieldRune(world, p, runeId) {
+    return equipRuneLevel(equippedShield(p), runeId) + charmPart(world, runeId, 'shield');
 }
 //# sourceMappingURL=runes.js.map

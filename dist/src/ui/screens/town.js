@@ -2,14 +2,17 @@
  * 風の村。冒険の支度をする画面。
  */
 import { Cmd } from '../../core/input.js';
-import { ALL_ITEMS, allMonsters, getDungeon, getItem } from '../../data/registry.js';
-import { BENTOU_PRICE, SMITH_PRICE, bumpTown, buyFromTown, depositItem, dungeonList, inventoryLimitFor, storageLimit, depositGitan, sellToTown, shopStock, smithTemper, smithUncurse, sortStorage, storageFull, townIdentify, withdrawGitan, withdrawItem, } from '../../game/town.js';
+import { ALL_ITEMS, allMonsters, getDungeon, getItem, tryGetRune } from '../../data/registry.js';
+import { BENTOU_PRICE, SMITH_PRICE, bumpTown, buyFromTown, depositItem, dungeonList, meltCharm, inventoryLimitFor, storageLimit, depositGitan, sellToTown, shopStock, smithEmbed, smithReforge, smithTemper, smithUncurse, sortStorage, storageFull, townIdentify, wearCharm, withdrawGitan, withdrawItem, } from '../../game/town.js';
 import { isUnidentifiableKind, itemName, kindLabel } from '../../game/naming.js';
 import { collectionRate } from '../../game/town.js';
 import { RARITY_COLOR, RARITY_LABEL, RARITY_RATE, prizesOf, } from '../../data/gacha.js';
 import { tryGetPartner } from '../../data/partners.js';
 import { KNOWABLE_ITEMS } from '../../data/items/all.js';
-import { activeBoosts, canPull, drawable, ownedPartners, owns, prizeTotal, pull, stockLeft, } from '../../game/gacha.js';
+import { CHARM_BOX_LIMIT } from '../../data/charms.js';
+import { CHARM_SHARE, activeBoosts, activeCharm, canPull, charmRoom, drawable, ownedCharms, ownedPartners, owns, prizeTotal, pull, stockLeft, } from '../../game/gacha.js';
+import { canAddCharmRune, charmName, charmRuneList, meltValue } from '../../game/charm.js';
+import { Rng } from '../../core/rng.js';
 import { partnerExpToNext, partnerLevelCap, partnerName } from '../../game/partner.js';
 import { GACHA_COST, GACHA_COST_10, GACHA_EMPTY_GITAN } from '../../game/rules.js';
 import { GachaAnim } from '../gachaAnim.js';
@@ -151,6 +154,19 @@ export class TownScreen {
                 },
             },
             {
+                label: '護石',
+                right: () => {
+                    const n = (this.app.town.charms ?? []).length;
+                    return n > 0 ? `${n} / ${CHARM_BOX_LIMIT}` : 'まだ 無い';
+                },
+                color: () => (charmRoom(this.app.town) <= 0 ? UI.warn : undefined),
+                desc: '着ける 護石を 決める。打ち直しと 溶かすも ここから。',
+                onSelect: () => {
+                    this.openCharms();
+                    return false;
+                },
+            },
+            {
                 label: '相棒',
                 right: () => {
                     const list = ownedPartners(this.app.town);
@@ -223,7 +239,7 @@ export class TownScreen {
                 right: `${GACHA_COST_10} 石`,
                 color: () => (canPull(this.app.town, 10) ? UI.cursorEdge : undefined),
                 disabled: !canPull(town, 10),
-                desc: '1 回ぶん 安い。SR 以上が 出なければ、10 回目は SR 以上になります。',
+                desc: 'SR 以上が 出なければ、10 回目は SR 以上になります。',
                 onSelect: () => {
                     this.rollGacha(10);
                     return false;
@@ -264,23 +280,37 @@ export class TownScreen {
      *
      * 知識は 114 種あるが、1 行ずつ並べると 10 ページになり、
      * どの行も 1% 未満の同じ数字で情報にならない。種類ごとに 1 行へ畳む。
-     * 「どれを持っているか」は図鑑で見る。
+     * 護石は毎回その場で作るので、そもそも 1 行ずつ並べられない。
+     * 「どれを持っているか」は図鑑と護石の画面で見る。
      */
     openGachaOdds() {
         const town = this.app.town;
         const entries = [];
+        const room = charmRoom(town);
         for (const rarity of ['ssr', 'sr', 'r', 'n']) {
             const list = prizesOf(rarity);
             if (list.length === 0)
                 continue;
             const total = list.reduce((a, p) => a + p.weight, 0);
             const left = drawable(town, rarity).length;
+            // N と R は護石と分け合う。表が尽きた段は全部が護石になる
+            const hasCharm = (rarity === 'n' || rarity === 'r') && room > 0;
+            const charmShare = !hasCharm ? 0 : left === 0 ? 1 : CHARM_SHARE;
+            const prizeRate = RARITY_RATE[rarity] * (1 - charmShare);
             entries.push({
                 label: `${RARITY_LABEL[rarity]}　${RARITY_RATE[rarity]}%`,
                 color: RARITY_COLOR[rarity],
                 disabled: true,
                 desc: `残り ${left} / ${list.length}。出たものは 二度と 出ません。`,
             });
+            if (hasCharm) {
+                entries.push({
+                    label: '　護石',
+                    right: `${(RARITY_RATE[rarity] * charmShare).toFixed(1)}%`,
+                    desc: '毎回 その場で 作るので、尽きることが ありません。'
+                        + '印と 空きスロットの 組み合わせは 9 万通り 以上 あります。',
+                });
+            }
             // 知識はまとめる。それ以外は 1 行ずつ
             const knowledge = list.filter((p) => p.boost?.t === 'knownItem');
             const others = list.filter((p) => p.boost?.t !== 'knownItem');
@@ -288,7 +318,7 @@ export class TownScreen {
                 const has = owns(town, p.id);
                 entries.push({
                     label: `　${p.name}`,
-                    right: `${(RARITY_RATE[rarity] * p.weight / total).toFixed(2)}%`,
+                    right: `${(prizeRate * p.weight / total).toFixed(2)}%`,
                     color: has ? undefined : UI.textDim,
                     desc: has ? 'もう 出ました。' : 'まだ 出ていません。',
                 });
@@ -297,7 +327,7 @@ export class TownScreen {
                 const got = knowledge.filter((p) => owns(town, p.id)).length;
                 entries.push({
                     label: '　道具の 知識',
-                    right: `1 つ ${(RARITY_RATE[rarity] / total).toFixed(2)}%`,
+                    right: `1 つ ${(prizeRate / total).toFixed(2)}%`,
                     color: UI.textDim,
                     desc: `${knowledge.length} 種のうち ${got} 種 出ました。`
                         + '引くと その道具の 名前が 冒険の 最初から 見えます。',
@@ -307,13 +337,175 @@ export class TownScreen {
         this.menus.push(new ListMenu({
             title: () => {
                 const left = stockLeft(this.app.town);
-                return left > 0
-                    ? `出るもの　残り ${left} / ${prizeTotal()}`
-                    : `出るものは もう 無い（1 回 ${GACHA_EMPTY_GITAN} ギタン）`;
+                const room = charmRoom(this.app.town);
+                if (left > 0)
+                    return `出るもの　表の景品 残り ${left} / ${prizeTotal()}`;
+                if (room > 0)
+                    return '出るもの　表の景品は 出きった。あとは 護石';
+                return `出るものが 無い（1 回 ${GACHA_EMPTY_GITAN} ギタン）`;
             },
             entries,
             rect: { x: 300, y: 60, w: 580, h: 520 },
             rows: 12,
+            showDesc: true,
+        }));
+    }
+    // ------------------------------------------------------------ 護石
+    /** 護石 1 つの説明。印の名前と効き目を並べる */
+    charmDesc(c) {
+        const runes = charmRuneList(c).map(({ id, level }) => {
+            const def = tryGetRune(id);
+            if (!def)
+                return id;
+            return level > 1 ? `${def.name} Lv${level}` : def.name;
+        });
+        const slots = c.slots > 0 ? `　空きスロット ${c.slots}` : '';
+        return `${runes.join('　')}${slots}`;
+    }
+    /**
+     * 護石の画面。
+     *
+     * 一覧は「着けているもの → 強い順」に並ぶ（ownedCharms）。
+     * 30 個を目で比べられないと、厳選がただの作業になる。
+     */
+    openCharms() {
+        const town = this.app.town;
+        const entries = [];
+        entries.push({
+            label: '着けない',
+            color: () => (activeCharm(this.app.town) ? undefined : UI.good),
+            desc: '護石 無しで 潜る。',
+            onSelect: () => {
+                wearCharm(town, null);
+                this.app.persist();
+                this.say('護石を 外した。');
+                return false;
+            },
+        });
+        for (const c of ownedCharms(town)) {
+            entries.push({
+                label: () => charmName(c),
+                sprite: 'charm',
+                right: () => (this.app.town.activeCharm === c.uid ? '着けている' : ''),
+                color: () => (this.app.town.activeCharm === c.uid ? UI.good : undefined),
+                desc: () => this.charmDesc(c),
+                onSelect: () => {
+                    this.charmMenu(c);
+                    return false;
+                },
+            });
+        }
+        if (charmRoom(town) <= 0) {
+            entries.push({
+                label: '（箱が いっぱい）',
+                disabled: true,
+                desc: '溶かして 空けるまで、ガチャから 護石は 出ません。',
+            });
+        }
+        this.menus.push(new ListMenu({
+            title: () => {
+                const n = (this.app.town.charms ?? []).length;
+                return `護石　${n} / ${CHARM_BOX_LIMIT}　所持 ${this.app.town.gitan} ギタン`;
+            },
+            entries,
+            rect: { x: 300, y: 100, w: 620, h: 480 },
+            rows: 9,
+            showDesc: true,
+            emptyText: 'まだ 護石が 無い',
+        }));
+    }
+    charmMenu(c) {
+        const town = this.app.town;
+        const worn = () => this.app.town.activeCharm === c.uid;
+        this.menus.push(new ListMenu({
+            title: () => charmName(c),
+            entries: [
+                {
+                    label: '着ける',
+                    disabled: worn(),
+                    desc: '次の 冒険から 印が 効く。真・もっと不思議では 効かない。',
+                    onSelect: () => {
+                        wearCharm(town, c.uid);
+                        this.app.persist();
+                        this.say(`${charmName(c)}を 着けた。`);
+                        this.menus.pop();
+                        this.menus.pop();
+                        this.openCharms();
+                        return false;
+                    },
+                },
+                {
+                    label: '打ち直す',
+                    right: `${SMITH_PRICE.reforge} ギタン`,
+                    disabled: town.gitan < SMITH_PRICE.reforge,
+                    desc: '印を 1 つ 残して、残りを 振り直す。空きスロットも 振り直す。',
+                    onSelect: () => {
+                        this.reforgeMenu(c);
+                        return false;
+                    },
+                },
+                {
+                    label: '溶かす',
+                    right: () => `${meltValue(c)} ギタン`,
+                    disabled: worn(),
+                    desc: worn() ? '着けている 護石は 溶かせません。' : 'ギタンに 変わる。元には 戻せません。',
+                    onSelect: () => {
+                        const gain = meltCharm(town, c.uid);
+                        if (gain <= 0)
+                            return false;
+                        this.app.persist();
+                        this.say(`護石を 溶かして ${gain} ギタンに した。`);
+                        this.menus.pop();
+                        this.menus.pop();
+                        this.openCharms();
+                        return false;
+                    },
+                },
+            ],
+            rect: { x: 400, y: 230, w: 480, h: 220 },
+            showDesc: true,
+        }));
+    }
+    /** どの印を残して打ち直すかを選ぶ */
+    reforgeMenu(c) {
+        const town = this.app.town;
+        const entries = charmRuneList(c).map(({ id, level }) => {
+            const def = tryGetRune(id);
+            return {
+                label: level > 1 ? `${def?.name ?? id} Lv${level}` : (def?.name ?? id),
+                desc: def?.desc ?? '',
+                onSelect: () => {
+                    if (!smithReforge(town, new Rng(`reforge:${town.playerName}:${town.gitan}:${c.uid}`), c.uid, id))
+                        return false;
+                    this.app.persist();
+                    this.say(`打ち直した。${charmName(c)}`);
+                    this.menus.pop();
+                    this.menus.pop();
+                    this.menus.pop();
+                    this.openCharms();
+                    return false;
+                },
+            };
+        });
+        entries.push({
+            label: '何も 残さない',
+            desc: '全部 振り直す。',
+            onSelect: () => {
+                if (!smithReforge(town, new Rng(`reforge:${town.playerName}:${town.gitan}:${c.uid}`), c.uid, null))
+                    return false;
+                this.app.persist();
+                this.say(`打ち直した。${charmName(c)}`);
+                this.menus.pop();
+                this.menus.pop();
+                this.menus.pop();
+                this.openCharms();
+                return false;
+            },
+        });
+        this.menus.push(new ListMenu({
+            title: '残す 印を 選ぶ',
+            entries,
+            rect: { x: 380, y: 220, w: 520, h: 280 },
             showDesc: true,
         }));
     }
@@ -800,6 +992,96 @@ export class TownScreen {
         }));
     }
     // ------------------------------------------------------------ 鍛冶屋
+    /**
+     * 護石に印を入れる。護石 → 素材の装備 → 入れる印、の 3 段で選ぶ。
+     *
+     * 空きスロットが飾りにならないように、必ず入れる道を用意しておく。
+     */
+    openEmbed() {
+        const town = this.app.town;
+        const entries = ownedCharms(town)
+            .filter((c) => c.slots > 0)
+            .map((c) => ({
+            label: () => charmName(c),
+            sprite: 'charm',
+            right: () => `空き ${c.slots}`,
+            desc: () => this.charmDesc(c),
+            onSelect: () => {
+                this.openEmbedMaterial(c);
+                return false;
+            },
+        }));
+        this.menus.push(new ListMenu({
+            title: `印を 入れる 護石を 選ぶ（所持 ${town.gitan} ギタン）`,
+            entries,
+            rect: { x: 320, y: 120, w: 600, h: 440 },
+            rows: 9,
+            showDesc: true,
+            emptyText: '空きスロットの ある 護石が ありません',
+        }));
+    }
+    openEmbedMaterial(c) {
+        const town = this.app.town;
+        const build = () => town.storage
+            .filter((it) => {
+            const k = getItem(it.defId).kind;
+            if (k !== 'weapon' && k !== 'shield')
+                return false;
+            return it.runes.some((r) => canAddCharmRune(c, r));
+        })
+            .map((it) => ({
+            label: itemName(it, this.identify()),
+            sprite: getItem(it.defId).sprite,
+            desc: 'この装備から 印を 1 つ 選んで 入れる。装備は 無くなる。',
+            onSelect: () => {
+                this.openEmbedRune(c, it);
+                return false;
+            },
+        }));
+        this.menus.push(new ListMenu({
+            title: () => `素材に する 装備を 選ぶ（${charmName(c)}）`,
+            entries: build(),
+            rect: { x: 320, y: 120, w: 600, h: 440 },
+            rows: 9,
+            showDesc: true,
+            emptyText: '入れられる 印を 持った 装備が ありません',
+        }));
+    }
+    openEmbedRune(c, item) {
+        const town = this.app.town;
+        const ids = [...new Set(item.runes)].filter((r) => canAddCharmRune(c, r));
+        const entries = ids.map((id) => {
+            const def = tryGetRune(id);
+            return {
+                label: def?.name ?? id,
+                disabled: town.gitan < SMITH_PRICE.embed,
+                right: `${SMITH_PRICE.embed} ギタン`,
+                desc: def?.desc ?? '',
+                onSelect: () => {
+                    if (!smithEmbed(town, c.uid, item.uid, id)) {
+                        this.say('ギタンが 足りません。');
+                        this.app.audio.play('error');
+                        return false;
+                    }
+                    this.say(`${charmName(c)}　に 印を 入れた。`);
+                    this.app.audio.play('synthesis');
+                    this.app.persist();
+                    this.menus.pop();
+                    this.menus.pop();
+                    this.menus.pop();
+                    this.openEmbed();
+                    return false;
+                },
+            };
+        });
+        this.menus.push(new ListMenu({
+            title: '入れる 印を 選ぶ',
+            entries,
+            rect: { x: 380, y: 200, w: 520, h: 300 },
+            showDesc: true,
+            emptyText: '入れられる 印が ありません',
+        }));
+    }
     openSmith() {
         this.place = 'smith';
         const town = this.app.town;
@@ -808,6 +1090,16 @@ export class TownScreen {
             return k === 'weapon' || k === 'shield';
         });
         const entries = [
+            {
+                label: '護石に 印を 入れる',
+                right: `${SMITH_PRICE.embed} ギタン`,
+                desc: '倉庫の 装備から 印を 1 つ 抜いて、護石の 空きスロットに 入れる。'
+                    + '素材の 装備は 無くなる。',
+                onSelect: () => {
+                    this.openEmbed();
+                    return false;
+                },
+            },
             {
                 label: '鍛える（修正値 +1）',
                 desc: '装備の修正値を 1 上げる。上がるほど 高くつく。',

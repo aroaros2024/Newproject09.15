@@ -13,6 +13,7 @@ import { DUNGEON_ORDER } from '../data/dungeons.js';
 import { keptItems, makeItem } from './inventory.js';
 import { addTally, maxTally, mergeTally } from './counters.js';
 import { activeBoosts, townBoosts } from './gacha.js';
+import { EMBED_PRICE, REFORGE_PRICE, addCharmRune, meltValue, reforgeCharm } from './charm.js';
 import { mergePartnerExp } from './partner.js';
 import { mergeInto } from './itemEffects.js';
 import { losesItemsOnDeath } from './death.js';
@@ -30,6 +31,10 @@ export const SMITH_PRICE = {
     temper: (plus) => 1500 * Math.max(1, plus + 1),
     /** 呪い解き */
     uncurse: 500,
+    /** 護石の打ち直し（印を 1 つ残して振り直す） */
+    reforge: REFORGE_PRICE,
+    /** 護石に印を 1 つ入れる（素材の装備を 1 つ使う） */
+    embed: EMBED_PRICE,
 };
 /** 食事処の弁当 */
 export const BENTOU_PRICE = 900;
@@ -304,6 +309,83 @@ export function smithTemper(town, uid) {
     town.gitan -= cost;
     item.plus++;
     item.plusKnown = true;
+    return true;
+}
+/**
+ * 護石を着ける。null で外す。
+ *
+ * 持っていない護石を指したら何もしない（壊れたセーブでも壊れないように）。
+ */
+export function wearCharm(town, uid) {
+    if (uid === null) {
+        town.activeCharm = null;
+        return true;
+    }
+    if (!(town.charms ?? []).some((c) => c.uid === uid))
+        return false;
+    town.activeCharm = uid;
+    return true;
+}
+/**
+ * 護石を溶かしてギタンにする。
+ *
+ * 外れた護石にも出口があると、どの引きも無駄にならない。
+ * 着けているものは溶かせない（間違えて主力を失う事故を作らない）。
+ */
+export function meltCharm(town, uid) {
+    const list = town.charms ?? [];
+    const i = list.findIndex((c) => c.uid === uid);
+    if (i < 0)
+        return 0;
+    if (town.activeCharm === uid)
+        return 0;
+    const gain = meltValue(list[i]);
+    list.splice(i, 1);
+    town.gitan += gain;
+    return gain;
+}
+/**
+ * 倉庫の装備から印を 1 つ抜いて、護石の空きスロットに入れる。
+ *
+ * 素材の装備は消える。鍛冶屋の合成と同じ約束なので、
+ * 「印は移すもので、増やすものではない」という筋が通る。
+ */
+export function smithEmbed(town, charmUid, itemUid, runeId) {
+    const charm = (town.charms ?? []).find((c) => c.uid === charmUid);
+    if (!charm)
+        return false;
+    const i = town.storage.findIndex((it) => it.uid === itemUid);
+    if (i < 0)
+        return false;
+    const material = town.storage[i];
+    const kind = getItem(material.defId).kind;
+    if (kind !== 'weapon' && kind !== 'shield')
+        return false;
+    if (!material.runes.includes(runeId))
+        return false;
+    if (town.gitan < SMITH_PRICE.embed)
+        return false;
+    if (!addCharmRune(charm, runeId))
+        return false;
+    town.gitan -= SMITH_PRICE.embed;
+    town.storage.splice(i, 1);
+    return true;
+}
+/**
+ * 護石を打ち直す。指定した印だけを残して、残りを振り直す。
+ *
+ * 全部やり直しにしないのは、「良い部分を保存できない」形の厳選が
+ * いちばん嫌われるため。空きスロットは引き継がないので、そこが賭けになる。
+ */
+export function smithReforge(town, rng, uid, keep) {
+    const list = town.charms ?? [];
+    const i = list.findIndex((c) => c.uid === uid);
+    if (i < 0)
+        return false;
+    if (town.gitan < SMITH_PRICE.reforge)
+        return false;
+    town.gitan -= SMITH_PRICE.reforge;
+    list[i] = reforgeCharm(rng, list[i], keep);
     return true;
 }
 /** 呪いを解く */
