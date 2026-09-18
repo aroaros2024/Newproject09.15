@@ -2,6 +2,8 @@
  * 風の村。冒険の支度をする画面。
  */
 import { Cmd } from '../../core/input.js';
+import { loadReplay } from '../../core/save.js';
+import { copyPlayLog } from '../clipboard.js';
 import { ALL_ITEMS, allMonsters, getDungeon, getItem, tryGetRune } from '../../data/registry.js';
 import { BENTOU_PRICE, SMITH_PRICE, bumpTown, buyFromTown, depositItem, dungeonList, meltCharm, inventoryLimitFor, storageLimit, depositGitan, sellToTown, shopStock, smithEmbed, smithReforge, smithTemper, smithUncurse, sortStorage, storageFull, townIdentify, wearCharm, withdrawGitan, withdrawItem, } from '../../game/town.js';
 import { isUnidentifiableKind, itemName, kindLabel } from '../../game/naming.js';
@@ -1297,6 +1299,10 @@ export class TownScreen {
             return;
         }
         if (this.place === 'records') {
+            if (input.justPressed(Cmd.CopyLog)) {
+                void this.copyLastLog();
+                return;
+            }
             if (input.justPressed(Cmd.B) || input.justPressed(Cmd.X) || input.justPressed(Cmd.A)) {
                 this.place = 'plaza';
             }
@@ -1384,6 +1390,26 @@ export class TownScreen {
         this.anim?.draw(g, now);
         void this.time;
     }
+    /**
+     * 直前の冒険のプレイログをコピーする。
+     *
+     * 村へ戻ってから「さっきのあれ、おかしかった」と気づくことがあるので、
+     * ダンジョンを出たあとでも出せるようにしてある。
+     * 記録は endRun で消さずに残してある（ページを閉じても localStorage から拾える）。
+     */
+    async copyLastLog() {
+        const town = this.app.town;
+        const last = town.history[town.history.length - 1];
+        const msg = await copyPlayLog(this.app.recorder.current ?? loadReplay(), {
+            dungeonName: last?.dungeonName ?? '―',
+            ending: last ? (last.cleared ? 'クリア' : (last.cause ?? '―')) : null,
+            player: null,
+            depth: last?.depth ?? 0,
+            turn: last?.turns ?? 0,
+            at: last?.at ?? 0,
+        });
+        this.say(msg);
+    }
     drawRecords(g) {
         const town = this.app.town;
         const r = { x: 200, y: 140, w: SCREEN_W - 400, h: SCREEN_H - 280 };
@@ -1410,7 +1436,7 @@ export class TownScreen {
                 size: 17, align: 'center', color: UI.textDim,
             });
         }
-        drawText(g, 'B で 戻る', r.x + r.w / 2, r.y + r.h - 24, {
+        drawText(g, 'B で 戻る　　P で 直前の 冒険の プレイログを コピー', r.x + r.w / 2, r.y + r.h - 24, {
             size: 15, align: 'center', color: UI.textDim,
         });
     }

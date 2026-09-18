@@ -6,11 +6,12 @@
  */
 import { audio } from './core/audio.js';
 import { input } from './core/input.js';
-import { clearAll, clearRun, loadRun, loadSettings, loadTown, saveRun, saveSettings, saveTown, } from './core/save.js';
+import { clearAll, clearRun, loadRun, loadSettings, loadTown, saveRun, saveSettings, saveTown, loadReplay, saveReplay, } from './core/save.js';
 import { getDungeon, validateData } from './data/registry.js';
 import { attachFactories, startRun } from './game/run.js';
 import { finishRun } from './game/town.js';
 import { World } from './game/world.js';
+import { Recorder } from './game/recorder.js';
 import { MessageLog } from './ui/log.js';
 import { loadAllSprites } from './ui/spriteData.js';
 import { SCREEN_H, SCREEN_W } from './ui/theme.js';
@@ -23,6 +24,7 @@ class Game {
     input = input;
     audio = audio;
     log = new MessageLog();
+    recorder = new Recorder();
     settings;
     town;
     current = null;
@@ -83,7 +85,14 @@ class Game {
         return new TownScreen(this, (dungeonId, bring) => this.beginRun(dungeonId, bring), () => this.goTo(this.makeTitle()));
     }
     beginRun(dungeonId, bring) {
+        // 写し取るのは潜る前。startRun は村のギタンを冒険へ移すので、
+        // あとから写すと再生の出発点が本物と違ってしまう
+        this.recorder.snapshot(this.town, bring);
         const world = startRun(dungeonId, this.town, { bring });
+        this.recorder.begin(dungeonId, world.run.seed);
+        const replay = this.recorder.current;
+        if (replay)
+            saveReplay(replay);
         this.enterDungeon(world);
     }
     resumeRun() {
@@ -95,6 +104,14 @@ class Game {
         try {
             const world = new World(run, getDungeon(run.dungeonId));
             attachFactories(world);
+            // 記録も続きから。ここで拾わないと、再開後に見つけた不具合を再現できない
+            const replay = loadReplay();
+            if (replay && replay.dungeonId === run.dungeonId && replay.seed === run.seed) {
+                this.recorder.resume(replay);
+            }
+            else {
+                this.recorder.clear();
+            }
             this.enterDungeon(world);
         }
         catch {
@@ -125,6 +142,9 @@ class Game {
             if (world.finished)
                 return;
             saveRun(world.syncForSave());
+            const replay = this.recorder.current;
+            if (replay)
+                saveReplay(replay);
         }, 20000);
     }
     stopAutoSave() {
@@ -136,6 +156,10 @@ class Game {
     endRun(world, kind, reason) {
         this.stopAutoSave();
         clearRun();
+        // 記録は消さない。倒れたあと、結果画面や村から書き出せるようにしておく
+        const replay = this.recorder.current;
+        if (replay)
+            saveReplay(replay);
         const result = finishRun(world, this.town, kind, reason);
         result.record.at = Date.now();
         this.persist();

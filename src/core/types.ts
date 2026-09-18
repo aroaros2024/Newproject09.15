@@ -717,6 +717,53 @@ export type Action =
   /** 何もしない（ターンを消費しない）。メニューを閉じた時など */
   | { type: 'none' };
 
+/**
+ * 1 行ぶんのできごと。プレイログ用にターン番号と階を添えてある。
+ *
+ * 画面に出る MessageLog には時刻（performance.now）しか無く、
+ * 「何ターン目の何階で起きたか」が残らない。不具合の報告では
+ * そこが分からないと場所を突き止められないので、別に持つ。
+ */
+export interface LogLine {
+  turn: number;
+  depth: number;
+  text: string;
+  style: LogStyle;
+}
+
+/**
+ * 1 回の冒険の記録。これだけあれば同じ冒険をそのまま再生できる。
+ *
+ * この作品はゲームの中身が全部シード付きの Rng を通っていて、
+ * Math.random はエフェクトと効果音にしか使っていない。だから
+ * 「シード ＋ 出発時の村 ＋ 押した順の行動」で 1 手ずつ再現できる。
+ */
+export interface Replay {
+  version: 1;
+  dungeonId: string;
+  seed: number;
+  /**
+   * 出発時の村。丸ごと持つ。
+   *
+   * startRun は村から知識・仮名・持ち込み・ギタン・加護・護石・相棒を読む。
+   * 要るものだけ選んで写すと、村に項目が増えたときに必ず取りこぼす。
+   */
+  town: TownState;
+  /**
+   * 持ち込んだ道具。
+   *
+   * 持ち込みは startRun に別で渡され、渡す前に倉庫から抜かれている。
+   * town だけ写しても復元できないので、別に持つ。
+   */
+  bring: ItemInstance[];
+  /** プレイヤーが押した順の行動 */
+  actions: Action[];
+  /** できごと */
+  lines: LogLine[];
+  /** 上限を超えて記録をやめたか */
+  truncated: boolean;
+}
+
 /** 行動の結果。ターンを消費したかどうかがターンエンジンの分岐になる */
 export interface ActionResult {
   /** ターンを消費したか */
@@ -857,7 +904,6 @@ export interface RunStats {
   gitanEarned: number;
   damageTaken: number;
   damageDealt: number;
-  startedAt: number;
 }
 
 /** 村（永続データ） */

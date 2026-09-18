@@ -2,6 +2,8 @@
  * 冒険の結果画面。
  */
 import { Cmd } from '../../core/input.js';
+import { loadReplay } from '../../core/save.js';
+import { copyPlayLog } from '../clipboard.js';
 import { drawPanel, drawText } from '../draw.js';
 import { SCREEN_H, SCREEN_W, UI } from '../theme.js';
 export class ResultScreen {
@@ -10,6 +12,8 @@ export class ResultScreen {
     onClose;
     id = 'result';
     t = 0;
+    /** プレイログをコピーしたときの知らせ */
+    notice = '';
     constructor(app, data, onClose) {
         this.app = app;
         this.data = data;
@@ -26,9 +30,25 @@ export class ResultScreen {
         if (this.t < 700)
             return;
         const input = this.app.input;
+        // 倒れた直後がいちばん記録の要るところなので、村へ戻る前に出せるようにしておく
+        if (input.justPressed(Cmd.CopyLog)) {
+            void this.copyLog();
+            return;
+        }
         if (input.justPressed(Cmd.A) || input.justPressed(Cmd.B) || input.justPressed(Cmd.X)) {
             this.onClose();
         }
+    }
+    async copyLog() {
+        const d = this.data;
+        this.notice = await copyPlayLog(this.app.recorder.current ?? loadReplay(), {
+            dungeonName: d.record.dungeonName,
+            ending: d.record.cleared ? 'クリア' : (d.record.cause ?? '―'),
+            player: null,
+            depth: d.record.depth,
+            turn: d.record.turns,
+            at: d.record.at,
+        });
     }
     draw(g, now) {
         const d = this.data;
@@ -92,11 +112,16 @@ export class ResultScreen {
                 size: 19, align: 'center', color: UI.cursorEdge,
             });
         }
+        if (this.notice) {
+            drawText(g, this.notice, SCREEN_W / 2, SCREEN_H - 62, {
+                size: 16, align: 'center', color: UI.good,
+            });
+        }
         if (this.t > 2000) {
             const blink = 0.55 + 0.45 * Math.sin(now / 320);
             g.save();
             g.globalAlpha = blink;
-            drawText(g, '決定キーで 村へ 戻る', SCREEN_W / 2, SCREEN_H - 34, {
+            drawText(g, '決定キーで 村へ 戻る　　P で プレイログを コピー', SCREEN_W / 2, SCREEN_H - 34, {
                 size: 17, align: 'center', color: UI.textDim,
             });
             g.restore();

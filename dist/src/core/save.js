@@ -15,6 +15,14 @@ const PREFIX = 'fushigi-dungeon';
 const KEY_TOWN = `${PREFIX}:town`;
 const KEY_RUN = `${PREFIX}:run`;
 const KEY_SETTINGS = `${PREFIX}:settings`;
+/**
+ * プレイログの記録。
+ *
+ * 中断セーブ（KEY_RUN）とは別にしてある。中断データは「遊びを続けるための物」で、
+ * 記録は「あとで再現するための物」。混ぜると中断データが肥大し、
+ * syncForSave の役割もぼやける。
+ */
+const KEY_REPLAY = `${PREFIX}:replay`;
 export const DEFAULT_SETTINGS = {
     messageSpeed: 1,
     animSpeed: 1,
@@ -322,6 +330,31 @@ export function loadRun() {
 export const hasRun = () => loadRun() !== null;
 export const clearRun = () => remove(KEY_RUN);
 // ---------------------------------------------------------------------------
+// プレイログ
+// ---------------------------------------------------------------------------
+export const saveReplay = (replay) => write(KEY_REPLAY, replay);
+/**
+ * 記録を読み戻す。形が合わなければ null。
+ *
+ * 中身の細かい検証はしない。ここが厳しすぎると、
+ * 「不具合を報告するための記録」が不具合のせいで読めなくなる。
+ */
+export function loadReplay() {
+    const data = read(KEY_REPLAY);
+    if (!data)
+        return null;
+    if (data.version !== 1)
+        return null;
+    if (typeof data.dungeonId !== 'string' || !Number.isFinite(data.seed))
+        return null;
+    if (!Array.isArray(data.actions) || !Array.isArray(data.lines))
+        return null;
+    if (typeof data.town !== 'object' || data.town === null)
+        return null;
+    return data;
+}
+export const clearReplay = () => remove(KEY_REPLAY);
+// ---------------------------------------------------------------------------
 // 設定
 // ---------------------------------------------------------------------------
 export const saveSettings = (s) => write(KEY_SETTINGS, s);
@@ -349,6 +382,7 @@ export function clearAll() {
     remove(KEY_TOWN);
     remove(KEY_RUN);
     remove(KEY_SETTINGS);
+    remove(KEY_REPLAY);
 }
 /** 書き出し（デバッグ・バックアップ用） */
 export function exportSave() {

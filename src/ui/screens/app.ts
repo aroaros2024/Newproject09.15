@@ -6,6 +6,7 @@ import type { InputManager } from '../../core/input.js';
 import type { Settings, TownState } from '../../core/types.js';
 import type { AudioEngine } from '../../core/audio.js';
 import type { Ctx } from '../draw.js';
+import type { Recorder } from '../../game/recorder.js';
 import type { MessageLog } from '../log.js';
 
 export interface Screen {
@@ -20,6 +21,8 @@ export interface App {
   readonly input: InputManager;
   readonly audio: AudioEngine;
   readonly log: MessageLog;
+  /** プレイログの記録。冒険の外では中身が空のこともある */
+  readonly recorder: Recorder;
   settings: Settings;
   town: TownState;
   /** 画面を切り替える */

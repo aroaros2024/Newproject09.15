@@ -442,7 +442,9 @@ export function finishRun(world, town, kind, cause) {
     }
     // 持ち込んだギタンは startRun で村から冒険へ「移した」ので、
     // ここで足し戻したあとは冒険側を空にしておく。
-    // そうしないと finishRun を経るたびに所持ギタンが倍になる
+    // そうしないと finishRun を経るたびに所持ギタンが倍になる。
+    // 記録に載せる額はここで控えておく（下で読むと必ず 0 になる）
+    const broughtHome = keepItems ? p.gitan : 0;
     p.gitan = 0;
     // 倉庫の壺に入れた物は、死んでも届く
     for (const item of world.pendingWarehouse) {
@@ -512,7 +514,7 @@ export function finishRun(world, town, kind, cause) {
         depth: world.run.stats.maxDepth,
         level: p.level,
         turns: world.run.totalTurn,
-        gitan: p.gitan,
+        gitan: broughtHome,
         cause: kind === 'clear' ? null : cause,
         cleared: kind === 'clear',
         at: 0,

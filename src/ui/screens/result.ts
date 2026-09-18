@@ -4,6 +4,8 @@
 
 import { Cmd } from '../../core/input.js';
 import type { AdventureRecord } from '../../core/types.js';
+import { loadReplay } from '../../core/save.js';
+import { copyPlayLog } from '../clipboard.js';
 import { type Ctx, drawPanel, drawText } from '../draw.js';
 import { SCREEN_H, SCREEN_W, UI } from '../theme.js';
 import type { App, Screen } from './app.js';
@@ -29,6 +31,8 @@ export interface ResultData {
 export class ResultScreen implements Screen {
   readonly id = 'result';
   private t = 0;
+  /** プレイログをコピーしたときの知らせ */
+  private notice = '';
 
   constructor(private app: App, private data: ResultData, private onClose: () => void) {}
 
@@ -42,9 +46,26 @@ export class ResultScreen implements Screen {
     // 演出が終わるまでは入力を受け付けない
     if (this.t < 700) return;
     const input = this.app.input;
+    // 倒れた直後がいちばん記録の要るところなので、村へ戻る前に出せるようにしておく
+    if (input.justPressed(Cmd.CopyLog)) {
+      void this.copyLog();
+      return;
+    }
     if (input.justPressed(Cmd.A) || input.justPressed(Cmd.B) || input.justPressed(Cmd.X)) {
       this.onClose();
     }
+  }
+
+  private async copyLog(): Promise<void> {
+    const d = this.data;
+    this.notice = await copyPlayLog(this.app.recorder.current ?? loadReplay(), {
+      dungeonName: d.record.dungeonName,
+      ending: d.record.cleared ? 'クリア' : (d.record.cause ?? '―'),
+      player: null,
+      depth: d.record.depth,
+      turn: d.record.turns,
+      at: d.record.at,
+    });
   }
 
   draw(g: Ctx, now: number): void {
@@ -112,11 +133,17 @@ export class ResultScreen implements Screen {
       });
     }
 
+    if (this.notice) {
+      drawText(g, this.notice, SCREEN_W / 2, SCREEN_H - 62, {
+        size: 16, align: 'center', color: UI.good,
+      });
+    }
+
     if (this.t > 2000) {
       const blink = 0.55 + 0.45 * Math.sin(now / 320);
       g.save();
       g.globalAlpha = blink;
-      drawText(g, '決定キーで 村へ 戻る', SCREEN_W / 2, SCREEN_H - 34, {
+      drawText(g, '決定キーで 村へ 戻る　　P で プレイログを コピー', SCREEN_W / 2, SCREEN_H - 34, {
         size: 17, align: 'center', color: UI.textDim,
       });
       g.restore();

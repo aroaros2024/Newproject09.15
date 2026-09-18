@@ -3,6 +3,8 @@
  */
 
 import { Cmd } from '../../core/input.js';
+import { loadReplay } from '../../core/save.js';
+import { copyPlayLog } from '../clipboard.js';
 import type { Charm, IdentifyState, ItemInstance, PartnerRecord } from '../../core/types.js';
 import { ALL_ITEMS, allMonsters, getDungeon, getItem, tryGetRune } from '../../data/registry.js';
 import {
@@ -1370,6 +1372,10 @@ export class TownScreen implements Screen {
       return;
     }
     if (this.place === 'records') {
+      if (input.justPressed(Cmd.CopyLog)) {
+        void this.copyLastLog();
+        return;
+      }
       if (input.justPressed(Cmd.B) || input.justPressed(Cmd.X) || input.justPressed(Cmd.A)) {
         this.place = 'plaza';
       }
@@ -1462,6 +1468,27 @@ export class TownScreen implements Screen {
     void this.time;
   }
 
+  /**
+   * 直前の冒険のプレイログをコピーする。
+   *
+   * 村へ戻ってから「さっきのあれ、おかしかった」と気づくことがあるので、
+   * ダンジョンを出たあとでも出せるようにしてある。
+   * 記録は endRun で消さずに残してある（ページを閉じても localStorage から拾える）。
+   */
+  private async copyLastLog(): Promise<void> {
+    const town = this.app.town;
+    const last = town.history[town.history.length - 1];
+    const msg = await copyPlayLog(this.app.recorder.current ?? loadReplay(), {
+      dungeonName: last?.dungeonName ?? '―',
+      ending: last ? (last.cleared ? 'クリア' : (last.cause ?? '―')) : null,
+      player: null,
+      depth: last?.depth ?? 0,
+      turn: last?.turns ?? 0,
+      at: last?.at ?? 0,
+    });
+    this.say(msg);
+  }
+
   private drawRecords(g: Ctx): void {
     const town = this.app.town;
     const r = { x: 200, y: 140, w: SCREEN_W - 400, h: SCREEN_H - 280 };
@@ -1490,7 +1517,7 @@ export class TownScreen implements Screen {
         size: 17, align: 'center', color: UI.textDim,
       });
     }
-    drawText(g, 'B で 戻る', r.x + r.w / 2, r.y + r.h - 24, {
+    drawText(g, 'B で 戻る　　P で 直前の 冒険の プレイログを コピー', r.x + r.w / 2, r.y + r.h - 24, {
       size: 15, align: 'center', color: UI.textDim,
     });
   }

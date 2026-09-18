@@ -12,6 +12,7 @@ import { keepSlotsFor } from '../../game/town.js';
 import { itemName, kindLabel, useVerb } from '../../game/naming.js';
 import { SELL_RATE } from '../../game/rules.js';
 import { onStairs, restTurns, stepTurn, whyCannotRest } from '../../game/turn.js';
+import { copyPlayLog } from '../clipboard.js';
 import { drawText, drawOverlay } from '../draw.js';
 import { Camera, DungeonRenderer } from '../renderer.js';
 import { FxSystem } from '../fx.js';
@@ -123,6 +124,9 @@ export class DungeonScreen {
         for (const e of events) {
             if (e.t === 'message') {
                 this.app.log.add(e.text, e.style ?? 'normal', this.time);
+                // プレイログにはターン番号と階を添えて残す。画面のログには時刻しか無く、
+                // 「何ターン目の何階で起きたか」が分からないと場所を突き止められない
+                this.app.recorder.line(this.world.run.totalTurn, this.world.run.depth, e.text, e.style ?? 'normal');
             }
             else if (e.t === 'sfx') {
                 this.app.audio.play(e.name);
@@ -143,8 +147,28 @@ export class DungeonScreen {
         }
         this.fx.prune(new Set(this.world.allActors().map((a) => a.id)));
     }
-    /** 1 行動を実行してイベントを流す */
+    /** プレイログをクリップボードへ */
+    async copyLog() {
+        const msg = await copyPlayLog(this.app.recorder.current, {
+            dungeonName: this.world.dungeon.name,
+            ending: null,
+            player: this.world.player,
+            depth: this.world.run.depth,
+            turn: this.world.run.totalTurn,
+            at: Date.now(),
+        });
+        this.app.log.add(msg, 'system', this.time);
+    }
+    /**
+     * 1 行動を実行してイベントを流す。
+     *
+     * **プレイヤーの行動を記録するのはここだけ。**turn.ts が内部で呼ぶ stepTurn
+     * （風で飛ばされたときの自動待機）は再生でも同じように起きるので、記録しない。
+     * ターンを消費しなかった行動も記録する。弾かれる前に乱数を減らしている経路があり、
+     * そこを飛ばすと以後の乱数列がずれる。
+     */
     act(action) {
+        this.app.recorder.action(action);
         stepTurn(this.world, action);
         this.pumpEvents();
     }
@@ -221,6 +245,10 @@ export class DungeonScreen {
         if (input.justPressed(Cmd.Minimap)) {
             this.minimapMode = nextMinimapMode(this.minimapMode);
             this.app.audio.play('cursor');
+        }
+        if (input.justPressed(Cmd.CopyLog)) {
+            void this.copyLog();
+            return;
         }
         if (input.justPressed(Cmd.Log)) {
             this.overlay = 'log';
@@ -892,6 +920,14 @@ export class DungeonScreen {
                     this.menus.closeAll();
                     this.overlay = 'log';
                     this.logScroll = 9999;
+                    return true;
+                },
+            },
+            {
+                label: 'プレイログを コピー（P）',
+                desc: 'この冒険を そのまま 再現できる 記録を コピーします。',
+                onSelect: () => {
+                    void this.copyLog();
                     return true;
                 },
             },

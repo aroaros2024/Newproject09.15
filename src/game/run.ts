@@ -154,7 +154,7 @@ export function startRun(
     encountered: { monsters: [], items: [] },
     stats: {
       kills: 0, maxDepth: 1, itemsFound: 0, gitanEarned: 0,
-      damageTaken: 0, damageDealt: 0, startedAt: 0,
+      damageTaken: 0, damageDealt: 0,
     },
   };
 

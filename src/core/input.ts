@@ -41,6 +41,8 @@ export const Cmd = {
   Log: 'Log',
   /** 操作ヘルプ */
   Help: 'Help',
+  /** プレイログをクリップボードへ */
+  CopyLog: 'CopyLog',
   /** 道具メニューを直接開く */
   MenuItem: 'MenuItem',
   /** 特殊メニューを直接開く */
@@ -71,6 +73,7 @@ const KEY_TO_CMD: Record<string, Cmd> = {
   Period: Cmd.Wait, Numpad5: Cmd.Wait,
   KeyL: Cmd.Log,
   KeyH: Cmd.Help, F1: Cmd.Help,
+  KeyP: Cmd.CopyLog,
   KeyI: Cmd.MenuItem,
   KeyT: Cmd.MenuSpecial,
   KeyC: Cmd.MenuTactics,
