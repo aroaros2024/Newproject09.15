@@ -101,3 +101,44 @@ test('古いセーブに混ざった重複 uid は、読み込み時にならさ
   const list = uids(restored);
   assert.equal(new Set(list).size, list.length, `読み込み後も重複している: ${list}`);
 });
+
+test('壊れたショートカットと保持の印を読んでも落ちない', () => {
+  const town = newTown() as unknown as Record<string, unknown> & TownState;
+  const rng = new Rng('broken');
+  town.storage.push(makeItem('healHerb', rng, {} as never, () => town.nextUid++));
+  // 長さも中身もでたらめな形を作る
+  (town as Record<string, unknown>).shortcuts =
+    ['healHerb', 42, null, 'そんな道具は無い', undefined, {}];
+  (town as Record<string, unknown>).kept = [1, 'x', null, 9999, NaN];
+
+  const blob = JSON.stringify({ version: 2, town, settings: null, run: null });
+  assert.ok(importSave(blob), 'セーブを読み込めない');
+  const restored = JSON.parse(exportSave()).town as TownState;
+
+  assert.equal(restored.shortcuts?.length, 9, '枠の数が揃っていない');
+  assert.equal(restored.shortcuts?.[0], 'healHerb');
+  for (const x of restored.shortcuts ?? []) {
+    assert.ok(x === null || typeof x === 'string', `${x} が残っている`);
+  }
+  for (const uid of restored.kept ?? []) {
+    assert.ok(restored.storage.some((i) => i.uid === uid),
+      `倉庫に無い道具に印が付いている: ${uid}`);
+  }
+});
+
+test('倉庫の uid を振り直しても、保持の印は同じ道具を指したまま', () => {
+  const town = newTown();
+  const rng = new Rng('renum');
+  for (const id of ['woodStick', 'healHerb', 'woodShield']) {
+    const it: ItemInstance = makeItem(id, rng, {} as never, () => 1);
+    it.uid = 100 + town.storage.length * 7; // 村の採番とずれた古い形
+    town.storage.push(it);
+  }
+  town.kept = [town.storage[1].uid];
+
+  const blob = JSON.stringify({ version: 2, town, settings: null, run: null });
+  assert.ok(importSave(blob));
+  const restored = JSON.parse(exportSave()).town as TownState;
+  const marked = restored.storage.find((i) => i.uid === (restored.kept ?? [])[0]);
+  assert.equal(marked?.defId, 'healHerb', '印が別の道具へ移った');
+});

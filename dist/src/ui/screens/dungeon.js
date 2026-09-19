@@ -1285,16 +1285,17 @@ export function itemInfoMenu(item, id) {
         const rune = tryGetRune(rid);
         if (!rune)
             continue;
-        const head = level > 1 ? `${rune.name} Lv${level}` : rune.name;
-        lines.push(`${head}　${rune.desc}`);
+        // 名前と効き目を別の行にする。1 行にまとめると端で切られて読めない
+        lines.push(level > 1 ? `${rune.name} Lv${level}` : rune.name);
+        lines.push(`　${rune.desc}`);
     }
     if (known)
         lines.push(`売値 およそ ${Math.floor(def.price * SELL_RATE)}ギタン`);
     return new ListMenu({
         title: itemName(item, id),
         entries: lines.map((text) => ({ label: text, disabled: true })),
-        rect: { x: 300, y: 200, w: 680, h: 80 + lines.length * 32 },
-        rowH: 32,
+        rect: { x: 180, y: 140, w: 920, h: 74 + lines.length * 30 },
+        rowH: 30,
     });
 }
 /** 未識別になるカテゴリか */
