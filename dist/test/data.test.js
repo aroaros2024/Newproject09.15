@@ -61,6 +61,7 @@ test('ストーリーダンジョンは前提が鎖になっている', () => {
 });
 test('d1 はチュートリアルとして十分やさしい', () => {
     const d1 = getDungeon('d1');
+    assert.equal(d1.splitWeakens, true, '分裂で増えた敵の攻撃力が下がらないと、Lv1 は囲まれた時点で 1 ターンで死ぬ');
     assert.equal(d1.monsterHouseRate, 0, 'チュートリアルにモンスターハウスは出さない');
     assert.equal(d1.windTurns, 0, 'チュートリアルに風は吹かない');
     assert.equal(d1.bosses.length, 0);

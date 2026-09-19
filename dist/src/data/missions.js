@@ -62,7 +62,7 @@ const TUTORIAL = [
     m('walk5000', '5000 歩 歩く', T('walk', 5000), 40, 'tutorial'),
     // --- 知らないと損をする操作。どれも自分で選ばないと 1 回も発行されない
     m('firstShortcut', 'ショートカットに 道具を 入れる', T('shortcut', 1), 60, 'tutorial'),
-    m('firstBentou', '食事処で 弁当を 買う', T('bentou', 1), 60, 'tutorial'),
+    m('firstBring', '倉庫の 道具を 冒険へ 持ち込む', T('bring', 1), 60, 'tutorial'),
     m('firstWait', 'その場で 20 回 足踏みする', ACT('wait', 20), 40, 'tutorial'),
     m('firstThrow', '投げて 敵に 5 回 当てる', T('throwHit', 5), 60, 'tutorial'),
     m('firstPlace', '道具を 10 回 置く', ACT('place', 10), 40, 'tutorial'),

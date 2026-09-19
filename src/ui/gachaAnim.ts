@@ -12,6 +12,11 @@
  *
  * レア度が高いほど「ため」が長い。長く待たされるほど期待が上がるので、
  * 色を出す前の時間そのものが演出になる。
+ *
+ * 2 個以上まとめて引いたときは、ためとはじけを 1 回だけやって一覧へ飛ぶ。
+ * 1 つずつ見せていた頃は 10 連で A キーを 11 回押す必要があり、
+ * 2 回目からは演出ではなく待ち時間になっていた。
+ * ための長さは「10 個のうち一番良いレア度」で決めるので、期待は残る。
  */
 
 import type { PullResult } from '../game/gacha.js';
@@ -37,6 +42,8 @@ export class GachaAnim {
   private t = 0;
   private index = 0;
   private skipped = false;
+  /** 一覧で選んでいる行 */
+  private cursor = 0;
 
   constructor(
     private results: PullResult[],
@@ -48,9 +55,25 @@ export class GachaAnim {
     return this.results[this.index];
   }
 
+  /** まとめ引きか。1 個ずつ見せずに一覧へ飛ぶ */
+  private get bulk(): boolean {
+    return this.results.length > 1;
+  }
+
+  /** まとめ引きのときの代表レア度（一番良いもの） */
+  private get bestRarity(): Rarity | null {
+    let best: Rarity | null = null;
+    for (const r of this.results) {
+      if (!r.rarity) continue;
+      if (best === null || CHARGE_MS[r.rarity] > CHARGE_MS[best]) best = r.rarity;
+    }
+    return best;
+  }
+
   private get chargeMs(): number {
     if (this.skipped) return 60;
-    return CHARGE_MS[this.current?.rarity ?? 'n'];
+    const rarity = this.bulk ? this.bestRarity : (this.current?.rarity ?? null);
+    return CHARGE_MS[rarity ?? 'n'];
   }
 
   /** 経過時間を進める。ミリ秒 */
@@ -60,7 +83,8 @@ export class GachaAnim {
       this.phase = 'burst';
       this.t = 0;
     } else if (this.phase === 'burst' && this.t >= BURST_MS) {
-      this.phase = 'reveal';
+      // まとめ引きは 1 枚ずつ見せない。はじけたらそのまま一覧へ
+      this.phase = this.bulk ? 'summary' : 'reveal';
       this.t = 0;
     }
   }
@@ -74,7 +98,7 @@ export class GachaAnim {
   advance(): void {
     if (this.phase === 'charge' || this.phase === 'burst') {
       this.skipped = true;
-      this.phase = 'reveal';
+      this.phase = this.bulk ? 'summary' : 'reveal';
       this.t = 0;
       return;
     }
@@ -95,6 +119,14 @@ export class GachaAnim {
     }
     this.phase = 'charge';
     this.t = 0;
+  }
+
+  /** 一覧の中でカーソルを動かす。選んだ行の説明が下に出る */
+  move(dy: number): void {
+    if (this.phase !== 'summary') return;
+    const n = this.results.length;
+    if (n === 0) return;
+    this.cursor = (this.cursor + dy + n) % n;
   }
 
   draw(g: Ctx, now: number): void {
@@ -266,14 +298,28 @@ export class GachaAnim {
       const col = i % 2;
       const row = Math.floor(i / 2);
       const x = box.x + 30 + col * 390;
-      const y = box.y + 80 + row * 46;
+      const y = box.y + 84 + row * 46;
       const color = r.rarity ? RARITY_COLOR[r.rarity] : GITAN_COLOR;
+      if (i === this.cursor) {
+        drawPanel(g, { x: x - 10, y: y - 22, w: 372, h: 36 }, { frame: UI.cursorEdge, alpha: 0.2 });
+      }
       drawText(g, r.rarity ? RARITY_LABEL[r.rarity] : 'G', x, y,
         { size: 15, bold: true, color });
-      drawText(g, this.titleOf(r), x + 52, y, { size: 16, color: UI.text });
+      // 1 枚ずつのカードを出さなくなったぶん、ここに絵も出す
+      const spriteId = this.spriteOf(r);
+      const icon = spriteId ? getSprite(spriteId) : null;
+      if (spriteId && icon) sprites.draw(g, spriteId, icon, x + 62, y - 6, 22);
+      drawText(g, this.titleOf(r), x + 82, y, { size: 16, color: UI.text });
     });
 
-    drawText(g, 'A：閉じる', SCREEN_W / 2, box.y + box.h - 24, {
+    // 選んでいる行の説明。カードに出していた 1 行がここへ移る
+    const sel = this.results[this.cursor];
+    if (sel) {
+      drawText(g, this.noteOf(sel), box.x + 24, box.y + box.h - 54, {
+        size: 15, color: UI.textDim,
+      });
+    }
+    drawText(g, '↑↓：見る　　A：閉じる', SCREEN_W / 2, box.y + box.h - 24, {
       size: 15, align: 'center', color: UI.textDim,
     });
   }

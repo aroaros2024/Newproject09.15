@@ -93,7 +93,7 @@ export const FOODS: readonly FoodDef[] = [
   food('driedRiceBall', 'しなびたおにぎり', 400, 120, 45, '少し乾いたおにぎり。'),
   food('driedMeat', '干し肉', 350, 180, 50, 'ちからが 1 回復する。', 0, 'strUp'),
   food('nut', '木の実', 200, 100, 55, '小さな木の実。少しだけ腹の足しになる。'),
-  food('bentou', '風の村の弁当', 1200, 900, 0, '村の食事処で作られた弁当。満腹になり、最大値が 2 増える。', 20),
+  food('bentou', '風の村の弁当', 1200, 900, 0, '村で作られる弁当。満腹になり、最大値が 2 増える。', 20),
 ];
 
 export const MISC_ITEMS: readonly MiscDef[] = [

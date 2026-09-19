@@ -402,26 +402,39 @@ test('排他の印を入れると、相手が外れる', () => {
   assert.equal(charmRuneLevel(c, 'swift'), 1);
 });
 
-test('鍛冶屋で印を入れると、素材の装備が消えてギタンが減る', () => {
+test('鍛冶屋で印を入れると、ギタンだけが減って素材は要らない', () => {
   const town = newTown({ charms: [charm(['crit'], 1)], gitan: 10_000 });
   const rng = new Rng('embed');
   const sword = makeItem('ironSword', rng, { runes: ['flame'] }, () => town.nextUid++);
   town.storage.push(sword);
 
-  assert.equal(smithEmbed(town, 1, sword.uid, 'flame'), true);
-  assert.equal(charmRuneLevel(town.charms![0], 'flame'), 1);
-  assert.equal(town.charms![0].slots, 0);
-  assert.equal(town.storage.length, 0, '素材が残った');
+  const got = smithEmbed(town, new Rng('embed:1'), 1);
+  assert.ok(got, '印が入らなかった');
+  assert.equal(charmRuneLevel(town.charms![0], got!), 1);
+  assert.equal(town.charms![0].slots, 0, '空きスロットが減っていない');
+  assert.equal(town.storage.length, 1, '素材を消してはいけない');
   assert.equal(town.gitan, 10_000 - SMITH_PRICE.embed);
 });
 
-test('素材が持っていない印は入れられない', () => {
-  const town = newTown({ charms: [charm(['crit'], 1)], gitan: 10_000 });
-  const rng = new Rng('embed2');
-  const sword = makeItem('ironSword', rng, { runes: ['flame'] }, () => town.nextUid++);
-  town.storage.push(sword);
-
-  assert.equal(smithEmbed(town, 1, sword.uid, 'thunder'), false);
-  assert.equal(town.storage.length, 1, '失敗したのに素材が消えた');
+test('入る印が無ければ何も起きない', () => {
+  // 空きスロット 0 の護石には入らない
+  const town = newTown({ charms: [charm(['crit'], 0)], gitan: 10_000 });
+  assert.equal(smithEmbed(town, new Rng('embed:2'), 1), null);
   assert.equal(town.gitan, 10_000, '失敗したのにギタンが減った');
+});
+
+test('ギタンが足りなければ印は入らない', () => {
+  const town = newTown({ charms: [charm(['crit'], 1)], gitan: SMITH_PRICE.embed - 1 });
+  assert.equal(smithEmbed(town, new Rng('embed:3'), 1), null);
+  assert.equal(town.charms![0].slots, 1, '失敗したのに空きが減った');
+});
+
+test('入れられる印だけが選ばれる（上限・種類数・排他）', () => {
+  // 会心は上限 2。Lv2 まで入っていれば、もう会心は選ばれない
+  for (let i = 0; i < 40; i++) {
+    const town = newTown({ charms: [charm(['crit', 'crit'], 1)], gitan: 10_000 });
+    const got = smithEmbed(town, new Rng(`embed:cap:${i}`), 1);
+    assert.ok(got, '印が入らなかった');
+    assert.notEqual(got, 'crit', '上限に達した印が入った');
+  }
 });

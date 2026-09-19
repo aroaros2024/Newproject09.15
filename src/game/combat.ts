@@ -370,10 +370,13 @@ export function killActor(world: World, src: Actor | null, target: Actor): void 
     if (partner && partner.alive && target.kind === 'monster') {
       gainPartnerExp(world, src === partner ? target.exp : target.exp * PARTNER_SHARE);
     }
-    // 守銭の印
+    // 守銭の印。
+    // 固定 20 ギタンだったので、深い階では床に落ちている山（10+階×12 の
+    // 半分〜2 倍）に対して誤差にしかならず、付けても付けなくても同じだった。
+    // 階に比例させて、印 1 つで「床で拾う額」に並ぶくらいにする
     const gitanRune = weaponRune(world, world.player, 'gitanHit');
     if (gitanRune > 0) {
-      const gain = gitanRune * 20;
+      const gain = gitanRune * (5 + world.run.depth * 5);
       world.player.gitan += gain;
       world.run.stats.gitanEarned += gain;
       world.log(`${gain}ギタンを 拾った。`, 'item');

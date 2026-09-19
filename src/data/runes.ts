@@ -79,7 +79,7 @@ export const RUNES: readonly RuneDef[] = [
   },
   {
     id: 'gitanHit', symbol: '金', name: '守銭の印', target: 'weapon', stackable: true, maxLevel: 3,
-    desc: '敵を倒した時に Lv×20 ギタンを余分に得る。',
+    desc: '敵を倒すと Lv×5×(階+1) ギタンを拾う。深い階ほど増える。',
   },
   {
     id: 'smith', symbol: '匠', name: '匠の印', target: 'both', stackable: true, maxLevel: 3,

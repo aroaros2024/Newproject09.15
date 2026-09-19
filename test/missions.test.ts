@@ -248,7 +248,7 @@ test('ミッションが使うキーは、どこかで数えられている', ()
   const known = new Set([
     'walk', 'pickup', 'descend', 'kill', 'trap', 'equip', 'use', 'act',
     'cure:curse', 'synthesis', 'makeAlly', 'buy', 'keep',
-    'shortcut', 'potPut', 'potTake', 'shopBuy', 'house', 'steal', 'bentou',
+    'shortcut', 'potPut', 'potTake', 'shopBuy', 'house', 'steal',
     'bring', 'sell', 'throwHit', 'swapGear',
   ]);
   for (const def of MISSIONS) {

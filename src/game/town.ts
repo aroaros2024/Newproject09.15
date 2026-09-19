@@ -3,8 +3,7 @@
  *
  *   倉庫   … 持ち物を預ける。死んでも失われない
  *   道具屋 … 買う／売る
- *   鍛冶屋 … 合成・強化・呪い解き
- *   食事処 … 満腹度の最大値を上げる弁当
+ *   鍛冶屋 … 合成・強化・呪い解き・護石の印
  *   入口   … ダンジョンを選んで潜る
  */
 
@@ -19,7 +18,9 @@ import { keptItems, makeItem } from './inventory.js';
 import { kindOrderOf } from './naming.js';
 import { type MissionKey, addTally, maxTally, mergeTally } from './counters.js';
 import { activeBoosts, townBoosts } from './gacha.js';
-import { EMBED_PRICE, REFORGE_PRICE, addCharmRune, meltValue, reforgeCharm } from './charm.js';
+import {
+  EMBED_PRICE, REFORGE_PRICE, addCharmRune, meltValue, reforgeCharm, rollAddableRune,
+} from './charm.js';
 import { mergePartnerExp } from './partner.js';
 import { mergeInto } from './itemEffects.js';
 import { losesItemsOnDeath } from './death.js';
@@ -43,12 +44,9 @@ export const SMITH_PRICE = {
   uncurse: 500,
   /** 護石の打ち直し（印を 1 つ残して振り直す） */
   reforge: REFORGE_PRICE,
-  /** 護石に印を 1 つ入れる（素材の装備を 1 つ使う） */
+  /** 護石に印を 1 つ入れる（ギタンだけ。入る印はランダム） */
   embed: EMBED_PRICE,
 } as const;
-
-/** 食事処の弁当 */
-export const BENTOU_PRICE = 900;
 
 /** ダンジョンに挑めるか */
 export function canEnterDungeon(town: TownState, d: DungeonDef): boolean {
@@ -205,7 +203,9 @@ export function shopStock(town: TownState): ItemInstance[] {
     }
   });
   // クリアが進むと良い品も並ぶ
-  if (town.cleared.length >= 1) pool.push('ironSword', 'ironShield', 'sleepStaff');
+  // 弁当は食事処を畳んだので、村の道具屋が引き受ける。
+  // どこでも買えないままだと、図鑑が一生埋まらない品目になる
+  if (town.cleared.length >= 1) pool.push('ironSword', 'ironShield', 'sleepStaff', 'bentou');
   // 分身の巻物はダンジョンでは 1 周 0.04〜0.20 個しか出ない。
   // 仲間を連れる遊びが運任せにならないよう、村でも買えるようにする
   if (town.cleared.length >= 2) pool.push('steelSword', 'steelShield', 'greatIdentify', 'cloneScroll');
@@ -370,28 +370,24 @@ export function meltCharm(town: TownState, uid: number): number {
 }
 
 /**
- * 倉庫の装備から印を 1 つ抜いて、護石の空きスロットに入れる。
+ * 護石に印を 1 つ入れる。素材は要らず、ギタンだけで打ってもらう。
  *
- * 素材の装備は消える。鍛冶屋の合成と同じ約束なので、
- * 「印は移すもので、増やすものではない」という筋が通る。
+ * 入る印の中から重みで 1 つ選ぶので、狙った印は指定できない。
+ * 以前は「護石 → 素材の装備 → 入れる印」の 3 段選択で装備を 1 つ潰していたが、
+ * 印つきの装備は倉庫でも貴重なので、選ぶ手間のわりに誰も使わなかった。
+ * 狙いを通したい時は打ち直し（印を 1 つ残して振り直す）が受け持つ。
+ *
+ * 入った印を返す。入る印が無い・ギタンが足りないときは null。
  */
-export function smithEmbed(
-  town: TownState, charmUid: number, itemUid: number, runeId: string,
-): boolean {
+export function smithEmbed(town: TownState, rng: Rng, charmUid: number): string | null {
   const charm = (town.charms ?? []).find((c) => c.uid === charmUid);
-  if (!charm) return false;
-  const i = town.storage.findIndex((it) => it.uid === itemUid);
-  if (i < 0) return false;
-  const material = town.storage[i];
-  const kind = getItem(material.defId).kind;
-  if (kind !== 'weapon' && kind !== 'shield') return false;
-  if (!material.runes.includes(runeId)) return false;
-  if (town.gitan < SMITH_PRICE.embed) return false;
-  if (!addCharmRune(charm, runeId)) return false;
-
+  if (!charm) return null;
+  if (town.gitan < SMITH_PRICE.embed) return null;
+  const runeId = rollAddableRune(rng, charm);
+  if (!runeId) return null;
+  if (!addCharmRune(charm, runeId)) return null;
   town.gitan -= SMITH_PRICE.embed;
-  town.storage.splice(i, 1);
-  return true;
+  return runeId;
 }
 
 /**

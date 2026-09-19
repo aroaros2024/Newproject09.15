@@ -2,19 +2,21 @@
  * 風の村。冒険の支度をする画面。
  */
 
-import { Cmd } from '../../core/input.js';
+import { Cmd, type InputManager } from '../../core/input.js';
+import { DIR_VEC } from '../../core/geom.js';
+import { itemInfoMenu } from './dungeon.js';
 import { loadReplay } from '../../core/save.js';
 import { copyPlayLog } from '../clipboard.js';
 import type { Charm, IdentifyState, ItemInstance, PartnerRecord } from '../../core/types.js';
 import { ALL_ITEMS, allMonsters, getDungeon, getItem, tryGetRune } from '../../data/registry.js';
 import {
-  BENTOU_PRICE, SMITH_PRICE, bumpTown, buyFromTown, depositItem, dungeonList, meltCharm,
+  SMITH_PRICE, buyFromTown, dungeonList, meltCharm,
   inventoryLimitFor, storageLimit,
   depositGitan, sellToTown, shopStock, smithEmbed, smithReforge, smithTemper, smithUncurse,
   sortStorage,
   storageFull, townIdentify, wearCharm, withdrawGitan, withdrawItem,
 } from '../../game/town.js';
-import { isUnidentifiableKind, itemName, kindLabel } from '../../game/naming.js';
+import { itemDetail, itemName, kindLabel } from '../../game/naming.js';
 import { collectionRate } from '../../game/town.js';
 import {
   RARITY_COLOR, RARITY_LABEL, RARITY_RATE, type Rarity, prizesOf,
@@ -26,7 +28,7 @@ import {
   CHARM_SHARE, activeBoosts, activeCharm, canPull, charmRoom, drawable, ownedCharms,
   ownedPartners, owns, prizeTotal, pull, stockLeft,
 } from '../../game/gacha.js';
-import { canAddCharmRune, charmName, charmRuneList, meltValue } from '../../game/charm.js';
+import { charmName, charmRuneList, meltValue } from '../../game/charm.js';
 import { Rng } from '../../core/rng.js';
 import { partnerExpToNext, partnerLevelCap, partnerName } from '../../game/partner.js';
 import { GACHA_COST, GACHA_COST_10, GACHA_EMPTY_GITAN } from '../../game/rules.js';
@@ -43,7 +45,7 @@ import { SCREEN_H, SCREEN_W, UI } from '../theme.js';
 import type { App, Screen } from './app.js';
 
 /** 村の建物 */
-type Place = 'plaza' | 'storage' | 'shop' | 'smith' | 'diner' | 'bank' | 'gate' | 'records';
+type Place = 'plaza' | 'storage' | 'shop' | 'smith' | 'bank' | 'gate' | 'records';
 
 export class TownScreen implements Screen {
   readonly id = 'town';
@@ -69,10 +71,35 @@ export class TownScreen implements Screen {
   }
 
   /** 正体を知らない物の説明は伏せる（名前だけ伏せても割れてしまう） */
+  /** 説明欄。攻撃力・防御力・付いている印も出す（組み立ては naming.ts） */
   private descOf(item: ItemInstance): string {
-    const def = getItem(item.defId);
-    if (!isUnidentifiableKind(def)) return def.desc;
-    return this.app.town.knownItems?.[item.defId] ? def.desc : 'まだ 正体が 分からない。';
+    return itemDetail(item, this.identify());
+  }
+
+  /** 保持の印が付いている倉庫の道具か */
+  private isKeptItem(item: ItemInstance): boolean {
+    return (this.app.town.kept ?? []).includes(item.uid);
+  }
+
+  /**
+   * 倉庫の一覧に「整理」を付ける。ダンジョンの持ち物と同じ F キー。
+   *
+   * 買った物・売った物・持ち帰った物は末尾に足されるので、
+   * 開いた時に並べるだけでは足りない。
+   */
+  private sortKey(rebuild: () => void): (input: InputManager) => boolean {
+    return (input) => {
+      if (!input.justPressed(Cmd.Y)) return false;
+      sortStorage(this.app.town);
+      this.app.persist();
+      rebuild();
+      return true;
+    };
+  }
+
+  /** 道具の「説明」。ダンジョンと同じ画面を村でも出す */
+  private showItemInfo(item: ItemInstance): void {
+    this.menus.push(itemInfoMenu(item, this.identify()));
   }
   private time = 0;
   private anim: GachaAnim | null = null;
@@ -86,7 +113,9 @@ export class TownScreen implements Screen {
   enter(): void {
     this.app.audio.playBgm('town');
     this.stock = shopStock(this.app.town);
-    this.bring = [];
+    // 保持していた道具は、最初から「持っていく」側に入れておく。
+    // 外さずに出発すれば保持も続く（startRun が付け直す）
+    this.bring = this.app.town.storage.filter((i) => this.isKeptItem(i));
     this.openPlaza();
   }
 
@@ -140,14 +169,6 @@ export class TownScreen implements Screen {
         desc: '装備を 鍛える・呪いを 解く。',
         onSelect: () => {
           this.openSmith();
-          return false;
-        },
-      },
-      {
-        label: '食事処',
-        desc: `弁当を 食べて 最大満腹度を 上げる（${BENTOU_PRICE}ギタン）。`,
-        onSelect: () => {
-          this.openDiner();
           return false;
         },
       },
@@ -390,14 +411,19 @@ export class TownScreen implements Screen {
   // ------------------------------------------------------------ 護石
 
   /** 護石 1 つの説明。印の名前と効き目を並べる */
+  /**
+   * 護石の説明。印の名前だけでは何が起きるのか分からないので、効き目も出す。
+   * 護石の印は 3 種類までなので、説明欄の 3 行に収まる。
+   */
   private charmDesc(c: Charm): string {
-    const runes = charmRuneList(c).map(({ id, level }) => {
+    const lines = charmRuneList(c).map(({ id, level }) => {
       const def = tryGetRune(id);
       if (!def) return id;
-      return level > 1 ? `${def.name} Lv${level}` : def.name;
+      const head = level > 1 ? `${def.name} Lv${level}` : def.name;
+      return `${head}　${def.desc}`;
     });
-    const slots = c.slots > 0 ? `　空きスロット ${c.slots}` : '';
-    return `${runes.join('　')}${slots}`;
+    if (c.slots > 0) lines.push(`空きスロット ${c.slots}`);
+    return lines.join('\n');
   }
 
   /**
@@ -893,6 +919,8 @@ export class TownScreen implements Screen {
           label: itemName(item, this.identify()),
           right: picked ? '持っていく' : kindLabel(getItem(item.defId).kind),
           color: picked ? UI.cursorEdge : undefined,
+          badges: this.isKeptItem(item) ? [{ text: '保', color: UI.good }] : undefined,
+          sprite: getItem(item.defId).sprite,
           desc: this.descOf(item),
           onSelect: () => {
             const limit = inventoryLimitFor(this.app.town, getDungeon(dungeonId));
@@ -926,13 +954,16 @@ export class TownScreen implements Screen {
       });
       return entries;
     };
-    this.menus.push(new ListMenu({
-      title: '何を 持っていく？（決定で 選ぶ／外す）',
+    sortStorage(town);
+    const menu = new ListMenu({
+      title: '何を 持っていく？（決定で 選ぶ／外す）　　［F］整理',
       entries: build(),
       rect: { x: 300, y: 90, w: 640, h: 500 },
       showDesc: true,
       emptyText: '倉庫は 空っぽ',
-    }));
+    });
+    menu.onKey = this.sortKey(rebuild);
+    this.menus.push(menu);
   }
 
   // ------------------------------------------------------------ 倉庫
@@ -941,19 +972,32 @@ export class TownScreen implements Screen {
     this.place = 'storage';
     const town = this.app.town;
     sortStorage(town);
-    const entries: MenuEntry[] = town.storage.map((item) => ({
+    const rebuild = (): void => {
+      const menu = this.menus.top;
+      if (menu) menu.setEntries(build());
+    };
+    const build = (): MenuEntry[] => town.storage.map((item) => ({
       label: itemName(item, this.identify()),
       right: kindLabel(getItem(item.defId).kind),
+      badges: this.isKeptItem(item) ? [{ text: '保', color: UI.good }] : undefined,
+      sprite: getItem(item.defId).sprite,
       desc: this.descOf(item),
       data: item,
+      onSelect: () => {
+        this.showItemInfo(item);
+        return false;
+      },
     }));
-    this.menus.push(new ListMenu({
-      title: () => `倉庫　${this.app.town.storage.length} / ${storageLimit(this.app.town)}`,
-      entries,
+    const menu = new ListMenu({
+      title: () => `倉庫　${this.app.town.storage.length} / ${storageLimit(this.app.town)}`
+        + '　　［F］整理',
+      entries: build(),
       rect: { x: 300, y: 90, w: 640, h: 500 },
       showDesc: true,
       emptyText: '倉庫は 空っぽ',
-    }));
+    });
+    menu.onKey = this.sortKey(rebuild);
+    this.menus.push(menu);
   }
 
   // ------------------------------------------------------------ 道具屋
@@ -971,7 +1015,9 @@ export class TownScreen implements Screen {
         label: itemName(item, EMPTY_IDENTIFY, { revealAll: true }),
         right: `${price} G`,
         disabled: this.app.town.gitan < price || storageFull(this.app.town),
-        desc: getItem(item.defId).desc,
+        sprite: getItem(item.defId).sprite,
+        // 店は中身を見て買う場なので、数字も印も伏せない
+        desc: itemDetail(item, EMPTY_IDENTIFY, { revealAll: true }),
         onSelect: () => {
           if (buyFromTown(this.app.town, item)) {
             this.stock = this.stock.filter((i) => i !== item);
@@ -1042,106 +1088,68 @@ export class TownScreen implements Screen {
         },
       };
     });
-    this.menus.push(new ListMenu({
-      title: '何を 売る？',
+    sortStorage(town);
+    const menu = new ListMenu({
+      title: '何を 売る？　　［F］整理',
       entries: build(),
       rect: { x: 340, y: 110, w: 600, h: 440 },
       showDesc: true,
       emptyText: '売る物が ありません',
-    }));
+    });
+    menu.onKey = this.sortKey(rebuild);
+    this.menus.push(menu);
   }
 
   // ------------------------------------------------------------ 鍛冶屋
 
   /**
-   * 護石に印を入れる。護石 → 素材の装備 → 入れる印、の 3 段で選ぶ。
+   * 護石に印を入れる。護石を選ぶだけで、ギタンを払って 1 つ入る。
    *
-   * 空きスロットが飾りにならないように、必ず入れる道を用意しておく。
+   * 入る印はランダム。狙った印を通したい時は打ち直し（印を 1 つ残して
+   * 振り直す）があるので、こちらは「空きスロットを埋める」ための口にする。
    */
   private openEmbed(): void {
     const town = this.app.town;
-    const entries: MenuEntry[] = ownedCharms(town)
+    const rebuild = (): void => {
+      const menu = this.menus.top;
+      if (menu) menu.setEntries(build());
+    };
+    const build = (): MenuEntry[] => ownedCharms(town)
       .filter((c) => c.slots > 0)
       .map((c) => ({
         label: () => charmName(c),
         sprite: 'charm',
-        right: () => `空き ${c.slots}`,
+        right: () => `空き ${c.slots}　${SMITH_PRICE.embed} ギタン`,
+        disabled: town.gitan < SMITH_PRICE.embed,
         desc: () => this.charmDesc(c),
         onSelect: () => {
-          this.openEmbedMaterial(c);
-          return false;
-        },
-      }));
-    this.menus.push(new ListMenu({
-      title: `印を 入れる 護石を 選ぶ（所持 ${town.gitan} ギタン）`,
-      entries,
-      rect: { x: 320, y: 120, w: 600, h: 440 },
-      rows: 9,
-      showDesc: true,
-      emptyText: '空きスロットの ある 護石が ありません',
-    }));
-  }
-
-  private openEmbedMaterial(c: Charm): void {
-    const town = this.app.town;
-    const build = (): MenuEntry[] => town.storage
-      .filter((it) => {
-        const k = getItem(it.defId).kind;
-        if (k !== 'weapon' && k !== 'shield') return false;
-        return it.runes.some((r) => canAddCharmRune(c, r));
-      })
-      .map((it) => ({
-        label: itemName(it, this.identify()),
-        sprite: getItem(it.defId).sprite,
-        desc: 'この装備から 印を 1 つ 選んで 入れる。装備は 無くなる。',
-        onSelect: () => {
-          this.openEmbedRune(c, it);
-          return false;
-        },
-      }));
-    this.menus.push(new ListMenu({
-      title: () => `素材に する 装備を 選ぶ（${charmName(c)}）`,
-      entries: build(),
-      rect: { x: 320, y: 120, w: 600, h: 440 },
-      rows: 9,
-      showDesc: true,
-      emptyText: '入れられる 印を 持った 装備が ありません',
-    }));
-  }
-
-  private openEmbedRune(c: Charm, item: ItemInstance): void {
-    const town = this.app.town;
-    const ids = [...new Set(item.runes)].filter((r) => canAddCharmRune(c, r));
-    const entries: MenuEntry[] = ids.map((id) => {
-      const def = tryGetRune(id);
-      return {
-        label: def?.name ?? id,
-        disabled: town.gitan < SMITH_PRICE.embed,
-        right: `${SMITH_PRICE.embed} ギタン`,
-        desc: def?.desc ?? '',
-        onSelect: () => {
-          if (!smithEmbed(town, c.uid, item.uid, id)) {
+          if (town.gitan < SMITH_PRICE.embed) {
             this.say('ギタンが 足りません。');
             this.app.audio.play('error');
             return false;
           }
-          this.say(`${charmName(c)}　に 印を 入れた。`);
+          const rng = new Rng(`embed:${town.totalRuns}:${c.uid}:${town.gitan}`);
+          const runeId = smithEmbed(town, rng, c.uid);
+          if (!runeId) {
+            this.say('この 護石には もう 印が 入りません。');
+            this.app.audio.play('error');
+            return false;
+          }
+          const rune = tryGetRune(runeId);
+          this.say(`${charmName(c)}　に ${rune?.name ?? runeId}が 入った。`);
           this.app.audio.play('synthesis');
           this.app.persist();
-          this.menus.pop();
-          this.menus.pop();
-          this.menus.pop();
-          this.openEmbed();
+          rebuild();
           return false;
         },
-      };
-    });
+      }));
     this.menus.push(new ListMenu({
-      title: '入れる 印を 選ぶ',
-      entries,
-      rect: { x: 380, y: 200, w: 520, h: 300 },
+      title: () => `印を 入れる 護石を 選ぶ（所持 ${town.gitan} ギタン）`,
+      entries: build(),
+      rect: { x: 320, y: 120, w: 600, h: 440 },
+      rows: 9,
       showDesc: true,
-      emptyText: '入れられる 印が ありません',
+      emptyText: '空きスロットの ある 護石が ありません',
     }));
   }
 
@@ -1157,8 +1165,8 @@ export class TownScreen implements Screen {
       {
         label: '護石に 印を 入れる',
         right: `${SMITH_PRICE.embed} ギタン`,
-        desc: '倉庫の 装備から 印を 1 つ 抜いて、護石の 空きスロットに 入れる。'
-          + '素材の 装備は 無くなる。',
+        desc: 'ギタンを 払うと、護石の 空きスロットに 印が 1 つ 入る。'
+          + '入る 印は 選べない。素材は 要らない。',
         onSelect: () => {
           this.openEmbed();
           return false;
@@ -1178,7 +1186,8 @@ export class TownScreen implements Screen {
               label: itemName(item, this.identify()),
               right: `${cost} G`,
               disabled: town.gitan < cost,
-              desc: getItem(item.defId).desc,
+              sprite: getItem(item.defId).sprite,
+              desc: this.descOf(item),
               onSelect: () => {
                 if (smithTemper(town, item.uid)) {
                   this.say('打ち直した。強くなった！');
@@ -1193,13 +1202,16 @@ export class TownScreen implements Screen {
               },
             };
           });
-          this.menus.push(new ListMenu({
-            title: `鍛える（所持 ${town.gitan} ギタン）`,
+          sortStorage(town);
+          const menu = new ListMenu({
+            title: `鍛える（所持 ${town.gitan} ギタン）　　［F］整理`,
             entries: build(),
             rect: { x: 340, y: 110, w: 600, h: 440 },
             showDesc: true,
             emptyText: '鍛えられる 装備が ありません',
-          }));
+          });
+          menu.onKey = this.sortKey(rebuild);
+          this.menus.push(menu);
           return false;
         },
       },
@@ -1239,7 +1251,7 @@ export class TownScreen implements Screen {
     }));
   }
 
-  // ------------------------------------------------------------ 食事処
+  // ------------------------------------------------------------ 銀行
 
   /**
    * 銀行。
@@ -1315,38 +1327,6 @@ export class TownScreen implements Screen {
     ];
   }
 
-  private openDiner(): void {
-    this.place = 'diner';
-    const town = this.app.town;
-    this.menus.push(new ListMenu({
-      title: '食事処',
-      entries: [
-        {
-          label: `風の村の弁当（${BENTOU_PRICE} ギタン）`,
-          disabled: town.gitan < BENTOU_PRICE || storageFull(town),
-          desc: '次の冒険に 持っていける 弁当。食べると 最大満腹度が 2 増える。',
-          onSelect: () => {
-            if (town.gitan < BENTOU_PRICE) {
-              this.say('ギタンが 足りません。');
-              return false;
-            }
-            town.gitan -= BENTOU_PRICE;
-            bumpTown(town, 'bentou');
-            const item = makeBentou(() => town.nextUid++);
-            depositItem(town, item);
-            this.say('弁当を 倉庫へ 入れました。');
-            this.app.audio.play('buy');
-            this.app.persist();
-            return true;
-          },
-        },
-      ],
-      rect: { x: 400, y: 260, w: 480, h: 150 },
-      rowH: 46,
-      showDesc: true,
-    }));
-  }
-
   // ------------------------------------------------------------ 更新と描画
 
   update(dt: number, now: number): void {
@@ -1357,6 +1337,11 @@ export class TownScreen implements Screen {
     // ガチャの演出中は他の入力を通さない
     if (this.anim) {
       this.anim.update(dt);
+      if (input.directionFires('menu')) {
+        // DIR_VEC の y がそのまま上下（負が上）
+        const d = input.direction();
+        if (d !== null) this.anim.move(Math.sign(DIR_VEC[d].y));
+      }
       if (input.justPressed(Cmd.A) || input.justPressed(Cmd.B) || input.justPressed(Cmd.X)) {
         this.anim.advance();
       }
@@ -1525,19 +1510,3 @@ export class TownScreen implements Screen {
 
 /** 村では全部識別済みとして表示する */
 const EMPTY_IDENTIFY = { alias: {}, known: {}, nicknames: {} };
-
-function makeBentou(nextUid: () => number): ItemInstance {
-  return {
-    uid: nextUid(),
-    defId: 'bentou',
-    count: 1,
-    plus: 0,
-    runes: [],
-    charges: 0,
-    contents: [],
-    cursed: false,
-    plusKnown: true,
-    shopPrice: 0,
-    sealed: false,
-  };
-}

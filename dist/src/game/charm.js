@@ -18,8 +18,8 @@ const MELT_PER_SLOT = 200;
 const MELT_BASE = 100;
 /** 打ち直しの値段。印を 1 つ残して残りを振り直す */
 export const REFORGE_PRICE = 1200;
-/** 護石に印を 1 つ入れる値段。素材の装備も 1 つ消える */
-export const EMBED_PRICE = 800;
+/** 護石に印を 1 つ入れる値段。素材は要らず、入る印はランダム */
+export const EMBED_PRICE = 1000;
 /** その印のレベル（付いていなければ 0）。装備と同じく出現回数がレベル */
 export function charmRuneLevel(charm, runeId) {
     if (!charm)
@@ -166,6 +166,17 @@ export function canAddCharmRune(charm, runeId) {
     if (level >= rule.maxLevel)
         return false;
     return level > 0 || charmUsedSlots(charm) < CHARM_MAX_RUNES;
+}
+/**
+ * その護石に入る印の中から、重みで 1 つ選ぶ。
+ *
+ * 入る印が 1 つも無ければ null。鍛冶屋の印付けがここを使うので、
+ * 「どの印がどれくらい出やすいか」の決め方は護石の抽選と 1 つに保てる。
+ */
+export function rollAddableRune(rng, charm) {
+    const pool = Object.keys(CHARM_RUNES)
+        .filter((id) => canAddCharmRune(charm, id));
+    return pool.length > 0 ? pickRune(rng, pool) : null;
 }
 /**
  * 打ち直す。指定した印だけを残して、残りを振り直す。

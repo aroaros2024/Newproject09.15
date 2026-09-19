@@ -150,16 +150,17 @@ const UNKNOWN_DESC = 'まだ 何か 分からない。使ってみるか、識�
  *
  * メニューの説明欄は 3 行で切られる（ui/menu.ts）ので、ここも 3 行を超えない。
  */
-export function itemDetail(item, id) {
+export function itemDetail(item, id, opts = {}) {
     const def = getItem(item.defId);
-    const known = isKnown(item, id);
+    const known = opts.revealAll || isKnown(item, id);
     const lines = [];
     if (def.kind === 'weapon' || def.kind === 'shield') {
         const isWeapon = def.kind === 'weapon';
         const base = isWeapon ? def.atk : def.def;
         const power = isWeapon ? weaponPower(item) : shieldPower(item);
         // 修正値が分かっていれば足した実数まで出す。分からないうちは伏せる
-        const value = !item.plusKnown ? `${base}（修正値 不明）`
+        const shown = opts.revealAll || item.plusKnown;
+        const value = !shown ? `${base}（修正値 不明）`
             : item.plus === 0 ? `${power}`
                 : `${base}${item.plus > 0 ? '+' : ''}${item.plus} = ${power}`;
         lines.push(`${isWeapon ? '攻撃力' : '防御力'} ${value}　印 ${usedSlots(item)}/${slotCapacity(item)}`);
