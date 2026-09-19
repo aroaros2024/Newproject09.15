@@ -166,4 +166,11 @@ test('枠の数は SHORTCUT_SLOTS ぶん用意される', () => {
     const w = startRun('d1', town, { seed: 15, bring: [] });
     assert.equal(w.player.shortcutIds.length, SHORTCUT_SLOTS);
 });
+test('持ち込めないダンジョンへ潜っても、倉庫の印は消えない', () => {
+    const town = newTown();
+    const sword = put(town, 'ironSword');
+    town.kept = [sword.uid];
+    startRun('ex', town, { seed: 16 });
+    assert.deepEqual(town.kept, [sword.uid], '倉庫に置いたままの印まで消えた');
+});
 //# sourceMappingURL=carryover.test.js.map

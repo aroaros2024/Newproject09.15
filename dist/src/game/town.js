@@ -425,7 +425,7 @@ export function finishRun(world, town, kind, cause) {
     // 両方手元にあるので、ここで村側の uid に付け替えて控えておく
     const keptBefore = new Set(p.keptUids ?? []);
     const keptAfter = [];
-    const bring = (item) => {
+    const carryHome = (item) => {
         const wasKept = keptBefore.has(item.uid);
         item.shopPrice = 0;
         // 正体を知ったまま持ち帰った物は、村が名前を覚える。
@@ -442,7 +442,7 @@ export function finishRun(world, town, kind, cause) {
     let lost = 0;
     if (keepItems) {
         for (const item of collectCarried(p)) {
-            if (!bring(item))
+            if (!carryHome(item))
                 lost++;
         }
         town.gitan += p.gitan;
@@ -452,7 +452,7 @@ export function finishRun(world, town, kind, cause) {
         // 「何を守るか」を選ばせるための枠なので、ここが要
         const saved = keptItems(p).slice(0, keepSlotsFor(town, d));
         for (const item of saved) {
-            if (!bring(item))
+            if (!carryHome(item))
                 lost++;
         }
         lost += p.inventory.length - saved.length;

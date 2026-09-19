@@ -193,10 +193,12 @@ export function startRun(
     // 帰還時の town.gitan += p.gitan で毎回倍になる
     player.gitan = town.gitan;
     town.gitan = 0;
+    // 印は一度きり。持っていかなかった物の保持はここで切れる。
+    // 帰還時に finishRun が付け直す。
+    // 持ち込めないダンジョン（もっと不思議）では印に触らない。
+    // 倉庫に置いたままの物の印まで消してしまう
+    town.kept = [];
   }
-  // 印は一度きり。持っていかなかった物の保持はここで切れる。
-  // 帰還時に finishRun が付け直す
-  town.kept = [];
 
   if (dungeon.allowBring) {
     // 丸腰で出発させない。武器も盾も無ければ村が貸してくれる
