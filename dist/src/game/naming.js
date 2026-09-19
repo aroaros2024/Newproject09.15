@@ -4,11 +4,10 @@
  * 不思議のダンジョンでは「名前そのものが情報」なので、
  * 未識別／修正値不明／呪い／印／残り回数の見せ方をここに集約する。
  */
-import { getItem, tryGetRune, UNIDENTIFIED_KINDS } from '../data/registry.js';
-import { runeList } from './runes.js';
+import { getItem, potHoldsItems, tryGetRune, UNIDENTIFIED_KINDS } from '../data/registry.js';
+import { runeList, slotCapacity, usedSlots } from './runes.js';
+import { shieldPower, weaponPower } from './rules.js';
 import { KIND_SUFFIX } from '../data/names.js';
-/** 中身を抱えたままにする壺。これ以外は「あと何回使えるか」で数える */
-const POT_HOLDS_CONTENTS = new Set(['storage', 'backpack', 'unbreakable', 'synthesis']);
 /** そのカテゴリは未識別の対象か */
 export const isUnidentifiableKind = (def) => UNIDENTIFIED_KINDS.includes(def.kind) && !def.alwaysIdentified;
 /** 種類が判明しているか */
@@ -94,7 +93,7 @@ export function itemName(item, id, opts = {}) {
         if (def.kind === 'pot') {
             const cap = def.capacity;
             // 中身を持たない壺（識別・強化など）は「あと何回使えるか」を出す
-            base += POT_HOLDS_CONTENTS.has(def.effect)
+            base += potHoldsItems(def)
                 ? `[${item.contents.length}/${cap}]`
                 : `[${item.charges > 0 ? item.charges : cap}]`;
         }
@@ -140,4 +139,49 @@ export const kindOrderOf = (kind) => {
     const i = KIND_ORDER.indexOf(kind);
     return i < 0 ? KIND_ORDER.length : i;
 };
+/** 正体が分からないときに説明欄へ出す文 */
+const UNKNOWN_DESC = 'まだ 何か 分からない。使ってみるか、識別するしかない。';
+/**
+ * 説明欄に出す文。上から順に「数字 → 付いている印 → 説明文」の最大 3 行。
+ *
+ * 今まで説明欄に出ていたのは def.desc（雰囲気を書いた文）だけで、
+ * 攻撃力も防御力も、付いている印も、画面を 1 つ余計に開かないと読めなかった。
+ * 持ち物・倉庫・道具屋・鍛冶屋が同じものを出せるように、組み立てはここ 1 箇所に置く。
+ *
+ * メニューの説明欄は 3 行で切られる（ui/menu.ts）ので、ここも 3 行を超えない。
+ */
+export function itemDetail(item, id) {
+    const def = getItem(item.defId);
+    const known = isKnown(item, id);
+    const lines = [];
+    if (def.kind === 'weapon' || def.kind === 'shield') {
+        const isWeapon = def.kind === 'weapon';
+        const base = isWeapon ? def.atk : def.def;
+        const power = isWeapon ? weaponPower(item) : shieldPower(item);
+        // 修正値が分かっていれば足した実数まで出す。分からないうちは伏せる
+        const value = !item.plusKnown ? `${base}（修正値 不明）`
+            : item.plus === 0 ? `${power}`
+                : `${base}${item.plus > 0 ? '+' : ''}${item.plus} = ${power}`;
+        lines.push(`${isWeapon ? '攻撃力' : '防御力'} ${value}　印 ${usedSlots(item)}/${slotCapacity(item)}`);
+    }
+    else if (def.kind === 'staff' && known) {
+        lines.push(`あと ${item.charges} 回 振れる`);
+    }
+    else if (def.kind === 'pot' && known) {
+        lines.push(potHoldsItems(def)
+            ? `中身 ${item.contents.length} / 容量 ${def.capacity}`
+            : `あと ${item.charges > 0 ? item.charges : def.capacity} 回 使える`);
+    }
+    // 付いている印は名前だけ。効き目まで出すと 3 行に収まらないので「説明」画面で読む
+    if ((def.kind === 'weapon' || def.kind === 'shield') && item.runes.length > 0) {
+        const names = runeList(item).map(({ id: rid, level }) => {
+            const rune = tryGetRune(rid);
+            const name = rune ? rune.name : rid;
+            return level > 1 ? `${name} Lv${level}` : name;
+        }).join('・');
+        lines.push(item.sealed ? `${names}（封印中）` : names);
+    }
+    lines.push(known ? def.desc : UNKNOWN_DESC);
+    return lines.slice(0, 3).join('\n');
+}
 //# sourceMappingURL=naming.js.map

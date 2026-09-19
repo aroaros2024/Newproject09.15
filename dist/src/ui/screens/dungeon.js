@@ -4,12 +4,13 @@
 import { chebyshev, samePoint, step } from '../../core/geom.js';
 import { Cmd } from '../../core/input.js';
 import { clearRun, saveRun } from '../../core/save.js';
-import { getItem, getTrap } from '../../data/registry.js';
+import { UNIDENTIFIED_KINDS, getItem, getTrap, tryGetRune } from '../../data/registry.js';
 import { at } from '../../dungeon/tilemap.js';
-import { SHORTCUT_SLOTS, addKept, assignShortcut, equippedBracelet, isEquipped, isInventoryFull, isKept, keptItems, mergeStacks, removeKept, shortcutOf, shortcutSlots, sortInventory, } from '../../game/inventory.js';
+import { SHORTCUT_SLOTS, addKept, assignShortcut, equippedBracelet, isEquipped, isInventoryFull, isKept, keptItems, knowsKind, mergeStacks, removeKept, shortcutOf, shortcutSlots, sortInventory, } from '../../game/inventory.js';
 import { isContainer, needsDirection, needsItemTarget, payDebt, shopDebt, throwGitan, } from '../../game/itemActions.js';
 import { keepSlotsFor } from '../../game/town.js';
-import { itemName, kindLabel, useVerb } from '../../game/naming.js';
+import { isKnown, itemDetail, itemName, kindLabel, useVerb } from '../../game/naming.js';
+import { runeList } from '../../game/runes.js';
 import { SELL_RATE } from '../../game/rules.js';
 import { onStairs, restTurns, stepTurn, whyCannotRest } from '../../game/turn.js';
 import { copyPlayLog } from '../clipboard.js';
@@ -19,6 +20,7 @@ import { FxSystem } from '../fx.js';
 import { Hud } from '../hud.js';
 import { ConfirmDialog, DirectionPicker, ListMenu, MenuStack, QuantityPicker, } from '../menu.js';
 import { drawFullMap, drawMinimap, nextMinimapMode } from '../minimap.js';
+import { hasSprite } from '../sprites.js';
 import { MENU_LAYOUT, SCREEN_H, SCREEN_W, TILE, UI } from '../theme.js';
 import { animScale, messageCps } from './app.js';
 import { drawHelp } from './help.js';
@@ -450,7 +452,7 @@ export class DungeonScreen {
             const badges = [];
             if (isEquipped(p, item.uid))
                 badges.push({ text: 'E', color: UI.equip });
-            const slot = shortcutOf(p, item.defId);
+            const slot = shortcutOf(p, item.defId, world.run.identify.known);
             if (slot >= 0)
                 badges.push({ text: `${slot + 1}`, color: UI.cursorEdge });
             if (isKept(p, item.uid))
@@ -463,10 +465,8 @@ export class DungeonScreen {
                 label: itemName(item, world.run.identify),
                 right: item.shopPrice > 0 ? `${item.shopPrice}G` : kindLabel(def.kind),
                 badges,
-                sprite: spriteOfItem(item),
-                desc: world.run.identify.known[item.defId] || !isUnknownKind(def.kind)
-                    ? def.desc
-                    : 'まだ 何か 分からない。使ってみるか、識別するしかない。',
+                sprite: spriteOfItem(item, world.run.identify.known),
+                desc: itemDetail(item, world.run.identify),
                 data: item,
                 onSelect: () => {
                     onPick(item);
@@ -573,9 +573,19 @@ export class DungeonScreen {
                 return false;
             },
         });
-        // 保持バッグ（数字キー 1〜3）
-        const inSlot = shortcutOf(p, item.defId);
-        if (inSlot >= 0) {
+        // ショートカット（数字キー 1〜9）
+        const known = world.run.identify.known;
+        const inSlot = shortcutOf(p, item.defId, known);
+        if (!knowsKind(known, item.defId)) {
+            // 未識別の物を登録できてしまうと、次の冒険で枠に名前が出た時点で
+            // 正体が分かる。断り文句はどの未識別品でも同じにしておく
+            entries.push({
+                label: SHORTCUT_LABEL,
+                desc: '正体が 分かってから 登録できる。',
+                disabled: true,
+            });
+        }
+        else if (inSlot >= 0) {
             entries.push({
                 label: `ショートカット ${inSlot + 1} から 外す`,
                 onSelect: () => {
@@ -593,7 +603,7 @@ export class DungeonScreen {
                 onSelect: () => {
                     this.menus.push(new ListMenu({
                         title: 'どの 番号に 割り当てますか？',
-                        entries: shortcutSlots(p).map((cur, i) => ({
+                        entries: shortcutSlots(p, known).map((cur, i) => ({
                             label: `${i + 1}：${cur.item
                                 ? itemName(cur.item, world.run.identify)
                                 : cur.defId ? `${getItem(cur.defId).name}（切らしている）` : '（空き）'}`,
@@ -734,28 +744,7 @@ export class DungeonScreen {
         }));
     }
     showItemInfo(item) {
-        const world = this.world;
-        const def = getItem(item.defId);
-        const known = world.run.identify.known[item.defId] || !isUnknownKind(def.kind);
-        const lines = [];
-        lines.push(known ? def.desc : 'まだ 何か 分からない。');
-        if (def.kind === 'weapon')
-            lines.push(`攻撃力 ${def.atk}　印 ${def.slots}個`);
-        if (def.kind === 'shield')
-            lines.push(`防御力 ${def.def}　印 ${def.slots}個`);
-        if (def.kind === 'staff' && known)
-            lines.push(`残り ${item.charges}回`);
-        if (def.kind === 'pot')
-            lines.push(`容量 ${def.capacity}`);
-        if (item.runes.length > 0)
-            lines.push(`印: ${item.runes.join('・')}`);
-        lines.push(`売値 およそ ${Math.floor(def.price * SELL_RATE)}ギタン`);
-        this.menus.push(new ListMenu({
-            title: itemName(item, world.run.identify),
-            entries: lines.map((text) => ({ label: text, disabled: true })),
-            rect: { x: 340, y: 220, w: 600, h: 80 + lines.length * 32 },
-            rowH: 32,
-        }));
+        this.menus.push(itemInfoMenu(item, this.world.run.identify));
     }
     /**
      * 足元の物と入れ替える。
@@ -1128,7 +1117,9 @@ export class DungeonScreen {
         const p = this.world.player;
         if (index < 1 || index > SHORTCUT_SLOTS)
             return;
-        const slot = shortcutSlots(p)[index - 1];
+        // 正体を知らない物は枠に入らない（shortcutSlots が item を null にする）。
+        // 断り文句は「切らしている」で揃える。文言を分けると、そこから正体が分かる
+        const slot = shortcutSlots(p, this.world.run.identify.known)[index - 1];
         if (!slot.defId) {
             this.world.log(`${index} には 何も 割り当てていない。道具から「${SHORTCUT_LABEL}」で 登録できる。`);
             this.pumpEvents();
@@ -1167,7 +1158,7 @@ export class DungeonScreen {
         this.renderer.drawTerrain(g, ctx);
         this.renderer.drawGround(g, ctx, world.run.floorItems.map((f) => ({
             pos: f.pos,
-            sprite: spriteOfItem(f.item),
+            sprite: spriteOfItem(f.item, world.run.identify.known),
             shopPrice: f.item.shopPrice,
         })));
         // アクターは y 座標順に描いて前後関係を出す
@@ -1187,7 +1178,7 @@ export class DungeonScreen {
             else {
                 const def = world.defOf(a);
                 // 化けているミミックはアイテムに見せる
-                const spriteId = a.disguise ? spriteOfItem(a.disguise) : a.defId;
+                const spriteId = a.disguise ? spriteOfItem(a.disguise, world.run.identify.known) : a.defId;
                 this.renderer.drawActor(g, ctx, view, spriteId, {
                     asleep: a.asleep,
                     invisible: world.hasStatus(a, 'invisible'),
@@ -1219,12 +1210,14 @@ export class DungeonScreen {
             turn: world.run.totalTurn,
             windy: world.dungeon.windTurns > 0 && world.run.windLeft <= 30 && world.run.windLeft > 0,
             bottom: world.atBottom,
-            shortcuts: shortcutSlots(world.player).map((s) => ({
+            // 枠に入るのは正体を知っている物だけなので、名前はいつも本名でよい。
+            // 仮名を出すと「この冒険での仮名 ＝ 前に登録した物」が分かってしまう
+            shortcuts: shortcutSlots(world.player, world.run.identify.known).map((s) => ({
                 defId: s.defId,
-                label: s.item
-                    ? itemName(s.item, world.run.identify, { withDetail: false, withCount: false })
-                    : s.defId ? shortUnknownName(s.defId, world) : '',
-                sprite: s.item ? spriteOfItem(s.item) : (s.defId ? getItem(s.defId).sprite : null),
+                label: s.defId ? shortcutLabel(s.defId) : '',
+                sprite: s.item
+                    ? spriteOfItem(s.item, world.run.identify.known)
+                    : (s.defId ? spriteOfDefId(s.defId, world.run.identify.known) : null),
                 count: s.count,
             })),
         }, frame);
@@ -1274,22 +1267,64 @@ function drawBadgeAt(g, text, x, y) {
         color: UI.cursorEdge, outline: '#000', outlineWidth: 4,
     });
 }
-/** 未識別になるカテゴリか */
-const isUnknownKind = (kind) => kind === 'herb' || kind === 'scroll' || kind === 'staff'
-    || kind === 'pot' || kind === 'bracelet';
-/** アイテムのスプライト id（個別の絵が無ければカテゴリ共通に落ちる） */
-/** 切らしている枠に出す名前。未識別なら仮名のまま */
-function shortUnknownName(defId, world) {
-    const def = getItem(defId);
-    if (!isUnknownKind(def.kind))
-        return def.name;
-    if (world.run.identify.known[defId])
-        return def.name;
-    return world.run.identify.alias[defId] ?? def.name;
-}
-function spriteOfItem(item) {
+/**
+ * 「説明」の画面。道具の数字と、付いている印の効き目をぜんぶ出す。
+ *
+ * 村（倉庫・道具屋・鍛冶屋）からも同じものを開くので、ここに置いて共用する。
+ * 印は id（crit・flame）ではなく名前と効き目を 1 行ずつ出す。
+ * 英語の id が並んでいても、何が起きるのかは分からない。
+ */
+export function itemInfoMenu(item, id) {
     const def = getItem(item.defId);
-    // 未識別のカテゴリは見た目で中身が分からないようにする
-    return isUnknownKind(def.kind) ? def.sprite : item.defId;
+    const known = isKnown(item, id);
+    const lines = itemDetail(item, id).split('\n');
+    if (known && item.cursed && item.plusKnown)
+        lines.push('呪われている。装備すると外せない。');
+    // 印の効き目。名前だけでは何が起きるのか分からないので、ここで 1 つずつ出す
+    for (const { id: rid, level } of runeList(item)) {
+        const rune = tryGetRune(rid);
+        if (!rune)
+            continue;
+        const head = level > 1 ? `${rune.name} Lv${level}` : rune.name;
+        lines.push(`${head}　${rune.desc}`);
+    }
+    if (known)
+        lines.push(`売値 およそ ${Math.floor(def.price * SELL_RATE)}ギタン`);
+    return new ListMenu({
+        title: itemName(item, id),
+        entries: lines.map((text) => ({ label: text, disabled: true })),
+        rect: { x: 300, y: 200, w: 680, h: 80 + lines.length * 32 },
+        rowH: 32,
+    });
+}
+/** 未識別になるカテゴリか */
+const isUnknownKind = (kind) => UNIDENTIFIED_KINDS.includes(kind);
+/**
+ * ショートカットの枠に出す名前。
+ *
+ * 枠は 1 つ 65px しかないので、種類の語尾（〜の杖・〜の草）を落とす。
+ * 絵で種類は分かるので、残るのは見分けに要る部分だけになる。
+ */
+function shortcutLabel(defId) {
+    const def = getItem(defId);
+    const tail = `の${kindLabel(def.kind)}`;
+    return def.name.endsWith(tail) && def.name.length > tail.length
+        ? def.name.slice(0, -tail.length)
+        : def.name;
+}
+/**
+ * アイテムのスプライト id。
+ *
+ * 未識別のカテゴリは、正体が分かるまで種類共通の絵にする。
+ * 分かってからは個別の絵があるならそれを出す（壺は 5 種類ぶん用意してある）。
+ */
+function spriteOfDefId(defId, known) {
+    const def = getItem(defId);
+    if (isUnknownKind(def.kind) && !known[defId])
+        return def.sprite;
+    return hasSprite(defId) ? defId : def.sprite;
+}
+function spriteOfItem(item, known = {}) {
+    return spriteOfDefId(item.defId, known);
 }
 //# sourceMappingURL=dungeon.js.map

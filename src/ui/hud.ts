@@ -6,7 +6,7 @@ import type { PlayerActor, StatusEffect } from '../core/types.js';
 import { expToNext } from '../game/rules.js';
 import { STATUS_NAME } from '../game/status.js';
 import { foodDisplay, maxFoodDisplay } from '../game/hunger.js';
-import { type Ctx, drawBar, drawPanel, drawText, roundRect } from './draw.js';
+import { type Ctx, drawBar, drawPanel, drawText, ellipsize, roundRect } from './draw.js';
 import { getSprite, sprites } from './sprites.js';
 import { LAYOUT, UI, hpColor } from './theme.js';
 
@@ -103,24 +103,32 @@ export class Hud {
         g.restore();
       }
       // 番号
-      drawText(g, `${i + 1}`, x + 7, r.y + 20, {
+      drawText(g, `${i + 1}`, x + 7, r.y + 19, {
         size: 13, bold: true, color: empty || out ? UI.textDim : UI.cursorEdge,
       });
       if (empty) continue;
+      // 個数（切らしていたら赤く 0）。番号と同じ行に寄せて、下段を名前に空ける
+      drawText(g, `${s.count}`, x + cellW - 7, r.y + 19, {
+        size: 14, bold: true, align: 'right',
+        color: out ? '#c06060' : UI.gitan,
+      });
       // アイコン
       if (s.sprite) {
         const icon = getSprite(s.sprite);
         if (icon) {
-          sprites.draw(g, s.sprite, icon, x + cellW / 2, r.y + 38, 28, {
+          sprites.draw(g, s.sprite, icon, x + cellW / 2, r.y + 40, 26, {
             alpha: out ? 0.3 : 1,
           });
         }
       }
-      // 個数（切らしていたら赤く 0）
-      drawText(g, `${s.count}`, x + cellW - 8, r.y + 66, {
-        size: 15, bold: true, align: 'right',
-        color: out ? '#c06060' : UI.gitan,
-      });
+      // 名前。草・巻物・杖は種類に 1 つしか絵が無いので、
+      // 名前を出さないと何番に何を入れたのか分からない
+      if (s.label) {
+        drawText(g, ellipsize(g, s.label, cellW - 8, 11), x + cellW / 2, r.y + 68, {
+          size: 11, align: 'center',
+          color: out ? UI.textDim : UI.text,
+        });
+      }
     }
   }
 

@@ -187,14 +187,10 @@ export class ListMenu {
       if (index === this.cursor) drawCursor(g, rowRect, time);
 
       const color = entry.disabled ? UI.textDisabled : (liveValue(entry.color) ?? UI.text);
+      // 行番号は描かない。数字キーで行を選ぶ実装がどこにも無いので押しても効かず、
+      // 10 行目が「0」・11 行目以降は番号が出ずにラベルの位置だけずれていた。
+      // 数字キー 1〜9 はダンジョンの道具ショートカットだけの意味にする
       let x = rowRect.x + 12;
-      // 番号（ショートカット用）
-      if (index < 10) {
-        drawText(g, `${(index + 1) % 10}`, x, y + this.rowH / 2 + 2, {
-          size: 13, color: UI.textDisabled, baseline: 'middle',
-        });
-        x += 18;
-      }
       // アイコン（ドット絵が登録されていれば）
       if (entry.sprite) {
         const icon = getSprite(entry.sprite);

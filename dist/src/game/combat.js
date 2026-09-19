@@ -6,7 +6,7 @@
  */
 import { step } from '../core/geom.js';
 import { getItem } from '../data/registry.js';
-import { BASE_HIT, BLIND_ACC_PENALTY, CRIT_RATE_CAP, CRIT_RUNE_STEP, EXP_TABLE, FAINT_DAMAGE_MUL, INVISIBLE_EVADE_BONUS, MAX_EXP, MAX_HP_CAP, MAX_LEVEL, METAL_DAMAGE_REDUCTION, MONSTER_CRIT_RATE, PLAYER_CRIT_RATE, PLUS_MAX, calcDamage, hitRate, hpGainForLevel, } from './rules.js';
+import { BASE_HIT, BLIND_ACC_PENALTY, CRIT_RATE_CAP, CRIT_RUNE_STEP, EXP_TABLE, FAINT_DAMAGE_MUL, INVISIBLE_EVADE_BONUS, MAX_EXP, MAX_HP_CAP, MAX_LEVEL, METAL_DAMAGE_REDUCTION, MONSTER_CRIT_RATE, PLAYER_CRIT_RATE, PLUS_MAX, calcDamage, hitRate, hpGainForLevel, shieldPower, weaponPower, } from './rules.js';
 import { equipRuneLevel, shieldRune, weaponRune } from './runes.js';
 import { equippedBracelet, equippedShield, equippedWeapon } from './inventory.js';
 import { applyStatus, removeStatus, wakeOnDamage } from './status.js';
@@ -49,16 +49,6 @@ export function attackPower(world, a) {
     let atk = str + wp;
     atk += weaponRune(world, p, 'heavy') * 2;
     return Math.max(0, Math.floor(atk));
-}
-/** 武器の攻撃力（基本値 + 修正値） */
-export function weaponPower(item) {
-    const def = getItem(item.defId);
-    return def.kind === 'weapon' ? def.atk + item.plus : 0;
-}
-/** 盾の防御力（基本値 + 修正値） */
-export function shieldPower(item) {
-    const def = getItem(item.defId);
-    return def.kind === 'shield' ? def.def + item.plus : 0;
 }
 /** 防御力 */
 export function defensePower(world, a) {

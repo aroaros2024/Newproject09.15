@@ -637,6 +637,14 @@ export interface DungeonDef {
    * 省略時は true。素の腕試しをしたい人のために、効かない版を用意する。
    */
   allowBoosts?: boolean;
+  /**
+   * 分裂・増殖・分身で増えた敵の攻撃力が、増えるたびに半分になるか。省略時は false。
+   *
+   * HP は親子で半分ずつに分かれるのに攻撃力はそのまま複製されるので、
+   * 1 体ぶんの攻撃力が増えた数だけ膨らむ。Lv1 では 4 体に囲まれると
+   * 1 ターンで死ぬため、チュートリアルのダンジョンだけ攻撃力も分ける。
+   */
+  splitWeakens?: boolean;
   /** クリアしないと解放されない前提ダンジョン */
   requires: string | null;
   theme: DungeonTheme;
@@ -1006,6 +1014,23 @@ export interface TownState {
   charms?: Charm[];
   /** 着けている護石の uid。null なら着けていない */
   activeCharm?: number | null;
+
+  /**
+   * ショートカット（数字キー 1〜9）の割り当て。冒険をまたいで残す。
+   *
+   * 冒険中は PlayerActor.shortcutIds が持ち、出発時に写して帰還時に書き戻す。
+   * defId で覚えているので、別の冒険で拾い直した同じ道具にもそのまま効く。
+   */
+  shortcuts?: (string | null)[];
+  /**
+   * 倉庫にある「保持」印つきの道具の uid（村の採番）。
+   *
+   * 冒険中の保持枠（PlayerActor.keptUids）を、倉庫へ預けたその場で
+   * 村の uid に付け替えて控えておくもの。
+   * 次の出発で「持っていく物」として最初から選ばれ、そのまま持ち込めば
+   * 保持も続く。持っていかなかったぶんは startRun で消える。
+   */
+  kept?: number[];
 
   /** 図鑑。出会ったモンスター */
   seenMonsters: Record<string, boolean>;

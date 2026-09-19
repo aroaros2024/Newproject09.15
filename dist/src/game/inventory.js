@@ -1,7 +1,7 @@
 /**
  * 持ち物の管理とアイテム実体の生成。
  */
-import { getItem } from '../data/registry.js';
+import { UNIDENTIFIED_KINDS, getItem } from '../data/registry.js';
 import { ALWAYS_CURSED_BRACELETS } from '../data/items/others.js';
 import { INVENTORY_LIMIT, PLUS_MAX, PLUS_MIN } from './rules.js';
 import { kindOrderOf } from './naming.js';
@@ -117,12 +117,27 @@ export function addToInventory(p, item) {
 }
 /** ショートカットの枠数（数字キー 1〜9） */
 export const SHORTCUT_SLOTS = 9;
-/** ショートカットの中身 */
-export function shortcutSlots(p) {
+/**
+ * この冒険で正体を知っているか。
+ *
+ * ショートカットは defId で覚えていて、仮名は冒険ごとにシャッフルし直される。
+ * 正体を知らない物まで枠に入れてしまうと、「拾った瞬間に枠が埋まる」ことで
+ * 中身が分かってしまい、未識別という遊びが壊れる。
+ * 草・巻物・杖・壺・腕輪だけが対象で、武器や食料は常に true。
+ */
+export const knowsKind = (known, defId) => !UNIDENTIFIED_KINDS.includes(getItem(defId).kind)
+    || known[defId] === true;
+/**
+ * ショートカットの中身。
+ *
+ * 正体を知らない道具は持っていても入らない（切らしている扱い）。
+ * 識別できた瞬間に自動で入る。
+ */
+export function shortcutSlots(p, known = {}) {
     const out = [];
     for (let i = 0; i < SHORTCUT_SLOTS; i++) {
         const defId = p.shortcutIds?.[i] ?? null;
-        const item = defId === null
+        const item = defId === null || !knowsKind(known, defId)
             ? null
             : (p.inventory.find((it) => it.defId === defId) ?? null);
         out.push({ defId, item, count: item ? (item.count || 1) : 0 });
@@ -187,9 +202,16 @@ export function removeKept(p, uid) {
         return;
     p.keptUids = p.keptUids.filter((u) => u !== uid);
 }
-/** その種類が入っている枠。無ければ -1 */
-export function shortcutOf(p, defId) {
+/**
+ * その種類が入っている枠。無ければ -1。
+ *
+ * 正体を知らないうちは -1 を返す。未識別の道具に枠の番号が出ると、
+ * それだけで正体が分かってしまう。
+ */
+export function shortcutOf(p, defId, known = {}) {
     if (!p.shortcutIds)
+        return -1;
+    if (!knowsKind(known, defId))
         return -1;
     return p.shortcutIds.findIndex((x) => x === defId);
 }

@@ -11,6 +11,7 @@ import { Rng } from '../core/rng.js';
 import { ALL_ITEMS, allMonsters, getItem, getDungeon } from '../data/registry.js';
 import { DUNGEON_ORDER } from '../data/dungeons.js';
 import { keptItems, makeItem } from './inventory.js';
+import { kindOrderOf } from './naming.js';
 import { addTally, maxTally, mergeTally } from './counters.js';
 import { activeBoosts, townBoosts } from './gacha.js';
 import { EMBED_PRICE, REFORGE_PRICE, addCharmRune, meltValue, reforgeCharm } from './charm.js';
@@ -116,16 +117,18 @@ export function depositItem(town, item) {
         const stack = town.storage.find((i) => i.defId === item.defId);
         if (stack) {
             stack.count += item.count;
-            return true;
+            // 積み重なったので、倉庫にある実体は合流先のほう。
+            // 保持の印を引き継ぐ側がこれを見る
+            return stack;
         }
     }
     if (storageFull(town))
-        return false;
+        return null;
     item.uid = town.nextUid++;
     for (const c of item.contents)
         c.uid = town.nextUid++;
     town.storage.push(item);
-    return true;
+    return item;
 }
 /** 倉庫から出す */
 export function withdrawItem(town, uid) {
@@ -136,13 +139,20 @@ export function withdrawItem(town, uid) {
     // 数えるのは startRun の「実際に冒険へ持ち込んだ数」
     return town.storage.splice(i, 1)[0];
 }
-/** 倉庫のアイテムの並べ替え */
+/**
+ * 倉庫のアイテムの並べ替え。
+ *
+ * 種類の順番は持ち物の整理（inventory.ts の sortInventory）と同じ KIND_ORDER を使う。
+ * 以前は kind の英語名をそのまま文字列比較していたので
+ * 「腕輪 → 食料 → 草 → その他 → 壺 → 巻物 → 盾 → 杖 → 武器」と並び、
+ * 並べているのに並んでいないように見えていた。
+ */
 export function sortStorage(town) {
     town.storage.sort((a, b) => {
-        const ka = getItem(a.defId).kind;
-        const kb = getItem(b.defId).kind;
+        const ka = kindOrderOf(getItem(a.defId).kind);
+        const kb = kindOrderOf(getItem(b.defId).kind);
         if (ka !== kb)
-            return ka < kb ? -1 : 1;
+            return ka - kb;
         if (a.defId !== b.defId)
             return a.defId < b.defId ? -1 : 1;
         return b.plus - a.plus;
@@ -208,7 +218,7 @@ export function buyFromTown(town, item) {
     // 名前を見て買ったのだから、ダンジョンでも名前のまま持ち込める
     learnItem(town, item.defId);
     bumpTown(town, 'buy');
-    return depositItem(town, item);
+    return depositItem(town, item) !== null;
 }
 /** 村がその品目の名前を覚える */
 export function learnItem(town, defId) {
@@ -414,15 +424,29 @@ export function finishRun(world, town, kind, cause) {
     const p = world.player;
     const d = world.dungeon;
     const keepItems = kind !== 'death' || !losesItemsOnDeath(d.id);
+    // 保持の印は冒険中の uid で持っているが、倉庫へ預けると村の採番に振り直される。
+    // 預けたその場なら「冒険中のこの道具」と「倉庫に入ったこの道具」が
+    // 両方手元にあるので、ここで村側の uid に付け替えて控えておく
+    const keptBefore = new Set(p.keptUids ?? []);
+    const keptAfter = [];
+    const bring = (item) => {
+        const wasKept = keptBefore.has(item.uid);
+        item.shopPrice = 0;
+        // 正体を知ったまま持ち帰った物は、村が名前を覚える。
+        // 途中で倒れて失えば覚えないので、持ち帰る価値になる
+        if (world.run.identify.known[item.defId])
+            learnItem(town, item.defId);
+        const stored = depositItem(town, item);
+        if (!stored)
+            return false;
+        if (wasKept && !keptAfter.includes(stored.uid))
+            keptAfter.push(stored.uid);
+        return true;
+    };
     let lost = 0;
     if (keepItems) {
         for (const item of collectCarried(p)) {
-            item.shopPrice = 0;
-            // 正体を知ったまま持ち帰った物は、村が名前を覚える。
-            // 途中で倒れて失えば覚えないので、持ち帰る価値になる
-            if (world.run.identify.known[item.defId])
-                learnItem(town, item.defId);
-            if (!depositItem(town, item))
+            if (!bring(item))
                 lost++;
         }
         town.gitan += p.gitan;
@@ -432,14 +456,12 @@ export function finishRun(world, town, kind, cause) {
         // 「何を守るか」を選ばせるための枠なので、ここが要
         const saved = keptItems(p).slice(0, keepSlotsFor(town, d));
         for (const item of saved) {
-            item.shopPrice = 0;
-            if (world.run.identify.known[item.defId])
-                learnItem(town, item.defId);
-            if (!depositItem(town, item))
+            if (!bring(item))
                 lost++;
         }
         lost += p.inventory.length - saved.length;
     }
+    town.kept = keptAfter;
     // 持ち込んだギタンは startRun で村から冒険へ「移した」ので、
     // ここで足し戻したあとは冒険側を空にしておく。
     // そうしないと finishRun を経るたびに所持ギタンが倍になる。
@@ -456,6 +478,8 @@ export function finishRun(world, town, kind, cause) {
     world.pendingWarehouse = [];
     // 自分でつけた名前（「まちがえた」など）は、次の冒険にも持ち越す
     town.nicknames = { ...(town.nicknames ?? {}), ...world.run.identify.nicknames };
+    // ショートカットの割り当ても持ち越す。defId で覚えているので次の冒険でも通じる
+    town.shortcuts = [...(p.shortcutIds ?? [])];
     // 歩数と拾得数は、もともと p.steps / stats.itemsFound が数えている。
     // 別に tally でも数えると真実が 2 つになってズレる（実際、仲間と入れ替わる
     // 移動と「拾う」コマンドが数え漏れていた）。ここで一度だけ合流させる

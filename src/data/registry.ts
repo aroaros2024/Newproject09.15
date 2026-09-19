@@ -66,6 +66,20 @@ export const allTraps = (): readonly TrapDef[] => TRAPS;
 export const allRunes = (): readonly RuneDef[] => RUNES;
 
 /** カテゴリごとのアイテム一覧 */
+/**
+ * 中身をしまっておく壺の効果。
+ *
+ * 壺には「入れた物が中に残る壺」と「入れた物が消える／加工されて返る壺」があり、
+ * 前者は contents の数、後者は使える回数で容量を数える。
+ * 数え方を 2 箇所で書くと必ず片方が漏れる（換金・穴・倉庫の壺がどちらにも
+ * 数えられておらず、容量が無限になっていた）ので、判定はここ 1 箇所に置く。
+ */
+const STORING_POT_EFFECTS = new Set(['storage', 'backpack', 'unbreakable', 'synthesis']);
+
+/** その壺は中身をしまっておくか（false なら使える回数で数える） */
+export const potHoldsItems = (def: ItemDef): boolean =>
+  def.kind === 'pot' && STORING_POT_EFFECTS.has(def.effect);
+
 export function itemsOfKind(kind: ItemKind): readonly ItemDef[] {
   return ALL_ITEMS.filter((d) => d.kind === kind);
 }

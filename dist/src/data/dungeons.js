@@ -158,11 +158,15 @@ const D1 = {
     name: '始まりの洞窟',
     subtitle: '風の村のすぐ裏にある、浅い洞窟',
     desc: '村の子どもでも潜れるという浅い洞窟。ここで風来人の作法を覚えよう。\n' +
-        '持ち込みも持ち帰りも自由。倒れても持ち物は失わない。',
+        '持ち込みも持ち帰りも自由。倒れても持ち物は失わない。\n' +
+        '分裂して増えた敵は、そのぶん攻撃力が下がる。',
     depth: 5,
     allowBring: true,
     resetLevel: false,
     allowAlly: true,
+    // 増える特技は残したまま、増えたぶん攻撃力を分ける。
+    // ここだけ true。せせらぎの森から先は据え置き
+    splitWeakens: true,
     requires: null,
     theme: THEME_CAVE,
     bgm: 'cave',

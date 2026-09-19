@@ -17,9 +17,9 @@ import {
   placePlayer, placeStairs, populateFloor,
 } from '../dungeon/spawn.js';
 import { canEnter, createMap } from '../dungeon/tilemap.js';
-import { SHORTCUT_SLOTS, makeItem } from './inventory.js';
+import { SHORTCUT_SLOTS, addKept, makeItem } from './inventory.js';
 import {
-  INVENTORY_LIMIT, START_FOOD_X10, START_HP, START_LEVEL, START_STR, WIND_DEFAULT_TURNS,
+  START_FOOD_X10, START_HP, START_LEVEL, START_STR, WIND_DEFAULT_TURNS,
 } from './rules.js';
 import { World } from './world.js';
 import { activeBraceletEffect } from './bracelets.js';
@@ -117,6 +117,10 @@ export function startRun(
   const rng = new Rng(seed);
 
   const player = makePlayer(town.playerName || DEFAULT_PLAYER_NAME);
+  // ショートカットは村に置いてある。defId で覚えているので冒険をまたいでも意味が通る
+  if (town.shortcuts) {
+    for (let i = 0; i < SHORTCUT_SLOTS; i++) player.shortcutIds[i] = town.shortcuts[i] ?? null;
+  }
   if (!dungeon.resetLevel && opts.carryOver) {
     player.level = opts.carryOver.level;
     player.exp = opts.carryOver.exp;
@@ -161,9 +165,15 @@ export function startRun(
   const world = new World(run, dungeon);
   attachFactories(world);
 
+  // 加護。効かないダンジョン（真・もっと不思議）では全部 0 になる。
+  // 持ち込みより先に読む。袋の大きさも保持枠もここから決まるので、
+  // あとで読むと「26 個選べたのに 20 個しか届かない」が起きる
+  const boosts = activeBoosts(town, dungeon.allowBoosts);
+
   // 持ち込み
   if (dungeon.allowBring && opts.bring) {
-    for (const item of opts.bring.slice(0, player.bagLimit ?? INVENTORY_LIMIT)) {
+    const kept = town.kept ?? [];
+    for (const item of opts.bring.slice(0, boosts.bagLimit)) {
       // uid を振り直して倉庫の実体と切り離す
       const copy: ItemInstance = {
         ...item,
@@ -172,6 +182,9 @@ export function startRun(
         contents: item.contents.map((c) => ({ ...c, uid: world.nextUid(), runes: [...c.runes] })),
       };
       player.inventory.push(copy);
+      // 村で保持していた物は、外さずに持ってきたのでそのまま保持し直す。
+      // 枠が減っていれば addKept が入りきらないぶんを断る
+      if (kept.includes(item.uid)) addKept(player, copy.uid, boosts.keepSlots);
       // 倉庫から「持ち出した」のではなく「実際に持ち込んだ」数を数える。
       // 倉庫のメニューで出し入れするだけでは増えない
       world.tally('bring');
@@ -181,6 +194,9 @@ export function startRun(
     player.gitan = town.gitan;
     town.gitan = 0;
   }
+  // 印は一度きり。持っていかなかった物の保持はここで切れる。
+  // 帰還時に finishRun が付け直す
+  town.kept = [];
 
   if (dungeon.allowBring) {
     // 丸腰で出発させない。武器も盾も無ければ村が貸してくれる
@@ -191,8 +207,6 @@ export function startRun(
     player.inventory.push(riceBall);
   }
 
-  // 加護。効かないダンジョン（真・もっと不思議）では全部 0 になる
-  const boosts = activeBoosts(town, dungeon.allowBoosts);
   for (const id of boosts.knownIds) run.identify.known[id] = true;
   // 護石。印を読む weaponRune / shieldRune がここを見る
   world.charm = boosts.charm;

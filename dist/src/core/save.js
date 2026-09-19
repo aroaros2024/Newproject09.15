@@ -7,7 +7,9 @@
  */
 import { SAVE_VERSION } from './types.js';
 import { sanitizeTally } from '../game/counters.js';
+import { SHORTCUT_SLOTS } from '../game/inventory.js';
 import { tryGetPrize } from '../data/gacha.js';
+import { tryGetItem } from '../data/registry.js';
 import { CHARM_BOX_LIMIT, CHARM_MAX_SLOTS, charmRuneRule } from '../data/charms.js';
 import { tryGetPartner } from '../data/partners.js';
 import { partnerLevelCap } from '../game/partner.js';
@@ -58,6 +60,8 @@ export function defaultTown(playerName = 'ナギ') {
         activePartner: null,
         charms: [],
         activeCharm: null,
+        shortcuts: new Array(SHORTCUT_SLOTS).fill(null),
+        kept: [],
         seenMonsters: {},
         history: [],
         totalRuns: 0,
@@ -161,6 +165,11 @@ function validateTown(t) {
         activePartner: typeof t.activePartner === 'string' ? t.activePartner : null,
         charms: sanitizeCharms(t.charms),
         activeCharm: Number.isFinite(t.activeCharm) ? Math.floor(t.activeCharm) : null,
+        shortcuts: sanitizeShortcuts(t.shortcuts),
+        // uid は下の renumberStorage で振り直されるので、ここでは形だけ整える
+        kept: Array.isArray(t.kept)
+            ? t.kept.filter((x) => Number.isFinite(x)).map((x) => Math.floor(x))
+            : [],
         seenMonsters: typeof t.seenMonsters === 'object' && t.seenMonsters ? t.seenMonsters : {},
         history: Array.isArray(t.history) ? t.history.slice(-50) : [],
         totalRuns: Number.isFinite(t.totalRuns) ? Math.max(0, Math.floor(t.totalRuns)) : 0,
@@ -279,17 +288,40 @@ function sanitizePartners(raw) {
  * 重複があると別の道具に作用してしまう。以前のセーブには
  * 冒険側の uid がそのまま混ざっているものがあるため、読み込み時に均す。
  */
+/** ショートカット。長さを枠の数に揃え、defId 以外は空きにする */
+function sanitizeShortcuts(v) {
+    const out = new Array(SHORTCUT_SLOTS).fill(null);
+    if (!Array.isArray(v))
+        return out;
+    for (let i = 0; i < SHORTCUT_SLOTS; i++) {
+        const x = v[i];
+        out[i] = typeof x === 'string' && tryGetItem(x) ? x : null;
+    }
+    return out;
+}
+/**
+ * 倉庫の uid を 1 から振り直す。
+ *
+ * 保持の印は uid で倉庫の道具を指しているので、同じ順番で付け替える。
+ * ここを忘れると、読み込んだ瞬間に印が別の道具へ移る。
+ */
 function renumberStorage(town) {
     let next = 1;
+    const kept = new Set(town.kept ?? []);
+    const keptAfter = [];
     for (const item of town.storage) {
         if (!item || typeof item !== 'object')
             continue;
+        const wasKept = kept.has(item.uid);
         item.uid = next++;
+        if (wasKept)
+            keptAfter.push(item.uid);
         if (Array.isArray(item.contents)) {
             for (const c of item.contents)
                 c.uid = next++;
         }
     }
+    town.kept = keptAfter;
     town.nextUid = Math.max(next, town.nextUid);
 }
 // ---------------------------------------------------------------------------

@@ -7,8 +7,8 @@
 
 import type { Dir } from '../core/geom.js';
 import { chebyshev, samePoint, step } from '../core/geom.js';
-import type { ActionResult, Actor, ItemDef, ItemInstance } from '../core/types.js';
-import { getItem } from '../data/registry.js';
+import type { ActionResult, Actor, ItemDef, ItemInstance, PotDef } from '../core/types.js';
+import { getItem, potHoldsItems } from '../data/registry.js';
 import { at } from '../dungeon/tilemap.js';
 import { dealDamage } from './combat.js';
 import { eat } from './hunger.js';
@@ -152,6 +152,21 @@ function consume(world: World, item: ItemInstance): void {
 // 壺
 // ---------------------------------------------------------------------------
 
+/**
+ * 「使える回数」を 1 つ減らし、使い切ったら割る。
+ *
+ * 中身が中に残らない壺（換金・穴・倉庫・識別・変化…）は contents が
+ * 常に空なので、容量を contents の数で数えると無限に使えてしまう。
+ * charges === 0 は「まだ一度も使っていない」の意味で、初回にここで容量から数え始める。
+ */
+function spendPotCharge(world: World, pot: ItemInstance, def: PotDef): void {
+  pot.charges = (pot.charges > 0 ? pot.charges : def.capacity) - 1;
+  if (pot.charges > 0) return;
+  world.log(`${itemName(pot, world.run.identify)}は 割れてしまった。`, 'item');
+  world.sfx('break');
+  consume(world, pot);
+}
+
 function usePot(world: World, pot: ItemInstance, target: ItemInstance | null): ActionResult {
   const def = getItem(pot.defId);
   if (def.kind !== 'pot') return NO('壺ではない');
@@ -184,7 +199,9 @@ function usePot(world: World, pot: ItemInstance, target: ItemInstance | null): A
     world.log('合成の壺には 武器か 盾しか 入らない。');
     return NO('合成できない');
   }
-  if (pot.contents.length >= def.capacity) {
+  // しまっておく壺は中身の数で、それ以外は使える回数で数える。
+  // 回数の壺は使い切った時点で割れるので、ここで止まるのは前者だけ
+  if (potHoldsItems(def) && pot.contents.length >= def.capacity) {
     world.log(`${itemName(pot, world.run.identify)}は いっぱいだ。`);
     return NO('壺がいっぱい');
   }
@@ -208,27 +225,25 @@ function usePot(world: World, pot: ItemInstance, target: ItemInstance | null): A
       break;
     }
     case 'holePot':
+      // 中身は消える。contents では数えられないので回数で数える
       runEffect(world, 'holePot', pot, p, target);
-      break; // 中身は消える
+      spendPotCharge(world, pot, def);
+      break;
     case 'warehousePot':
       world.pendingWarehouse.push(target);
       runEffect(world, 'warehousePot', pot, p, target);
+      spendPotCharge(world, pot, def);
       break;
     case 'cashPot':
       runEffect(world, 'cashPot', pot, p, target);
+      spendPotCharge(world, pot, def);
       break;
     default: {
       // 識別・変化・祝福・強化・弱化・おはらい: 加工して戻す。
-      // 中身は手元に返るので contents では減らせない。
-      // 容量ぶんだけ使える「回数」として数え、使い切ったら壺は割れる
+      // 中身は手元に返るので contents では減らせない
       runEffect(world, def.effect, pot, p, target);
       if (!addToInventory(p, target)) world.dropItem(target, p.pos);
-      pot.charges = (pot.charges > 0 ? pot.charges : def.capacity) - 1;
-      if (pot.charges <= 0) {
-        world.log(`${itemName(pot, world.run.identify)}は 割れてしまった。`, 'item');
-        world.sfx('break');
-        consume(world, pot);
-      }
+      spendPotCharge(world, pot, def);
       break;
     }
   }

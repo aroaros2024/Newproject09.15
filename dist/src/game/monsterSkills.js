@@ -36,6 +36,15 @@ function crowdLimit(world) {
     const onBossFloor = world.dungeon.bosses.some((b) => b.depth === world.run.depth);
     return onBossFloor ? 4 : world.dungeon.gen.maxMonsters + 4;
 }
+/**
+ * 増えたぶんに分ける攻撃力。
+ *
+ * HP は親と子で半分ずつに分かれるのに、攻撃力はそのまま複製されていた。
+ * 1 体ぶんの力が増えた数だけ膨らむので、Lv1 では 4 体に囲まれた時点で
+ * 1 ターンで死ぬ。許したダンジョン（始まりの洞窟）では攻撃力も分ける。
+ * 最低 1 ダメージの床があるので、0 まで下げても意味が無い。
+ */
+const dividedAtk = (world, m) => (world.dungeon.splitWeakens ? Math.max(1, Math.floor(m.atk / 2)) : m.atk);
 /** 盾の「盗」印・盗賊よけの腕輪で盗みを防げるか */
 function blocksTheft(world, t) {
     if (t.kind !== 'player')
@@ -125,17 +134,20 @@ export const MONSTER_SKILLS = {
         const spot = freeNeighbor(world, m.pos);
         if (!spot)
             return false;
+        const atk = dividedAtk(world, m);
         const clone = {
             ...m,
             id: world.nextActorId(),
             pos: spot,
             hp: Math.max(1, Math.floor(m.hp / 2)),
+            atk,
             statuses: [],
             heldItems: [],
             heldGitan: 0,
             actedThisTurn: 1,
         };
         m.hp = Math.max(1, Math.ceil(m.hp / 2));
+        m.atk = atk;
         world.addMonster(clone);
         world.log(`${world.nameOf(m)}は 分裂した！`, 'bad');
         return true;
@@ -153,17 +165,20 @@ export const MONSTER_SKILLS = {
         if (!spot)
             return false;
         const def = world.defOf(m);
+        const atk = dividedAtk(world, m);
         const child = {
             ...m,
             id: world.nextActorId(),
             pos: spot,
             hp: def.hp,
             maxHp: def.hp,
+            atk,
             statuses: [],
             heldItems: [],
             heldGitan: 0,
             actedThisTurn: 1,
         };
+        m.atk = atk;
         world.addMonster(child);
         world.log(`${world.nameOf(m)}は 増殖した！`, 'bad');
         return true;
@@ -174,10 +189,12 @@ export const MONSTER_SKILLS = {
         const spot = freeNeighbor(world, m.pos);
         if (!spot)
             return false;
+        const atk = dividedAtk(world, m);
         const clone = {
-            ...m, id: world.nextActorId(), pos: spot, statuses: [],
+            ...m, id: world.nextActorId(), pos: spot, atk, statuses: [],
             heldItems: [], heldGitan: 0, actedThisTurn: 1,
         };
+        m.atk = atk;
         world.addMonster(clone);
         world.log(`${world.nameOf(m)}は 分身を 作り出した！`, 'bad');
         return true;

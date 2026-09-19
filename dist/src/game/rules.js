@@ -5,6 +5,7 @@
  * combat.ts / status.ts / hunger.ts 側にある。
  * すべての定数をここに集めているので、バランス調整はこのファイルで完結する。
  */
+import { getItem } from '../data/registry.js';
 // ===========================================================================
 // 初期値
 // ===========================================================================
@@ -262,5 +263,20 @@ export const gitanThrowDamage = (amount) => Math.max(1, Math.floor(amount / 10))
 export function gitanAmount(depth, rng) {
     const base = 10 + depth * 12;
     return Math.max(1, Math.floor(rng.range(base >> 1, base * 2) / 5) * 5);
+}
+/**
+ * 武器の攻撃力（基本値 + 修正値）。
+ *
+ * 戦闘の計算と、持ち物の説明欄の両方がここを読む。
+ * 別々に計算すると「説明には 9 と出るのに 12 で殴っている」が起きる。
+ */
+export function weaponPower(item) {
+    const def = getItem(item.defId);
+    return def.kind === 'weapon' ? def.atk + item.plus : 0;
+}
+/** 盾の防御力（基本値 + 修正値） */
+export function shieldPower(item) {
+    const def = getItem(item.defId);
+    return def.kind === 'shield' ? def.def + item.plus : 0;
 }
 //# sourceMappingURL=rules.js.map
