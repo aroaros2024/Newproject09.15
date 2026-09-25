@@ -80,6 +80,8 @@ class Game {
      */
     startDebug(scene, params) {
         this.wiped = true;
+        // 検証の道具（tools/）が中を覗けるように。遊ぶ時の起動では出さない
+        window.__game = this;
         this.town = defaultTown();
         this.town.unlocked = ['d1', 'd2', 'd3', 'd4', 'dl', 'exBring', 'ex', 'exPure'];
         this.town.cleared = ['d1', 'd2', 'd3', 'd4', 'dl', 'exBring', 'ex'];

@@ -316,10 +316,22 @@ export class DungeonScene implements WorldScene {
   paintActors(b: Ctx2D, lighter: ActorLighter, _f: Readonly<FrameInfo>): void {
     const n = this.vw.sortDrawables();
     this.drawN = n;
+    this.playerDrawn = -1;
+    this.playerHidden = false;
     for (let i = 0; i < n; i++) {
       const d = this.vw.drawableAt(i);
       if (d.disguise !== null) continue;
-      this.drawActor(b, lighter, d);
+      this.drawActor(b, lighter, d, i);
+    }
+    // 大きな敵が主人公の手前に重なったら、主人公の影絵を薄く重ねて居場所を見せる
+    if (this.playerHidden && this.playerDrawn >= 0) {
+      const d = this.vw.drawableAt(this.playerDrawn);
+      const idx = this.speciesIndex(d);
+      if (idx >= 0) {
+        const anim = this.animOf(idx, d.anim);
+        const f = this.sheets.frame(idx, anim, d.dir8, this.frameOf(idx, anim, d.frame), FX_NORMAL);
+        if (f) lighter.drawFrame(f, d.artX, d.artY - d.lift + d.submerge, 0.45 * d.alpha, true);
+      }
     }
     // ドットの粒（キャラの上。光の乗算より上なので、自分で光る色のまま見える）
     drawPixelParticles(b, this.pool, 0, 0);
@@ -334,7 +346,8 @@ export class DungeonScene implements WorldScene {
       if (d.disguise !== null || d.alpha <= 0) continue;
       const idx = this.speciesIndex(d);
       if (idx < 0) continue;
-      const f = this.sheets.frame(idx, this.animOf(idx, d.anim), d.dir8, d.frame, FX_OCCLUDER);
+      const a = this.animOf(idx, d.anim);
+      const f = this.sheets.frame(idx, a, d.dir8, this.frameOf(idx, a, d.frame), FX_OCCLUDER);
       if (f) e.drawImage(f.src, f.sx, f.sy, f.w, f.h, d.artX - f.ax, d.artY - d.lift - f.ay, f.w, f.h);
     }
     drawEmissive(e, this.pool, this.emXf, this.atlas);
@@ -355,7 +368,12 @@ export class DungeonScene implements WorldScene {
 
   // =========================================================== キャラ 1 体
 
-  private drawActor(b: Ctx2D, lighter: ActorLighter, d: ActorDrawable): void {
+  /** 主人公を描いた順番（-1 はまだ）と、その絵の範囲。後から重なる者があれば影絵を重ねる */
+  private playerDrawn = -1;
+  private playerHidden = false;
+  private readonly playerRect = new Float32Array(4);
+
+  private drawActor(b: Ctx2D, lighter: ActorLighter, d: ActorDrawable, order: number): void {
     const idx = this.speciesIndex(d);
     const alpha = d.alpha * (1 - d.warp);
     if (alpha <= 0.01) return;
@@ -369,8 +387,21 @@ export class DungeonScene implements WorldScene {
     let fx = FX_NORMAL;
     if (d.dying && d.dissolve > 0) fx = FX_DISSOLVE_25 + Math.min(3, d.dissolve - 1);
     else if (d.flash > 0.5) fx = FX_FLASH;
-    const f = this.sheets.frame(idx, this.animOf(idx, d.anim), d.dir8, d.frame, fx);
+    const anim = this.animOf(idx, d.anim);
+    const f = this.sheets.frame(idx, anim, d.dir8, this.frameOf(idx, anim, d.frame), fx);
     if (!f) return;
+    // 主人公との重なり（絵の枠で見る。枠の余白のぶん少し内側で判定する）
+    const x0 = d.artX - f.ax + 4;
+    const y0 = footY - f.ay + 4;
+    const x1 = x0 + f.w - 8;
+    const y1 = y0 + f.h - 8;
+    if (d.species === 'player' && d.kind === 'player') {
+      this.playerDrawn = order;
+      this.playerRect[0] = x0; this.playerRect[1] = y0; this.playerRect[2] = x1; this.playerRect[3] = y1;
+    } else if (this.playerDrawn >= 0 && !this.playerHidden) {
+      const r = this.playerRect;
+      if (x0 < r[2] && r[0] < x1 && y0 < r[3] && r[1] < y1) this.playerHidden = true;
+    }
     if (d.submerge > 0) {
       // 水に沈める：水面（足元）より下は描かない
       b.save();
@@ -447,6 +478,15 @@ export class DungeonScene implements WorldScene {
   private animOf(idx: number, anim: AnimId): number {
     const a = animIndex(anim);
     return this.sheets.frameCount(idx, a) > 0 ? a : 0;
+  }
+
+  /**
+   * コマの番号をその動きのコマ数に収める。台帳のコマ番号はリグの動きのコマ数で数えるが、
+   * 旧来の絵（1 コマ）やコマ数の違う動きへ落ちた時にはみ出すと、頁の隣の絵を読んでしまう
+   */
+  private frameOf(idx: number, anim: number, frame: number): number {
+    const n = this.sheets.frameCount(idx, anim);
+    return n > 0 ? ((frame % n) + n) % n : 0;
   }
 
   /** 撃破：倒れた者の絵の 1 ドットずつを粒にして崩す（120 個まで） */
