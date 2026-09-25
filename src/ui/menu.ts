@@ -12,7 +12,7 @@ import {
   ellipsize, fitRect, wrapText,
 } from './draw.js';
 import { UI, font } from './theme.js';
-import { getSprite, sprites } from './sprites.js';
+import { drawIconKey } from './gfx/icons.js';
 
 export interface Badge {
   text: string;
@@ -189,14 +189,9 @@ export class ListMenu {
       let x = rowRect.x + 10;
       // アイコン（ドット絵が登録されていれば）
       if (entry.sprite) {
-        const icon = getSprite(entry.sprite);
-        if (icon) {
-          const size = this.rowH - 8;
-          sprites.draw(
-            g, entry.sprite, icon,
-            x + size / 2, y + this.rowH / 2, size,
-            entry.disabled ? { alpha: 0.45 } : {},
-          );
+        const size = this.rowH - 8;
+        if (drawIconKey(g, entry.sprite, x + size / 2, y + this.rowH / 2, size, time,
+          entry.disabled ? { alpha: 0.45 } : {})) {
           x += size + 6;
         }
       }

@@ -10,7 +10,7 @@ import { expToNext } from '../game/rules.js';
 import { STATUS_NAME } from '../game/status.js';
 import { foodDisplay, maxFoodDisplay } from '../game/hunger.js';
 import { type Ctx, drawBar, drawPanel, drawText, ellipsize } from './draw.js';
-import { getSprite, sprites } from './sprites.js';
+import { drawIconKey } from './gfx/icons.js';
 import { LAYOUT, UI, font, hpColor } from './theme.js';
 import { PANEL } from './ui2/tokens.js';
 
@@ -117,14 +117,7 @@ export class Hud {
         color: out ? '#d07060' : UI.gitan,
       });
       // アイコン
-      if (s.sprite) {
-        const icon = getSprite(s.sprite);
-        if (icon) {
-          sprites.draw(g, s.sprite, icon, x + cellW / 2, r.y + 34, 32, {
-            alpha: out ? 0.3 : 1,
-          });
-        }
-      }
+      if (s.sprite) drawIconKey(g, s.sprite, x + cellW / 2, r.y + 34, 32, 0, { alpha: out ? 0.3 : 1 });
       // 名前。草・巻物・杖は種類に 1 つしか絵が無いので、
       // 名前を出さないと何番に何を入れたのか分からない
       if (s.label) {

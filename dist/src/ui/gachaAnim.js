@@ -28,7 +28,7 @@ import { KIND_HD, ParticlePool, TONE_GOLD, TONE_MAGIC, TONE_WATER, TONE_WHITE, }
 import { drawHDParticles, makeHDAtlas } from './gfx/particlesDraw.js';
 import { ctx2d, makeCanvas } from './gfx/canvas.js';
 import { drawCursor, drawOverlay, drawPanel, drawText, drawTitlePlaque, wrapText, } from './draw.js';
-import { getSprite, sprites } from './sprites.js';
+import { drawIconKey } from './gfx/icons.js';
 import { tryGetItem } from '../data/registry.js';
 import { iconKeyForCatalog } from './art/items.js';
 import { tryGetPartner } from '../data/partners.js';
@@ -378,7 +378,6 @@ export class GachaAnim {
         g.globalAlpha = appear;
         // 絵。台座の光の上に置く。SSR は大きく出す
         const spriteId = this.spriteOf(r);
-        const icon = spriteId ? getSprite(spriteId) : null;
         const artY = box.y + 128;
         const pedestal = glow(color);
         g.save();
@@ -386,12 +385,8 @@ export class GachaAnim {
         g.globalAlpha = 0.5 * appear;
         g.drawImage(pedestal, cx - 90, artY - 70, 180, 140);
         g.restore();
-        if (icon && spriteId) {
-            const size = r.rarity === 'ssr' ? 112 : 80;
-            const bob = Math.round(Math.sin(now / 420) * 3);
-            sprites.draw(g, spriteId, icon, cx, artY + bob, size, {});
-        }
-        else {
+        const bob = Math.round(Math.sin(now / 420) * 3);
+        if (!spriteId || !drawIconKey(g, spriteId, cx, artY + bob, r.rarity === 'ssr' ? 112 : 80, now)) {
             // 加護とギタンは絵の代わりに印を出す
             g.strokeStyle = color;
             g.lineWidth = 3;
@@ -475,9 +470,8 @@ export class GachaAnim {
             drawText(g, r.rarity ? RARITY_LABEL[r.rarity] : 'G', x + 32, y + 32, { size: 17, bold: true, align: 'center', color, family: 'serif' });
             // 1 枚ずつのカードを出さなくなったぶん、ここに絵も出す
             const spriteId = this.spriteOf(r);
-            const icon = spriteId ? getSprite(spriteId) : null;
-            if (spriteId && icon)
-                sprites.draw(g, spriteId, icon, x + 86, y + 25, 32);
+            if (spriteId)
+                drawIconKey(g, spriteId, x + 86, y + 25, 32);
             drawText(g, this.titleOf(r), x + 112, y + 33, { size: 20, color: UI.text });
         });
         // 選んでいる行の説明。カードに出していた 1 行がここへ移る
