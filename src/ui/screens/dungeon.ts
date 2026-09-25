@@ -32,7 +32,7 @@ import {
   ConfirmDialog, DirectionPicker, ListMenu, MenuStack, QuantityPicker, type MenuEntry,
 } from '../menu.js';
 import { drawFullMap, drawMinimap, nextMinimapMode, type MinimapMode } from '../minimap.js';
-import { hasSprite } from '../sprites.js';
+import { iconKeyOf } from '../art/items.js';
 import { MENU_LAYOUT, SCREEN_H, SCREEN_W, TILE, UI } from '../theme.js';
 import { animScale, messageCps, type App, type Screen } from './app.js';
 import { drawHelp } from './help.js';
@@ -1403,10 +1403,9 @@ function shortcutLabel(defId: string): string {
  * 未識別のカテゴリは、正体が分かるまで種類共通の絵にする。
  * 分かってからは個別の絵があるならそれを出す（壺は 5 種類ぶん用意してある）。
  */
+/** 道具の絵の鍵。正体を漏らさない決まりは iconKeyOf が持つ */
 function spriteOfDefId(defId: string, known: Record<string, boolean>): string {
-  const def = getItem(defId);
-  if (isUnknownKind(def.kind) && !known[defId]) return def.sprite;
-  return hasSprite(defId) ? defId : def.sprite;
+  return iconKeyOf(defId, !!known[defId]);
 }
 
 function spriteOfItem(item: ItemInstance, known: Record<string, boolean> = {}): string {

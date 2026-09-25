@@ -7,6 +7,7 @@ import { itemInfoMenu } from './dungeon.js';
 import { loadReplay } from '../../core/save.js';
 import { copyPlayLog } from '../clipboard.js';
 import { ALL_ITEMS, allMonsters, getDungeon, getItem, tryGetRune } from '../../data/registry.js';
+import { iconKeyForCatalog } from '../art/items.js';
 import { SMITH_PRICE, buyFromTown, dungeonList, meltCharm, inventoryLimitFor, storageLimit, depositGitan, sellToTown, shopStock, smithEmbed, smithReforge, smithTemper, smithUncurse, sortStorage, storageFull, townIdentify, wearCharm, withdrawGitan, withdrawItem, } from '../../game/town.js';
 import { itemDetail, itemName, kindLabel } from '../../game/naming.js';
 import { collectionRate } from '../../game/town.js';
@@ -864,7 +865,7 @@ export class TownScreen {
                     right: picked ? '持っていく' : kindLabel(getItem(item.defId).kind),
                     color: picked ? UI.cursorEdge : undefined,
                     badges: this.isKeptItem(item) ? [{ text: '保', color: UI.good }] : undefined,
-                    sprite: getItem(item.defId).sprite,
+                    sprite: iconKeyForCatalog(item.defId),
                     desc: this.descOf(item),
                     onSelect: () => {
                         const limit = inventoryLimitFor(this.app.town, getDungeon(dungeonId));
@@ -926,7 +927,7 @@ export class TownScreen {
             label: itemName(item, this.identify()),
             right: kindLabel(getItem(item.defId).kind),
             badges: this.isKeptItem(item) ? [{ text: '保', color: UI.good }] : undefined,
-            sprite: getItem(item.defId).sprite,
+            sprite: iconKeyForCatalog(item.defId),
             desc: this.descOf(item),
             data: item,
             onSelect: () => {
@@ -960,7 +961,7 @@ export class TownScreen {
                 label: itemName(item, EMPTY_IDENTIFY, { revealAll: true }),
                 right: `${price} G`,
                 disabled: this.app.town.gitan < price || storageFull(this.app.town),
-                sprite: getItem(item.defId).sprite,
+                sprite: iconKeyForCatalog(item.defId),
                 // 店は中身を見て買う場なので、数字も印も伏せない
                 desc: itemDetail(item, EMPTY_IDENTIFY, { revealAll: true }),
                 onSelect: () => {
@@ -1127,7 +1128,7 @@ export class TownScreen {
                             label: itemName(item, this.identify()),
                             right: `${cost} G`,
                             disabled: town.gitan < cost,
-                            sprite: getItem(item.defId).sprite,
+                            sprite: iconKeyForCatalog(item.defId),
                             desc: this.descOf(item),
                             onSelect: () => {
                                 if (smithTemper(town, item.uid)) {

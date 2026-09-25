@@ -17,6 +17,10 @@
  * 焼いた結果は (id, size, tint) をキーにキャッシュされるので、
  * 毎フレームのピクセル走査は起きない。
  */
+import { ICON_SIZE, buildIcon, hasIcon } from './art/items.js';
+import { buildTrapIcon } from './art/traps.js';
+import { PAL_HEX } from './art/palette.js';
+import { PixBuf } from './art/pixbuf.js';
 const TRANSPARENT = new Set(['.', ' ', '\t']);
 /** オフスクリーンキャンバスを作る（OffscreenCanvas が無ければ普通の canvas） */
 function makeCanvas(w, h) {
@@ -274,10 +278,57 @@ export function registerSprites(map) {
     for (const [id, sprite] of Object.entries(map))
         registry.set(id, sprite);
 }
-export function getSprite(id, fallback) {
-    return registry.get(id) ?? (fallback ? registry.get(fallback) ?? null : null);
+/**
+ * 新しい絵（src/ui/art）への橋渡し。道具の鍵と「trap:<ワナの id>」は新しい 16×16 の絵を
+ * この形式に直して返す。旧い描き方（一覧・常時表示・床・ガチャ）のままで新しい絵が出る。
+ * 新しい描画へ移り終えたら、このファイルごと消える。
+ */
+const bridged = new Map();
+const BRIDGE_CHARS = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+function fromPixBuf(b) {
+    const palette = {};
+    const charOf = new Map();
+    const rows = [];
+    for (let y = 0; y < b.h; y++) {
+        let row = '';
+        for (let x = 0; x < b.w; x++) {
+            const c = b.get(x, y);
+            if (c === 0) {
+                row += '.';
+                continue;
+            }
+            let ch = charOf.get(c);
+            if (!ch) {
+                ch = BRIDGE_CHARS[charOf.size];
+                charOf.set(c, ch);
+                palette[ch] = PAL_HEX[c];
+            }
+            row += ch;
+        }
+        rows.push(row);
+    }
+    return { palette, rows };
 }
-export const hasSprite = (id) => registry.has(id);
+function bridgedSprite(id) {
+    const hit = bridged.get(id);
+    if (hit !== undefined)
+        return hit;
+    let s = null;
+    const b = new PixBuf(ICON_SIZE, ICON_SIZE);
+    if (id.startsWith('trap:')) {
+        if (buildTrapIcon(id.slice(5), b))
+            s = fromPixBuf(b);
+    }
+    else if (hasIcon(id) && buildIcon(id, b)) {
+        s = fromPixBuf(b);
+    }
+    bridged.set(id, s);
+    return s;
+}
+export function getSprite(id, fallback) {
+    return bridgedSprite(id) ?? registry.get(id) ?? (fallback ? registry.get(fallback) ?? null : null);
+}
+export const hasSprite = (id) => registry.has(id) || bridgedSprite(id) !== null;
 export const spriteCount = () => registry.size;
 export const spriteIds = () => [...registry.keys()];
 /** 登録されている全スプライトの整合性を検査する（開発時の取りこぼし検出） */

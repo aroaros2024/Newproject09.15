@@ -162,6 +162,17 @@ export function ellipsize(g: Ctx, text: string, maxWidth: number, size = 18): st
 }
 
 /** 指定幅で折り返した行の配列を返す（日本語なので文字単位で折る） */
+/** 行の頭に来てはいけない文字（句読点・閉じ括弧・小さい仮名・長音） */
+const NO_LINE_START = new Set([...'、。，．,.！？!?）」』】〕〉》…・ーぁぃぅぇぉっゃゅょゎァィゥェォッャュョヮ']);
+/** 行の終わりに来てはいけない文字（開き括弧） */
+const NO_LINE_END = new Set([...'（「『【〔〈《']);
+
+/**
+ * 折り返し。日本語の決まり（禁則）を守る。
+ * - 句読点・閉じ括弧は前の行にぶら下げる（はみ出しても 1 文字まで）
+ * - 開き括弧で行を終えない
+ * - 文は語の間に空白を入れて書いてあるので、行の後ろ半分に空白があればそこで折る
+ */
 export function wrapText(g: Ctx, text: string, maxWidth: number, size = 18): string[] {
   g.save();
   g.font = font(size);
@@ -174,12 +185,31 @@ export function wrapText(g: Ctx, text: string, maxWidth: number, size = 18): str
       continue;
     }
     const next = line + ch;
-    if (g.measureText(next).width > maxWidth && line.length > 0) {
-      lines.push(line);
-      line = ch;
-    } else {
+    if (g.measureText(next).width <= maxWidth || line.length === 0) {
       line = next;
+      continue;
     }
+    // ぶら下げ：句読点は行末にはみ出させる
+    if (NO_LINE_START.has(ch)) {
+      lines.push(next);
+      line = '';
+      continue;
+    }
+    // 語の切れ目（空白）で折る
+    const sp = Math.max(line.lastIndexOf(' '), line.lastIndexOf('　'));
+    if (sp > line.length / 2) {
+      lines.push(line.slice(0, sp));
+      line = line.slice(sp + 1) + ch;
+      continue;
+    }
+    // 開き括弧で終わるなら、括弧ごと次の行へ送る
+    let carry = '';
+    while (line.length > 1 && NO_LINE_END.has(line[line.length - 1])) {
+      carry = line[line.length - 1] + carry;
+      line = line.slice(0, -1);
+    }
+    lines.push(line);
+    line = carry + ch;
   }
   if (line.length > 0) lines.push(line);
   g.restore();

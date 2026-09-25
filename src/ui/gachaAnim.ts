@@ -24,6 +24,7 @@ import { RARITY_COLOR, RARITY_LABEL, type Rarity } from '../data/gacha.js';
 import { type Ctx, drawOverlay, drawPanel, drawText, wrapText } from './draw.js';
 import { getSprite, sprites } from './sprites.js';
 import { tryGetItem } from '../data/registry.js';
+import { iconKeyForCatalog } from './art/items.js';
 import { tryGetPartner } from '../data/partners.js';
 import { charmName } from '../game/charm.js';
 import { SCREEN_H, SCREEN_W, UI } from './theme.js';
@@ -209,7 +210,7 @@ export class GachaAnim {
     const p = r.prize;
     if (!p) return null;
     if (p.partnerId) return tryGetPartner(p.partnerId)?.baseId ?? null;
-    if (p.boost?.t === 'knownItem') return tryGetItem(p.boost.itemId)?.sprite ?? null;
+    if (p.boost?.t === 'knownItem') return tryGetItem(p.boost.itemId) ? iconKeyForCatalog(p.boost.itemId) : null;
     return null;
   }
 

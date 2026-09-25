@@ -468,22 +468,11 @@ function drawSpriteAt(
   );
 }
 
-/** ワナ id → スプライト id（data 側の sprite フィールドと対応） */
+/** ワナ id → 絵の鍵（ワナごとの新しい絵。sprites.ts の橋渡しが読む） */
 function trapSpriteOf(trapId: string): string {
-  return TRAP_SPRITE[trapId] ?? 'trapArrow';
+  return `trap:${trapId}`;
 }
 
-const TRAP_SPRITE: Record<string, string> = {
-  arrow: 'trapArrow', poisonArrow: 'trapPoison', spike: 'trapPit',
-  sleepGas: 'trapGas', confuseGas: 'trapGas', blindGas: 'trapGas',
-  bearTrap: 'trapBear', rustTrap: 'trapRust', rotTrap: 'trapRot',
-  alarm: 'trapAlarm', summon: 'trapSummon', warp: 'trapWarp',
-  spin: 'trapSpin', mine: 'trapMine', bigMine: 'trapMine',
-  slowTrap: 'trapSlow', weakenTrap: 'trapStatue', curseTrap: 'trapCurse',
-  hungerTrap: 'trapHunger', sealTrap: 'trapSeal',
-  monsterHouseTrap: 'trapHouse', itemLossTrap: 'trapDrop',
-  lavaTrap: 'trapLava', waterTrap: 'trapWater',
-};
 
 /** 画面内に入っているか（描画を間引くため） */
 export function isOnScreen(p: Point, camera: Camera, margin = 2): boolean {

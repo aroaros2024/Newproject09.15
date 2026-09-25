@@ -421,21 +421,10 @@ function drawSpriteAt(g, id, pos, camera, fallback, yOffset = 0) {
     }
     sprites.draw(g, id, sprite, pos.x * TILE - camera.x + TILE / 2, pos.y * TILE - camera.y + TILE / 2 + yOffset, TILE);
 }
-/** ワナ id → スプライト id（data 側の sprite フィールドと対応） */
+/** ワナ id → 絵の鍵（ワナごとの新しい絵。sprites.ts の橋渡しが読む） */
 function trapSpriteOf(trapId) {
-    return TRAP_SPRITE[trapId] ?? 'trapArrow';
+    return `trap:${trapId}`;
 }
-const TRAP_SPRITE = {
-    arrow: 'trapArrow', poisonArrow: 'trapPoison', spike: 'trapPit',
-    sleepGas: 'trapGas', confuseGas: 'trapGas', blindGas: 'trapGas',
-    bearTrap: 'trapBear', rustTrap: 'trapRust', rotTrap: 'trapRot',
-    alarm: 'trapAlarm', summon: 'trapSummon', warp: 'trapWarp',
-    spin: 'trapSpin', mine: 'trapMine', bigMine: 'trapMine',
-    slowTrap: 'trapSlow', weakenTrap: 'trapStatue', curseTrap: 'trapCurse',
-    hungerTrap: 'trapHunger', sealTrap: 'trapSeal',
-    monsterHouseTrap: 'trapHouse', itemLossTrap: 'trapDrop',
-    lavaTrap: 'trapLava', waterTrap: 'trapWater',
-};
 /** 画面内に入っているか（描画を間引くため） */
 export function isOnScreen(p, camera, margin = 2) {
     const px = p.x * TILE - camera.x;
