@@ -710,6 +710,7 @@ export class TownScreen {
                             right: seen ? `Lv${m.level}` : '',
                             disabled: !seen,
                             sprite: seen ? m.id : undefined,
+                            portrait: seen ? m.id : undefined,
                             desc: seen
                                 ? `${m.desc}\nHP ${m.hp}　攻撃 ${m.atk}　防御 ${m.def}　経験値 ${m.exp}`
                                 : 'まだ 出会っていない。',
@@ -718,7 +719,7 @@ export class TownScreen {
                     this.menus.push(new ListMenu({
                         title: 'モンスター図鑑',
                         entries: rows,
-                        rect: { x: 300, y: 76, w: 580, h: 500 },
+                        rect: { x: 180, y: 76, w: 560, h: 500 },
                         rows: 13,
                         showDesc: true,
                     }));
@@ -744,7 +745,7 @@ export class TownScreen {
                             right: seen ? kindLabel(d.kind) : '',
                             badges: known ? [{ text: '知', color: RARITY_COLOR.r }] : undefined,
                             disabled: !seen,
-                            sprite: seen ? d.id : undefined,
+                            sprite: seen ? iconKeyForCatalog(d.id) : undefined,
                             desc: seen
                                 ? `${d.desc}\n買値 ${d.price} ギタン${known ? '　（知識あり）' : ''}`
                                 : 'まだ 手にしていない。',
@@ -754,7 +755,7 @@ export class TownScreen {
                         title: `道具図鑑　知識 ${KNOWABLE_ITEMS.filter((d) => knownIds.has(d.id)).length}`
                             + ` / ${KNOWABLE_ITEMS.length}`,
                         entries: rows,
-                        rect: { x: 300, y: 76, w: 580, h: 500 },
+                        rect: { x: 180, y: 76, w: 560, h: 500 },
                         rows: 13,
                         showDesc: true,
                     }));

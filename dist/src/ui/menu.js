@@ -7,7 +7,7 @@
 import { Cmd } from '../core/input.js';
 import { drawBadge, drawCursor, drawPanel, drawScrollArrow, drawText, drawTitlePlaque, ellipsize, fitRect, wrapText, } from './draw.js';
 import { UI, font } from './theme.js';
-import { drawIconKey } from './gfx/icons.js';
+import { drawIconKey, drawSpeciesAt, speciesFrame } from './gfx/icons.js';
 export const liveValue = (v) => (typeof v === 'function' ? v() : v);
 export class ListMenu {
     title;
@@ -160,6 +160,40 @@ export class ListMenu {
         drawText(g, `${this.cursor + 1} / ${this.entries.length}`, r.x + r.w - 20, r.y + 32, { size: 15, align: 'right', color: UI.textDim });
         if (this.showDesc)
             this.drawDesc(g);
+        const pid = this.current?.portrait;
+        if (pid)
+            this.drawPortrait(g, pid, liveValue(this.current?.label) ?? '', time);
+    }
+    /**
+     * 全身の絵の枠（一覧の右）。足元を枠の下に合わせ、枠に収まる一番大きな整数倍で描く。
+     * 枠の下には薄い光の台座を置き、絵が背景に溶けないようにする
+     */
+    drawPortrait(g, id, name, time) {
+        const r = this.rect;
+        const box = fitRect({ x: r.x + r.w + 12, y: r.y, w: 360, h: r.h });
+        drawPanel(g, box);
+        drawTitlePlaque(g, ellipsize(g, name, box.w - 80, 20), box.x + 14, box.y + 10);
+        const footX = box.x + box.w / 2;
+        const footY = box.y + box.h - 48;
+        g.save();
+        const glow = g.createRadialGradient(footX, footY, 4, footX, footY, 150);
+        glow.addColorStop(0, 'rgba(200,168,105,0.28)');
+        glow.addColorStop(1, 'rgba(200,168,105,0)');
+        g.fillStyle = glow;
+        g.fillRect(box.x + 8, box.y + 50, box.w - 16, box.h - 58);
+        g.fillStyle = 'rgba(0,0,0,0.35)';
+        g.beginPath();
+        g.ellipse(footX, footY, 60, 12, 0, 0, Math.PI * 2);
+        g.fill();
+        g.restore();
+        const f = speciesFrame(id);
+        if (f && f.bw > 0) {
+            const k = Math.max(1, Math.min(8, Math.floor(Math.min((box.w - 40) / f.bw, (box.h - 110) / f.bh))));
+            drawSpeciesAt(g, id, footX, footY, k, time);
+        }
+        else {
+            drawIconKey(g, id, footX, box.y + box.h / 2, 128, time);
+        }
     }
     drawDesc(g) {
         const entry = this.current;
