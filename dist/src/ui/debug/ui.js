@@ -1,5 +1,6 @@
 /**
  * 検証用：UI の部品を 1 画面に並べる。?scene=ui:kit
+ * 一時だけ出す部品（数字・告知の帯・階の札・黒帯・ボスの札）は ?scene=ui:widgets
  *
  * 枠・題の札・一覧・説明欄・確認・個数・方向・ゲージ・バッジを、
  * ダンジョンらしい暗い背景の上に置いて見比べる。
@@ -8,6 +9,7 @@ import { SCREEN_H, SCREEN_W, UI } from '../theme.js';
 import { drawBadge, drawBar, drawPanel, drawText, drawTitlePlaque, } from '../draw.js';
 import { ConfirmDialog, DirectionPicker, ListMenu, QuantityPicker } from '../menu.js';
 import { loadAllSprites } from '../spriteData.js';
+import { PopupLayer, drawBanner, drawBossTitle, drawFloorCard, drawLetterbox, } from '../ui2/widgets.js';
 function background(g) {
     // 暗い石畳（半透明の枠の透け具合を見るため）
     g.fillStyle = '#15121b';
@@ -23,7 +25,28 @@ function background(g) {
     g.arc(640, 360, 260, 0, Math.PI * 2);
     g.fill();
 }
-export function open(_spec, _params, canvas) {
+/** 一時だけ出す部品を、決まった時刻で止めて並べる（撮って見比べるため） */
+function widgets(g) {
+    background(g);
+    const popups = new PopupLayer();
+    // 画面の左上を原点、1 マス 48px として、マスの上に数字を置く
+    const samples = [
+        ['12', 'damage', 2, 3], ['8', 'damageToPlayer', 4, 3], ['37', 'crit', 6, 3],
+        ['+25', 'heal', 8, 3], ['MISS', 'miss', 10, 3], ['+18 EXP', 'exp', 12, 3],
+        ['LEVEL UP', 'levelUp', 15, 3], ['眠った', 'info', 19, 3],
+        ['5', 'damage', 23, 3], ['5', 'damage', 23, 3],
+    ];
+    // 全部を出してから 1 度だけ時間を進める（update は全部の数字を進めるので）
+    for (const [text, kind, tx, ty] of samples)
+        popups.spawn(text, kind, tx, ty);
+    popups.update(160);
+    popups.draw(g, 0, 0, 48);
+    drawBanner(g, 'モンスターハウスだ！', '部屋の 敵が 一斉に 目を覚ました', 900, 1800, 250);
+    drawFloorCard(g, '始まりの洞窟', 'B5F', 1, 640, 470);
+    drawLetterbox(g, 1);
+    drawBossTitle(g, '森の主', 'せせらぎの森の最深部', 1200);
+}
+export function open(spec, _params, canvas) {
     loadAllSprites();
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     canvas.width = SCREEN_W * dpr;
@@ -33,6 +56,11 @@ export function open(_spec, _params, canvas) {
     const g = canvas.getContext('2d');
     if (!g)
         return;
+    if (spec === 'ui:widgets') {
+        g.setTransform(dpr, 0, 0, dpr, 0, 0);
+        widgets(g);
+        return;
+    }
     const menu = new ListMenu({
         title: '持ち物　12 / 20',
         rect: { x: 40, y: 40, w: 520, h: 400 },
