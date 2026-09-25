@@ -8,6 +8,7 @@
  *   ?scene=art:lineup&tier=L           段を絞る
  *   ?scene=art:items                   道具の絵（全部の鍵。一覧の大きさでも並べる）
  *   ?scene=art:traps                   ワナの絵
+ *   ?scene=art:fx                      演出の絵（状態異常の飾り・矢・魔法の玉・火花・爆発）
  *
  * 付けられるもの：&scale=4（拡大率）&gray=1（明るさだけで見る）
  *
@@ -26,6 +27,10 @@ import { PAL_RGBA } from '../art/palette.js';
 import { ICON_SIZE, allIconKeys, buildIcon, iconKeyOf } from '../art/items.js';
 import { ALL_ITEMS, allTraps, tryGetItem } from '../../data/registry.js';
 import { buildTrapIcon } from '../art/traps.js';
+import {
+  ARROW_SIZE, BLAST_FRAMES, BLAST_SIZE, ORB_SIZE, ORN_SIZE, SPARK_FRAMES, SPARK_SIZE,
+  allOrnamentIds, buildArrow, buildExplosion, buildHitSpark, buildOrb, buildOrnament, ornamentOf,
+} from '../art/fxSprites.js';
 
 const BG_GREY = '#5a5f6e';
 const BG_DARK = '#14121c';
@@ -312,6 +317,71 @@ function trapsSheet(k: number, gray: boolean): void {
   });
 }
 
+/** 演出の絵：飾りは全コマ、矢は 8 方向、玉・火花・爆発は全コマ */
+function fxSheet(k: number, gray: boolean): void {
+  const ids = allOrnamentIds();
+  const rowH = ORN_SIZE * k + 22;
+  const height = 40 + ids.length * rowH + 3 * (BLAST_SIZE * k + 40) + 40;
+  const { g } = makeSheet(1400, height, BG_DARK);
+  let y = 10;
+  const orn = new PixBuf(ORN_SIZE, ORN_SIZE);
+  for (const id of ids) {
+    const spec = ornamentOf(id)!;
+    label(g, `${id} (${spec.anchor}, ${spec.fps}fps)`, 10, y + rowH / 2 - 8, '#e8d6a0', 12);
+    for (let f = 0; f < spec.frames; f++) {
+      buildOrnament(id, f, orn);
+      const x = 220 + f * (ORN_SIZE * k + 10);
+      g.fillStyle = '#4a4f5c';
+      g.fillRect(x, y, ORN_SIZE * k, ORN_SIZE * k);
+      blit(g, orn, x, y, k, gray);
+    }
+    y += rowH;
+  }
+  y += 10;
+  const arrow = new PixBuf(ARROW_SIZE, ARROW_SIZE);
+  label(g, 'arrow ×8', 10, y + 20, '#e8d6a0', 12);
+  for (let d = 0; d < 8; d++) {
+    buildArrow(d, d < 4 ? 'steel' : 'sky', arrow);
+    const x = 220 + d * (ARROW_SIZE * k + 10);
+    g.fillStyle = '#4a4f5c';
+    g.fillRect(x, y, ARROW_SIZE * k, ARROW_SIZE * k);
+    blit(g, arrow, x, y, k, gray);
+  }
+  y += ARROW_SIZE * k + 20;
+  const orb = new PixBuf(ORB_SIZE, ORB_SIZE);
+  label(g, 'orb', 10, y + 20, '#e8d6a0', 12);
+  (['violet', 'ember', 'sky', 'moss'] as const).forEach((ramp, r) => {
+    for (let f = 0; f < 4; f++) {
+      buildOrb(f, ramp, orb);
+      const x = 220 + (r * 4 + f) * (ORB_SIZE * k + 8);
+      g.fillStyle = '#26232f';
+      g.fillRect(x, y, ORB_SIZE * k, ORB_SIZE * k);
+      blit(g, orb, x, y, k, gray);
+    }
+  });
+  y += ORB_SIZE * k + 20;
+  const spark = new PixBuf(SPARK_SIZE, SPARK_SIZE);
+  label(g, 'hit spark', 10, y + 20, '#e8d6a0', 12);
+  for (let f = 0; f < SPARK_FRAMES; f++) {
+    buildHitSpark(f, spark);
+    const x = 220 + f * (SPARK_SIZE * k + 10);
+    g.fillStyle = '#26232f';
+    g.fillRect(x, y, SPARK_SIZE * k, SPARK_SIZE * k);
+    blit(g, spark, x, y, k, gray);
+  }
+  y += SPARK_SIZE * k + 20;
+  const blast = new PixBuf(BLAST_SIZE, BLAST_SIZE);
+  const kb = Math.max(2, k - 1);
+  label(g, 'explosion', 10, y + 20, '#e8d6a0', 12);
+  for (let f = 0; f < BLAST_FRAMES; f++) {
+    buildExplosion(f, blast);
+    const x = 220 + f * (BLAST_SIZE * kb + 10);
+    g.fillStyle = '#26232f';
+    g.fillRect(x, y, BLAST_SIZE * kb, BLAST_SIZE * kb);
+    blit(g, blast, x, y, kb, gray);
+  }
+}
+
 /** ?scene=art:… を開く */
 export function open(spec: string, params: URLSearchParams): void {
   const parts = spec.split(':');
@@ -335,6 +405,9 @@ export function open(spec: string, params: URLSearchParams): void {
       return;
     case 'traps':
       trapsSheet(k, gray);
+      return;
+    case 'fx':
+      fxSheet(k, gray);
       return;
     default: {
       const { g } = makeSheet(600, 60, BG_DARK);
