@@ -172,6 +172,11 @@ export class DungeonScene implements WorldScene {
     this.priceText.clear();
     this.tileVersion++;
     this.vfx.setFloorCard(this.world.dungeon.name, `B${run.depth}F`);
+    // この階に居る者のコマを先に焼く（初めて見えた瞬間に焼くと、そのフレームが引っかかる）
+    const ids = new Set<string>(['player']);
+    for (const m of run.monsters) ids.add(m.defId);
+    for (const a of run.allies) ids.add(a.defId);
+    this.prebake([...ids]);
   }
 
   /** 1 手進んだ後（pumpEvents から）：見える範囲と地形の変化を描画エンジンへ知らせる */

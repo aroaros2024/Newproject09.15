@@ -95,6 +95,11 @@ class Game implements App {
     this.wiped = true;
     // 検証の道具（tools/）が中を覗けるように。遊ぶ時の起動では出さない
     (window as unknown as { __game?: Game }).__game = this;
+    // &perf=1：描画エンジンの時間を測って window.__perf に出す（tools/perf.mjs が読む）
+    if (params.get('perf') === '1') {
+      this.compositor.perf.enabled = true;
+      this.compositor.perf.expose();
+    }
     this.town = defaultTown();
     this.town.unlocked = ['d1', 'd2', 'd3', 'd4', 'dl', 'exBring', 'ex', 'exPure'];
     this.town.cleared = ['d1', 'd2', 'd3', 'd4', 'dl', 'exBring', 'ex'];

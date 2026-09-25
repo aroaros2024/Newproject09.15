@@ -5,8 +5,8 @@
  *   node tools/perf.mjs --scenes "title,town,dungeon:d1:3&seed=5" --seconds 8 --q 2
  *
  * 場面を開いて数秒待ってから、決めた秒数のあいだフレームの間隔を集め、p50 / p95 / 最大と
- * 50ms を超えたフレームの数を出す。描画エンジンが window.__perf（gfx/perf.ts）を出していれば、
- * そちらの 1 フレームの描画時間（p50 / p95）も並べる。
+ * 50ms を超えたフレームの数を出す。ダンジョンの場面は &perf=1 を付けると描画エンジンが
+ * window.__perf（gfx/perf.ts）を出すので、1 フレームの描画時間（p50 / p95）も並べる。
  *
  * headless の Chromium はソフトウェアで描くので、実機より重く出る。
  * 数字そのものより「変更の前と後」「画質の段の差」を比べるのに使う。
@@ -87,19 +87,15 @@ try {
       });
       const perf = globalThis.__perf;
       let draw = null;
-      if (perf && typeof perf.snapshot === 'function') draw = perf.snapshot();
-      else if (perf && Array.isArray(perf.frames)) draw = perf.frames.slice();
+      if (perf && typeof perf.summary === 'function') {
+        const s = perf.summary();
+        draw = s && s.total ? { p50: s.total.p50, p95: s.total.p95 } : null;
+      }
       return { gaps, draw };
     }, seconds * 1000);
     const gaps = r.gaps.slice(1).sort((a, b) => a - b);
     const long = gaps.filter((g) => g > 50).length;
-    let drawCol = '-';
-    if (Array.isArray(r.draw) && r.draw.length > 0) {
-      const d = r.draw.map(Number).filter((v) => Number.isFinite(v)).sort((a, b) => a - b);
-      drawCol = `${f1(pct(d, 0.5))} / ${f1(pct(d, 0.95))}`;
-    } else if (r.draw && typeof r.draw === 'object') {
-      drawCol = JSON.stringify(r.draw).slice(0, 80);
-    }
+    const drawCol = r.draw && Number.isFinite(r.draw.p50) ? `${f1(r.draw.p50)} / ${f1(r.draw.p95)}` : '-';
     console.log(`${scene}\t${f1(pct(gaps, 0.5))} / ${f1(pct(gaps, 0.95))} / ${f1(gaps[gaps.length - 1] ?? 0)}\t${long}\t${drawCol}`);
   }
   await browser.close();
