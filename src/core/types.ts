@@ -599,7 +599,12 @@ export interface SpawnEntry {
   to: number;
 }
 
+/** 地形の絵の系統。ダンジョンの見た目はこれで描き分ける */
+export type ArtTheme = 'cave' | 'forest' | 'volcano' | 'waterway' | 'tower' | 'abyss';
+
 export interface DungeonTheme {
+  /** 地形の絵の系統（ドット絵・光・粒子・色調の組） */
+  art: ArtTheme;
   /** 壁の色 */
   wall: string;
   wallTop: string;
@@ -1089,6 +1094,12 @@ export interface Settings {
   colorAssist: boolean;
   /** 画面のゆれを無効にする */
   reduceMotion: boolean;
+  /** 画質 0=低 1=中 2=高。低いほど光・ぼかし・粒子を減らす */
+  gfxQuality: number;
+  /** 画面を整数倍でだけ拡大する（ドットの幅が完全に揃う代わりに余白が出る） */
+  pixelPerfect: boolean;
+  /** 被写界深度（画面の上下をぼかす） */
+  depthOfField: boolean;
 }
 
 /** 画面 */

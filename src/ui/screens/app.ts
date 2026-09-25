@@ -13,9 +13,22 @@ export interface Screen {
   readonly id: string;
   enter?(): void;
   exit?(): void;
+  /**
+   * 入力と論理。requestAnimationFrame ごとに 1 回。
+   * 押した瞬間の判定（justPressed）はここで読む。何回も呼ぶと 1 回の押下が
+   * 何回にも数えられてしまうので、固定刻みの側には置かない。
+   */
   update(dt: number, now: number): void;
+  /**
+   * 見た目の更新。固定 60Hz（1 回あたり stepMs = 1000/60）。
+   * 画面の更新頻度（60/120/144Hz）が違っても、動きの速さと粒子の軌跡が変わらない。
+   */
+  tick?(stepMs: number): void;
   draw(g: Ctx, now: number): void;
 }
+
+/** 見た目の固定刻み（ミリ秒） */
+export const TICK_MS = 1000 / 60;
 
 export interface App {
   readonly input: InputManager;

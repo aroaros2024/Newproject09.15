@@ -182,7 +182,13 @@ export class Rng {
 }
 
 /**
- * 演出・UI 用のシードなし乱数。
- * ゲームロジックには絶対に使わないこと（再現性が壊れる）。
+ * 演出・UI 専用の乱数。ゲームの乱数（world.rng）とは別の実体。
+ *
+ * ゲームロジックには絶対に使わないこと（リプレイの再現性が壊れる）。
+ * 逆に演出がゲームの乱数を読むと、画面の設定で結果が変わってしまう。
+ * 種を固定しているのは、検証用の場面を撮り直したときに同じ絵にするため。
  */
-export const fxRandom = (): number => Math.random();
+export const fxRng = new Rng('fx');
+
+/** 演出・UI 用の 0 以上 1 未満 */
+export const fxRandom = (): number => fxRng.float();

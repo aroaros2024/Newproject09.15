@@ -70,6 +70,7 @@ const trapTable = (depth, from = 1, exclude = []) => {
 // 見た目のテーマ
 // ---------------------------------------------------------------------------
 const THEME_CAVE = {
+    art: 'cave',
     wall: '#4a3b2e',
     wallTop: '#6d5744',
     floor: '#3d362c',
@@ -81,6 +82,7 @@ const THEME_CAVE = {
     accent: '#d8b06a',
 };
 const THEME_FOREST = {
+    art: 'forest',
     wall: '#2d5034',
     wallTop: '#47784e',
     floor: '#2c3f30',
@@ -92,6 +94,7 @@ const THEME_FOREST = {
     accent: '#8fd489',
 };
 const THEME_VOLCANO = {
+    art: 'volcano',
     wall: '#573024',
     wallTop: '#84492f',
     floor: '#432a20',
@@ -103,6 +106,7 @@ const THEME_VOLCANO = {
     accent: '#f0944c',
 };
 const THEME_WATERWAY = {
+    art: 'waterway',
     wall: '#2a3350',
     wallTop: '#3f4d72',
     floor: '#28304a',
@@ -114,6 +118,7 @@ const THEME_WATERWAY = {
     accent: '#84a2e4',
 };
 const THEME_TOWER = {
+    art: 'tower',
     wall: '#4e4c5c',
     wallTop: '#706e82',
     floor: '#413f4d',
@@ -125,6 +130,7 @@ const THEME_TOWER = {
     accent: '#efdc94',
 };
 const THEME_ABYSS = {
+    art: 'abyss',
     wall: '#3b2a48',
     wallTop: '#573a68',
     floor: '#2f2440',

@@ -38,6 +38,9 @@ export const DEFAULT_SETTINGS = {
     muted: false,
     colorAssist: false,
     reduceMotion: false,
+    gfxQuality: 2,
+    pixelPerfect: false,
+    depthOfField: true,
 };
 export function defaultTown(playerName = 'ナギ') {
     return {
@@ -406,6 +409,8 @@ export function loadSettings() {
     out.bgmVolume = clamp01(out.bgmVolume);
     out.messageSpeed = Math.max(0, Math.min(2, Math.floor(out.messageSpeed)));
     out.animSpeed = Math.max(0, Math.min(2, Math.floor(out.animSpeed)));
+    out.gfxQuality = Number.isFinite(out.gfxQuality)
+        ? Math.max(0, Math.min(2, Math.floor(out.gfxQuality))) : DEFAULT_SETTINGS.gfxQuality;
     return out;
 }
 const clamp01 = (v) => (Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0.5);

@@ -8,19 +8,20 @@
 import { audio } from './core/audio.js';
 import { input } from './core/input.js';
 import {
-  clearAll, clearRun, loadRun, loadSettings, loadTown, saveRun, saveSettings, saveTown,
-  loadReplay, saveReplay,
+  clearAll, clearRun, defaultTown, loadRun, loadSettings, loadTown, saveRun, saveSettings,
+  saveTown, loadReplay, saveReplay,
 } from './core/save.js';
+import { fxRng, Rng } from './core/rng.js';
 import type { ItemInstance, RunState, Settings, TownState } from './core/types.js';
 import { getDungeon, validateData } from './data/registry.js';
-import { attachFactories, startRun } from './game/run.js';
+import { attachFactories, enterFloor, startRun } from './game/run.js';
 import { finishRun } from './game/town.js';
 import { World } from './game/world.js';
 import { Recorder } from './game/recorder.js';
 import { MessageLog } from './ui/log.js';
 import { loadAllSprites } from './ui/spriteData.js';
 import { SCREEN_H, SCREEN_W } from './ui/theme.js';
-import { animScale, messageCps, type App, type Screen } from './ui/screens/app.js';
+import { TICK_MS, animScale, messageCps, type App, type Screen } from './ui/screens/app.js';
 import { DungeonScreen } from './ui/screens/dungeon.js';
 import { ResultScreen, type ResultData } from './ui/screens/result.js';
 import { TitleScreen } from './ui/screens/title.js';
@@ -72,6 +73,71 @@ class Game implements App {
     this.onResize();
 
     this.goTo(this.makeTitle());
+    this.running = true;
+    this.lastTime = performance.now();
+    requestAnimationFrame(this.frame);
+  }
+
+  /**
+   * 検証用の場面から始める。
+   *
+   *   dungeon:<ダンジョン>:<階>   &seed=N &spawn=id.id &reveal=1 &q=0|1|2 &gitan=N
+   *   town / title
+   *
+   * 記録は読み書きしない。演出の乱数は種を固定して、撮り直しても同じ絵にする。
+   */
+  startDebug(scene: string, params: URLSearchParams): void {
+    this.wiped = true;
+    this.town = defaultTown();
+    this.town.unlocked = ['d1', 'd2', 'd3', 'd4', 'dl', 'exBring', 'ex', 'exPure'];
+    this.town.cleared = ['d1', 'd2', 'd3', 'd4', 'dl', 'exBring', 'ex'];
+    this.town.gitan = Number(params.get('gitan') ?? 5000);
+    const q = params.get('q');
+    if (q !== null) this.settings.gfxQuality = Math.max(0, Math.min(2, Number(q) | 0));
+    fxRng.restore(new Rng(`scene:${scene}:${params.get('seed') ?? ''}`).serialize());
+
+    const errors = validateData();
+    if (errors.length > 0) throw new Error(`データ不整合:\n${errors.slice(0, 10).join('\n')}`);
+    this.loadSprites();
+    input.attach();
+    input.onFirstInput = () => audio.unlock();
+    this.applySettings();
+    window.addEventListener('resize', this.onResize);
+    this.onResize();
+
+    const parts = scene.split(':');
+    if (parts[0] === 'dungeon') {
+      const id = parts[1] ?? 'd1';
+      const depth = Math.max(1, Number(parts[2] ?? 1) | 0);
+      const seed = Number(params.get('seed') ?? 101) | 0;
+      const world = startRun(id, this.town, { seed, bring: [] });
+      if (depth > 1) enterFloor(world, Math.min(depth, world.dungeon.depth));
+      const p = world.player;
+      // 隣に敵を並べる（絵と演出を並べて見るため）
+      const spawn = (params.get('spawn') ?? '').split(/[.,]/).filter(Boolean);
+      const spots = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, 1], [1, -1], [-1, -1],
+        [2, 0], [-2, 0], [0, 2], [0, -2]];
+      let k = 0;
+      for (const defId of spawn) {
+        while (k < spots.length) {
+          const [dx, dy] = spots[k++];
+          const m = world.spawnAt?.(defId, { x: p.pos.x + dx, y: p.pos.y + dy });
+          if (m) {
+            m.asleep = params.get('awake') !== '1';
+            break;
+          }
+        }
+      }
+      if (params.get('reveal') === '1') {
+        for (const t of world.map.tiles) t.explored = true;
+      }
+      this.enterDungeon(world);
+      this.stopAutoSave();
+    } else if (parts[0] === 'town') {
+      this.goTo(this.makeTown());
+    } else {
+      this.goTo(this.makeTitle());
+    }
     this.running = true;
     this.lastTime = performance.now();
     requestAnimationFrame(this.frame);
@@ -267,15 +333,30 @@ class Game implements App {
     this.g.imageSmoothingEnabled = false;
   };
 
+  /** 固定刻みの貯金（ミリ秒） */
+  private tickAcc = 0;
+
   private frame = (now: number): void => {
     if (!this.running) return;
-    // タブが裏に回っていた間の巨大な dt でロジックが飛ばないよう上限を設ける
-    const dt = Math.min(64, now - this.lastTime);
+    const raw = Math.max(0, now - this.lastTime);
     this.lastTime = now;
+    // タブが裏に回っていた間の巨大な dt でロジックが飛ばないよう上限を設ける
+    const dt = Math.min(64, raw);
 
     input.beginFrame(now);
     try {
+      // 入力と論理は 1 フレームに 1 回（押した瞬間を 1 回だけ数えるため）
       this.current?.update(dt, now);
+      // 見た目は固定 60Hz。追いつくのは 5 回まで。それ以上遅れたら貯金を捨てる
+      // （裏から戻った直後に何百回も回して固まらないように）
+      this.tickAcc += Math.min(250, raw);
+      let n = 0;
+      while (this.tickAcc >= TICK_MS && n < 5) {
+        this.current?.tick?.(TICK_MS);
+        this.tickAcc -= TICK_MS;
+        n++;
+      }
+      if (n === 5) this.tickAcc = 0;
       this.g.save();
       this.g.setTransform(
         this.canvas.width / SCREEN_W, 0, 0, this.canvas.height / SCREEN_H, 0, 0,
@@ -317,10 +398,22 @@ class Game implements App {
 
 let game: Game | null = null;
 
-/** index.html から呼ばれる起動関数 */
+/**
+ * index.html から呼ばれる起動関数。
+ *
+ * URL に ?scene=… があれば、検証用の場面を直接開く（tools/shots.mjs が使う）。
+ * そのときはセーブを読み書きしない（手元の記録を壊さないため）。
+ */
 export function boot(canvas: HTMLCanvasElement): void {
+  const params = new URLSearchParams(window.location.search);
+  const scene = params.get('scene');
+  if (scene && scene.startsWith('art:')) {
+    void import('./ui/debug/scenes.js').then((m) => m.openArtScene(scene, params));
+    return;
+  }
   game = new Game(canvas);
-  game.start();
+  if (scene) game.startDebug(scene, params);
+  else game.start();
 }
 
 /** デバッグ用（コンソールから触れるように） */

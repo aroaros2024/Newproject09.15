@@ -92,6 +92,7 @@ const trapTable = (depth: number, from = 1, exclude: string[] = []): SpawnEntry[
 // ---------------------------------------------------------------------------
 
 const THEME_CAVE: DungeonTheme = {
+  art: 'cave',
   wall: '#4a3b2e',
   wallTop: '#6d5744',
   floor: '#3d362c',
@@ -103,6 +104,7 @@ const THEME_CAVE: DungeonTheme = {
   accent: '#d8b06a',
 };
 const THEME_FOREST: DungeonTheme = {
+  art: 'forest',
   wall: '#2d5034',
   wallTop: '#47784e',
   floor: '#2c3f30',
@@ -114,6 +116,7 @@ const THEME_FOREST: DungeonTheme = {
   accent: '#8fd489',
 };
 const THEME_VOLCANO: DungeonTheme = {
+  art: 'volcano',
   wall: '#573024',
   wallTop: '#84492f',
   floor: '#432a20',
@@ -125,6 +128,7 @@ const THEME_VOLCANO: DungeonTheme = {
   accent: '#f0944c',
 };
 const THEME_WATERWAY: DungeonTheme = {
+  art: 'waterway',
   wall: '#2a3350',
   wallTop: '#3f4d72',
   floor: '#28304a',
@@ -136,6 +140,7 @@ const THEME_WATERWAY: DungeonTheme = {
   accent: '#84a2e4',
 };
 const THEME_TOWER: DungeonTheme = {
+  art: 'tower',
   wall: '#4e4c5c',
   wallTop: '#706e82',
   floor: '#413f4d',
@@ -147,6 +152,7 @@ const THEME_TOWER: DungeonTheme = {
   accent: '#efdc94',
 };
 const THEME_ABYSS: DungeonTheme = {
+  art: 'abyss',
   wall: '#3b2a48',
   wallTop: '#573a68',
   floor: '#2f2440',
