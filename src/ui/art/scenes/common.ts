@@ -55,6 +55,8 @@ export interface Diorama {
   ambient: AmbientSpec[];
   /** 周辺減光の強さ（0〜1） */
   vignette: number;
+  /** 雨の強さ（0 = 降らない、1 = 本降り）。雨は描く側が画面の座標で細い線として描く */
+  rain: number;
 }
 
 /** 明るさの違い（夜 = 0、夕暮れ = 1） */

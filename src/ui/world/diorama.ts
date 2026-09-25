@@ -155,9 +155,46 @@ export class DioramaView {
     this.xf.offX = -ox3 * ART_SCALE - CROP_X;
     this.xf.offY = -CROP_Y;
     drawHDParticles(g, this.pool, this.xf, this.atlas);
+    if (this.d.rain > 0) this.drawRain(g, now);
     // 周辺減光
     g.drawImage(this.vignetteCanvas(), 0, 0);
     g.restore();
+  }
+
+  /**
+   * 雨。画面の座標で細い斜めの線を落とす（ドットではなく HD の層）。
+   * 粒の位置は番号のハッシュと時刻だけで決まるので、置き場も乱数も要らない
+   */
+  private drawRain(g: Ctx, now: number): void {
+    const n = Math.round(160 * this.d.rain);
+    g.fillStyle = 'rgba(8,12,22,0.22)';
+    g.fillRect(0, 0, 1280, 720);
+    g.strokeStyle = '#a8bcdc';
+    g.lineWidth = 1;
+    g.beginPath();
+    for (let i = 0; i < n; i++) {
+      const speed = 0.9 + hashFloat(i, 1, 77) * 0.6;
+      const len = 14 + hashFloat(i, 2, 77) * 18;
+      const y = (hashFloat(i, 3, 77) * 900 + now * speed) % 900 - 90;
+      const x = ((hashFloat(i, 4, 77) * 1500 - y * 0.18) % 1500 + 1500) % 1500 - 110;
+      g.moveTo(x, y);
+      g.lineTo(x - len * 0.18, y + len);
+    }
+    g.globalAlpha = 0.32;
+    g.stroke();
+    // 地面のはね（短い横線が一瞬だけ出る）
+    g.fillStyle = '#c4d4ee';
+    for (let i = 0; i < 26; i++) {
+      const phase = (now / 420 + hashFloat(i, 5, 77)) % 1;
+      if (phase > 0.25) continue;
+      g.globalAlpha = 0.5 * (1 - phase * 4);
+      const x = hashFloat(i, 6, 77) * 1280;
+      const y = 612 + hashFloat(i, 7, 77) * 100;
+      g.fillRect(x - 3, y, 7, 1);
+      g.fillRect(x - 1, y - 2, 1, 2);
+      g.fillRect(x + 2, y - 1, 1, 1);
+    }
+    g.globalAlpha = 1;
   }
 
   private drawStars(g: Ctx, now: number, ox: number): void {

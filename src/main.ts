@@ -133,6 +133,21 @@ class Game implements App {
       }
       this.enterDungeon(world);
       this.stopAutoSave();
+    } else if (parts[0] === 'result') {
+      // 結果の画面（背景と並びを見るため）。result:clear / result:death / result:escape
+      const kind = parts[1] === 'death' || parts[1] === 'escape' ? parts[1] : 'clear';
+      this.goTo(new ResultScreen(this, {
+        record: {
+          dungeonId: 'd1', dungeonName: '始まりの洞窟', depth: kind === 'clear' ? 10 : 6, level: 9,
+          turns: 1834, gitan: 2400, cause: kind === 'death' ? 'のらネズミに たおされた' : null,
+          cleared: kind === 'clear', at: 0,
+        },
+        kind,
+        rewardMessage: kind === 'clear' ? '踏破の しるしに 3,000 ギタンを もらった。' : null,
+        unlockedName: kind === 'clear' ? 'せせらぎの森' : null,
+        lost: kind === 'death' ? 7 : 0,
+        stats: { kills: 42, itemsFound: 23, gitanEarned: 2400, damageDealt: 1520, damageTaken: 610 },
+      }, () => this.goTo(this.makeTown())));
     } else if (parts[0] === 'town') {
       this.goTo(this.makeTown());
     } else {
@@ -410,7 +425,7 @@ export function boot(canvas: HTMLCanvasElement): void {
   // dungeon: / town / title 以外の「<名前>:…」は src/ui/debug/<名前>.ts の open() に任せる
   // （見本帳・描画エンジン・粒子・地形の検証場面。遊ぶときは読み込まれない）
   const prefix = scene?.match(/^([a-z]+):/)?.[1];
-  if (scene && prefix && prefix !== 'dungeon') {
+  if (scene && prefix && prefix !== 'dungeon' && prefix !== 'result') {
     void import(`./ui/debug/${prefix}.js`)
       .then((m: { open(spec: string, p: URLSearchParams, c: HTMLCanvasElement): void }) =>
         m.open(scene, params, canvas));

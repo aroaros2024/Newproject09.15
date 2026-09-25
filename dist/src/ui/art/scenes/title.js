@@ -117,13 +117,17 @@ function near(b) {
     hline(b, 10, 220, 172, ci('ink', 1));
     hline(b, 10, 228, 172, ci('ink', 0));
 }
-/** タイトルの背景を組み立てる（呼ぶたびに同じ絵） */
-export function buildTitleDiorama() {
+/**
+ * タイトルの背景を組み立てる（呼ぶたびに同じ絵）。
+ * rain なら雨の夜（月も星も雲に隠れる。倒れた時の結果画面に使う）
+ */
+export function buildTitleDiorama(o = {}) {
     const lights = [];
     const stars = [];
     const L = () => new PixBuf(DIORAMA_W, DIORAMA_H);
     const l0 = L();
-    sky(l0, stars);
+    if (!o.rain)
+        sky(l0, stars);
     const l1 = L();
     far(l1, lights);
     const l2 = L();
@@ -132,10 +136,18 @@ export function buildTitleDiorama() {
     const windmill = village(l3, lights);
     const l4 = L();
     near(l4);
+    // 雨の夜は塔の輪も雲に霞む
+    if (o.rain)
+        for (const l of lights)
+            if (l.layer === 1)
+                l.intensity *= 0.4;
     // 月の光
-    lights.push({ x: 74, y: 44, radius: 70, color: '#cfd8ff', intensity: 0.35, layer: 0, flicker: false });
+    if (!o.rain)
+        lights.push({ x: 74, y: 44, radius: 70, color: '#cfd8ff', intensity: 0.35, layer: 0, flicker: false });
     return {
-        sky: [[0, '#0d0b26'], [0.35, '#1a1850'], [0.62, '#15306a'], [0.8, '#2f4a6e']],
+        sky: o.rain
+            ? [[0, '#07090f'], [0.4, '#121826'], [0.75, '#1f2836']]
+            : [[0, '#0d0b26'], [0.35, '#1a1850'], [0.62, '#15306a'], [0.8, '#2f4a6e']],
         layers: [
             { buf: l0, parallax: 0.1, blur: 0 },
             { buf: l1, parallax: 0.25, blur: 1 },
@@ -146,8 +158,9 @@ export function buildTitleDiorama() {
         lights,
         stars,
         windmill,
-        ambient: [LEAVES, FIREFLIES],
-        vignette: 0.6,
+        ambient: o.rain ? [] : [LEAVES, FIREFLIES],
+        vignette: o.rain ? 0.7 : 0.6,
+        rain: o.rain ? 1 : 0,
     };
 }
 //# sourceMappingURL=title.js.map

@@ -7,6 +7,9 @@ import type { AdventureRecord } from '../../core/types.js';
 import { loadReplay } from '../../core/save.js';
 import { copyPlayLog } from '../clipboard.js';
 import { type Ctx, drawPanel, drawText } from '../draw.js';
+import { buildTitleDiorama } from '../art/scenes/title.js';
+import { buildTownDiorama } from '../art/scenes/town.js';
+import { DioramaView } from '../world/diorama.js';
 import { SCREEN_H, SCREEN_W, UI } from '../theme.js';
 import type { App, Screen } from './app.js';
 
@@ -33,12 +36,18 @@ export class ResultScreen implements Screen {
   private t = 0;
   /** プレイログをコピーしたときの知らせ */
   private notice = '';
+  /** 背景：踏破 = 明け方の村、生還 = 夕暮れの村、倒れた = 雨の夜 */
+  private view: DioramaView | null = null;
 
   constructor(private app: App, private data: ResultData, private onClose: () => void) {}
 
   enter(): void {
     this.app.audio.playBgm(this.data.kind === 'clear' ? 'result' : null);
     if (this.data.kind === 'clear') this.app.audio.play('fanfare');
+  }
+
+  tick(stepMs: number): void {
+    this.view?.tick(stepMs / 1000);
   }
 
   update(dt: number): void {
@@ -72,16 +81,14 @@ export class ResultScreen implements Screen {
     const d = this.data;
     const clear = d.kind === 'clear';
 
-    const grad = g.createLinearGradient(0, 0, 0, SCREEN_H);
-    if (clear) {
-      grad.addColorStop(0, '#1a1508');
-      grad.addColorStop(1, '#070608');
-    } else {
-      grad.addColorStop(0, '#12070a');
-      grad.addColorStop(1, '#050408');
+    if (!this.view) {
+      this.view = new DioramaView(clear ? buildTownDiorama('dawn')
+        : d.kind === 'escape' ? buildTownDiorama('dusk') : buildTitleDiorama({ rain: true }));
     }
-    g.fillStyle = grad;
+    this.view.camX = 10 + Math.sin(now / 15000) * 10;
+    g.fillStyle = '#07070e';
     g.fillRect(0, 0, SCREEN_W, SCREEN_H);
+    this.view.draw(g, now);
 
     const title = clear ? 'ダンジョン 踏破！'
       : d.kind === 'escape' ? '村へ 生還した' : 'ちからつきた……';
@@ -94,9 +101,6 @@ export class ResultScreen implements Screen {
       outline: '#0b1020', outlineWidth: 8,
     });
     g.restore();
-
-    const r = { x: SCREEN_W / 2 - 340, y: 190, w: 680, h: 380 };
-    drawPanel(g, r);
 
     const rows: Array<[string, string]> = [
       ['ダンジョン', d.record.dungeonName],
@@ -111,6 +115,9 @@ export class ResultScreen implements Screen {
     ];
     if (!clear && d.record.cause) rows.push(['最期', d.record.cause]);
     if (d.lost > 0) rows.push(['失った道具', `${d.lost} 個`]);
+    // 行の数に合わせて枠の高さを決める（最期・失った道具が付くと 2 行増える）
+    const r = { x: SCREEN_W / 2 - 340, y: 176, w: 680, h: 44 + rows.length * 32 };
+    drawPanel(g, r);
 
     rows.forEach(([label, value], i) => {
       const y = r.y + 54 + i * 32;
@@ -121,6 +128,16 @@ export class ResultScreen implements Screen {
     });
 
     let y = r.y + r.h + 34;
+    const extra = (d.rewardMessage ? 1 : 0) + (d.unlockedName ? 1 : 0);
+    if (extra > 0 && this.t > 1400) {
+      // 背景の灯りに文字が埋もれないよう、薄い紺の帯を敷く
+      const band = g.createLinearGradient(SCREEN_W / 2 - 360, 0, SCREEN_W / 2 + 360, 0);
+      band.addColorStop(0, 'rgba(11,16,32,0)');
+      band.addColorStop(0.5, 'rgba(11,16,32,0.72)');
+      band.addColorStop(1, 'rgba(11,16,32,0)');
+      g.fillStyle = band;
+      g.fillRect(SCREEN_W / 2 - 360, y - 24, 720, extra * 30 + 14);
+    }
     if (d.rewardMessage && this.t > 1400) {
       drawText(g, d.rewardMessage, SCREEN_W / 2, y, {
         size: 19, align: 'center', color: UI.good,

@@ -26,6 +26,11 @@ const FLUFF: AmbientSpec = {
   name: '綿毛', region: 'view', cap: 24, rate: 4, life: [6, 10], ramp: RAMP_GOLD, glow: null,
   size: 1, flow: 1.8, gravity: -1,
 };
+/** 明け方に昇る金の粒（踏破の結果画面） */
+const GOLD_MOTES: AmbientSpec = {
+  name: '金の粒', region: 'view', cap: 30, rate: 6, life: [4, 8], ramp: null, glow: '#ffe7a0',
+  size: 2, flow: 1.2, gravity: -6, blink: true, emissive: true,
+};
 /** 木の葉 */
 const LEAVES: AmbientSpec = {
   name: '葉', region: 'view', cap: 16, rate: 3, life: [5, 9], ramp: RAMP_HEAL, glow: null,
@@ -203,8 +208,12 @@ function near(b: PixBuf): void {
   }
 }
 
-/** 村の背景を組み立てる（呼ぶたびに同じ絵） */
-export function buildTownDiorama(): Diorama {
+/**
+ * 村の背景を組み立てる（呼ぶたびに同じ絵）。
+ * dusk = 夕暮れ（村の画面）、dawn = 明け方（踏破した時の結果画面。金の粒が昇る）
+ */
+export function buildTownDiorama(time: 'dusk' | 'dawn' = 'dusk'): Diorama {
+  const dawn = time === 'dawn';
   const lights: DioramaLight[] = [];
   const L = (): PixBuf => new PixBuf(DIORAMA_W, DIORAMA_H);
   const l0 = L();
@@ -217,10 +226,14 @@ export function buildTownDiorama(): Diorama {
   const windmill = plaza(l3, lights);
   const l4 = L();
   near(l4);
-  // 沈む日の名残り（左の低い所。メニューの奥から差す）
-  lights.push({ x: 90, y: 150, radius: 110, color: '#ffb070', intensity: 0.45, layer: 0, flicker: false });
+  // 沈む日の名残り（左の低い所。メニューの奥から差す）／明け方は右の塔の向こうから
+  lights.push(dawn
+    ? { x: 330, y: 150, radius: 120, color: '#ffe0a0', intensity: 0.5, layer: 0, flicker: false }
+    : { x: 90, y: 150, radius: 110, color: '#ffb070', intensity: 0.45, layer: 0, flicker: false });
   return {
-    sky: [[0, '#2b2f66'], [0.3, '#5d4684'], [0.55, '#c9727a'], [0.72, '#f0a868'], [0.85, '#f6cf8a']],
+    sky: dawn
+      ? [[0, '#34406e'], [0.3, '#7d7aa8'], [0.55, '#e6b4a0'], [0.72, '#f8d7a4'], [0.85, '#fdeac0']]
+      : [[0, '#2b2f66'], [0.3, '#5d4684'], [0.55, '#c9727a'], [0.72, '#f0a868'], [0.85, '#f6cf8a']],
     layers: [
       { buf: l0, parallax: 0.12, blur: 0 },
       { buf: l1, parallax: 0.3, blur: 1 },
@@ -231,7 +244,8 @@ export function buildTownDiorama(): Diorama {
     lights,
     stars: [],
     windmill,
-    ambient: [FLUFF, LEAVES],
+    ambient: dawn ? [GOLD_MOTES, FLUFF] : [FLUFF, LEAVES],
     vignette: 0.45,
+    rain: 0,
   };
 }
