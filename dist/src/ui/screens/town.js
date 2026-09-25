@@ -8,6 +8,8 @@ import { loadReplay } from '../../core/save.js';
 import { copyPlayLog } from '../clipboard.js';
 import { ALL_ITEMS, allMonsters, getDungeon, getItem, tryGetRune } from '../../data/registry.js';
 import { iconKeyForCatalog } from '../art/items.js';
+import { buildTownDiorama } from '../art/scenes/town.js';
+import { DioramaView } from '../world/diorama.js';
 import { SMITH_PRICE, buyFromTown, dungeonList, meltCharm, inventoryLimitFor, storageLimit, depositGitan, sellToTown, shopStock, smithEmbed, smithReforge, smithTemper, smithUncurse, sortStorage, storageFull, townIdentify, wearCharm, withdrawGitan, withdrawItem, } from '../../game/town.js';
 import { itemDetail, itemName, kindLabel } from '../../game/naming.js';
 import { collectionRate } from '../../game/town.js';
@@ -32,6 +34,8 @@ export class TownScreen {
     onTitle;
     id = 'town';
     menus = new MenuStack();
+    /** 背景のジオラマ（初めて描く時に作る） */
+    view = null;
     dialog = null;
     qty = null;
     place = 'plaza';
@@ -1306,48 +1310,23 @@ export class TownScreen {
         if (this.menus.depth === 0)
             this.openPlaza();
     }
+    tick(stepMs) {
+        this.view?.tick(stepMs / 1000);
+    }
     draw(g, now) {
-        // 背景: 夜の村
-        const grad = g.createLinearGradient(0, 0, 0, SCREEN_H);
-        grad.addColorStop(0, '#0d1018');
-        grad.addColorStop(0.55, '#141a24');
-        grad.addColorStop(1, '#1b1410');
-        g.fillStyle = grad;
+        // 背景：夕暮れの広場（ゆっくり横へ流す）
+        if (!this.view)
+            this.view = new DioramaView(buildTownDiorama());
+        this.view.camX = 12 + Math.sin(now / 16000) * 12;
+        g.fillStyle = '#1a1420';
         g.fillRect(0, 0, SCREEN_W, SCREEN_H);
-        // 遠くの塔
-        g.save();
-        g.fillStyle = '#0a0c12';
-        g.fillRect(SCREEN_W - 260, 120, 70, SCREEN_H - 300);
-        g.beginPath();
-        g.moveTo(SCREEN_W - 270, 120);
-        g.lineTo(SCREEN_W - 225, 40);
-        g.lineTo(SCREEN_W - 180, 120);
-        g.closePath();
-        g.fill();
-        g.fillStyle = 'rgba(205,187,122,0.35)';
-        for (let i = 0; i < 5; i++) {
-            g.fillRect(SCREEN_W - 248, 170 + i * 80, 12, 16);
-        }
-        g.restore();
-        // 家々の灯り
-        g.save();
-        for (let i = 0; i < 6; i++) {
-            const x = 60 + i * 180;
-            const y = SCREEN_H - 200 - (i % 2) * 40;
-            g.fillStyle = '#161219';
-            g.fillRect(x, y, 130, 150);
-            g.fillStyle = '#231a20';
-            g.beginPath();
-            g.moveTo(x - 12, y);
-            g.lineTo(x + 65, y - 46);
-            g.lineTo(x + 142, y);
-            g.closePath();
-            g.fill();
-            const flicker = 0.55 + 0.12 * Math.sin(now / 420 + i * 1.7);
-            g.fillStyle = `rgba(255,200,110,${flicker.toFixed(2)})`;
-            g.fillRect(x + 42, y + 40, 44, 40);
-        }
-        g.restore();
+        this.view.draw(g, now);
+        // メニューの並ぶ左側を少し暗くして、枠の外の文字（見出し・所持ギタン）を読みやすく
+        const shade = g.createLinearGradient(0, 0, 560, 0);
+        shade.addColorStop(0, 'rgba(10,12,28,0.55)');
+        shade.addColorStop(1, 'rgba(10,12,28,0)');
+        g.fillStyle = shade;
+        g.fillRect(0, 0, 560, SCREEN_H);
         drawText(g, '風の村', 56, 62, {
             size: 40, bold: true, family: 'serif', spacing: 4, color: '#e8d6a0',
             outline: '#0b1020', outlineWidth: 6,

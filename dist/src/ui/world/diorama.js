@@ -7,26 +7,15 @@
  *
  * 位置の揺らぎと瞬きは時刻と座標のハッシュだけで決める。ゲームの乱数は使わない。
  */
-import { RAMP_HEAL } from '../art/palette.js';
 import { PixBuf } from '../art/pixbuf.js';
 import { hashFloat } from '../art/hash.js';
-import { WINDMILL_FRAMES, WINDMILL_SIZE, buildWindmillBlades } from '../art/scenes/title.js';
+import { WINDMILL_FRAMES, WINDMILL_SIZE, buildWindmillBlades, } from '../art/scenes/common.js';
 import { Rng } from '../../core/rng.js';
 import { CURL_GRID_DIORAMA, CurlField } from '../gfx-core/curl.js';
 import { ParticlePool } from '../gfx-core/particles.js';
 import { drawHDParticles, drawPixelParticles, makeHDAtlas, } from '../gfx/particlesDraw.js';
 import { ctx2d, makeCanvas, pixBufToCanvas } from '../gfx/canvas.js';
 import { ART_H, ART_SCALE, ART_W, CROP_X, CROP_Y } from '../gfx/view.js';
-/** 夜風に舞う葉（ドットの粒） */
-const LEAVES = {
-    name: '葉', region: 'view', cap: 28, rate: 5, life: [5, 9], ramp: RAMP_HEAL, glow: null,
-    size: 1, flow: 1.6, gravity: 5,
-};
-/** 灯籠のまわりの蛍（HD の粒・明滅） */
-const FIREFLIES = {
-    name: '蛍', region: 'torch', cap: 14, rate: 3, life: [4, 8], ramp: null, glow: '#e8f09a',
-    size: 2, flow: 0.9, gravity: -2, blink: true, emissive: true,
-};
 const glowCache = new Map();
 /** 柔らかい光の玉（加算で重ねる）。色ごとに 1 枚だけ焼く */
 function glowSprite(color) {
@@ -73,10 +62,12 @@ export class DioramaView {
             }
             this.layers.push({ sharp, soft, shrink, parallax: l.parallax, blur: l.blur });
         }
-        const b = new PixBuf(WINDMILL_SIZE, WINDMILL_SIZE);
-        for (let f = 0; f < WINDMILL_FRAMES; f++) {
-            buildWindmillBlades(f, b);
-            this.blades.push(pixBufToCanvas(b));
+        if (d.windmill) {
+            const b = new PixBuf(WINDMILL_SIZE, WINDMILL_SIZE);
+            for (let f = 0; f < WINDMILL_FRAMES; f++) {
+                buildWindmillBlades(f, b);
+                this.blades.push(pixBufToCanvas(b));
+            }
         }
         this.pool = new ParticlePool(512, new Rng('fx:diorama'));
         this.atlas = makeHDAtlas();
@@ -88,13 +79,13 @@ export class DioramaView {
                 out[1] = l.y + (r.float() - 0.5) * 20;
                 return true;
             }
-            // 葉は上の方から生まれて、渦に巻かれながら落ちる
+            // 画面の上の方から生まれて、渦に巻かれながら流れる
             out[0] = r.float() * 440;
             out[1] = 20 + r.float() * 140;
             return true;
         };
-        this.pool.addAmbient(LEAVES, spawn);
-        this.pool.addAmbient(FIREFLIES, spawn);
+        for (const a of d.ambient)
+            this.pool.addAmbient(a, spawn);
         this.pool.prewarm(this.field, 6);
     }
     /** 60Hz の刻み */
@@ -172,11 +163,14 @@ export class DioramaView {
         g.globalAlpha = 1;
     }
     drawBlades(g, now, ox) {
+        const hub = this.d.windmill;
+        if (!hub)
+            return;
         const f = Math.floor(now / 220) % WINDMILL_FRAMES;
         const c = this.blades[f];
         const half = (WINDMILL_SIZE - 1) / 2;
         g.imageSmoothingEnabled = false;
-        g.drawImage(c, (this.d.windmill.x - half - ox) * ART_SCALE - CROP_X, (this.d.windmill.y - half) * ART_SCALE - CROP_Y, WINDMILL_SIZE * ART_SCALE, WINDMILL_SIZE * ART_SCALE);
+        g.drawImage(c, (hub.x - half - ox) * ART_SCALE - CROP_X, (hub.y - half) * ART_SCALE - CROP_Y, WINDMILL_SIZE * ART_SCALE, WINDMILL_SIZE * ART_SCALE);
     }
     /** 空（なめらかなグラデーション。縦 1 列を焼いて横へ伸ばす） */
     skyGradient() {
@@ -199,7 +193,7 @@ export class DioramaView {
         const g = ctx2d(c);
         const grad = g.createRadialGradient(640, 330, 260, 640, 360, 820);
         grad.addColorStop(0, 'rgba(5,6,16,0)');
-        grad.addColorStop(1, 'rgba(5,6,16,0.6)');
+        grad.addColorStop(1, `rgba(5,6,16,${this.d.vignette.toFixed(2)})`);
         g.fillStyle = grad;
         g.fillRect(0, 0, 1280, 720);
         this.vignette = c;
