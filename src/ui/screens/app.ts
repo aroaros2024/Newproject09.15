@@ -8,6 +8,7 @@ import type { AudioEngine } from '../../core/audio.js';
 import type { Ctx } from '../draw.js';
 import type { Recorder } from '../../game/recorder.js';
 import type { MessageLog } from '../log.js';
+import type { Compositor } from '../gfx/compositor.js';
 
 export interface Screen {
   readonly id: string;
@@ -36,6 +37,8 @@ export interface App {
   readonly log: MessageLog;
   /** プレイログの記録。冒険の外では中身が空のこともある */
   readonly recorder: Recorder;
+  /** 描画エンジン（ダンジョンの場面の合成） */
+  readonly compositor: Compositor;
   settings: Settings;
   town: TownState;
   /** 画面を切り替える */

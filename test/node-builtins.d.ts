@@ -49,6 +49,13 @@ declare module 'node:assert/strict' {
   export default assert;
 }
 
+/** 源のファイルを読むテスト（禁止語の検査）が使う分だけ */
+declare module 'node:fs' {
+  export function readFileSync(path: string, encoding: 'utf8'): string;
+  export function readdirSync(path: string): string[];
+  export function statSync(path: string): { isDirectory(): boolean };
+}
+
 declare module 'node:assert' {
   export { default } from 'node:assert/strict';
 }

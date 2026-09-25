@@ -17,6 +17,9 @@ import { MessageLog } from './ui/log.js';
 import { loadAllSprites } from './ui/spriteData.js';
 import { SCREEN_H, SCREEN_W } from './ui/theme.js';
 import { TICK_MS, animScale, messageCps } from './ui/screens/app.js';
+// 絵の描き手（主人公・敵・地形・道具）を登録する。ここで読み込まないと旧い絵に落ちる
+import './ui/art/index.js';
+import { Compositor } from './ui/gfx/compositor.js';
 import { DungeonScreen } from './ui/screens/dungeon.js';
 import { ResultScreen } from './ui/screens/result.js';
 import { TitleScreen } from './ui/screens/title.js';
@@ -29,6 +32,8 @@ class Game {
     settings;
     town;
     current = null;
+    /** 描画エンジン（ダンジョンの場面を合成する）。画質とキャンバスの大きさはここで決める */
+    compositor = new Compositor(2);
     canvas;
     g;
     lastTime = 0;
@@ -281,6 +286,11 @@ class Game {
         });
         this.log.cps = messageCps(this.settings.messageSpeed);
         input.numpadOnlyDiagonal = !this.settings.diagonalFree;
+        this.compositor.setQuality(this.settings.gfxQuality);
+        this.compositor.dofEnabled = this.settings.depthOfField;
+        // 整数倍の表示を切り替えたら、キャンバスの大きさを決め直す
+        if (this.running)
+            this.onResize();
         this.dungeonScreen?.applySettings();
         void animScale;
     }
@@ -302,16 +312,10 @@ class Game {
     wiped = false;
     // ------------------------------------------------------------ ループ
     onResize = () => {
-        const dpr = Math.min(2, window.devicePixelRatio || 1);
-        const availW = window.innerWidth;
-        const availH = window.innerHeight;
-        // 論理解像度を保ったまま、画面に収まる最大の倍率で拡大する
-        const scale = Math.min(availW / SCREEN_W, availH / SCREEN_H);
-        this.canvas.style.width = `${Math.floor(SCREEN_W * scale)}px`;
-        this.canvas.style.height = `${Math.floor(SCREEN_H * scale)}px`;
-        this.canvas.width = Math.floor(SCREEN_W * dpr);
-        this.canvas.height = Math.floor(SCREEN_H * dpr);
-        this.g.setTransform(dpr, 0, 0, dpr, 0, 0);
+        // 16:9 を保って収まる最大の大きさ。実画素は CSS の大きさ × 画素密度に合わせる
+        // （1280×720 のまま CSS で伸ばすと、ドットの幅がばらついて揺れる）。
+        // 整数倍の設定なら、実画素が 1280×720 のちょうど n 倍になる大きさにする
+        this.compositor.resize(this.canvas, window.innerWidth, window.innerHeight, window.devicePixelRatio || 1, this.settings.pixelPerfect);
         this.g.imageSmoothingEnabled = false;
     };
     /** 固定刻みの貯金（ミリ秒） */

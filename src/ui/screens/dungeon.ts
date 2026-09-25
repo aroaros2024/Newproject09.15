@@ -25,15 +25,14 @@ import { onStairs, restTurns, stepTurn, whyCannotRest } from '../../game/turn.js
 import type { World } from '../../game/world.js';
 import { copyPlayLog } from '../clipboard.js';
 import { type Ctx, drawText, drawOverlay } from '../draw.js';
-import { Camera, DungeonRenderer } from '../renderer.js';
-import { FxSystem } from '../fx.js';
+import { DungeonScene } from '../world/dungeonScene.js';
 import { Hud } from '../hud.js';
 import {
   ConfirmDialog, DirectionPicker, ListMenu, MenuStack, QuantityPicker, type MenuEntry,
 } from '../menu.js';
 import { drawFullMap, drawMinimap, nextMinimapMode, type MinimapMode } from '../minimap.js';
 import { iconKeyOf } from '../art/items.js';
-import { MENU_LAYOUT, SCREEN_H, SCREEN_W, TILE, UI } from '../theme.js';
+import { MENU_LAYOUT, SCREEN_H, SCREEN_W, UI } from '../theme.js';
 import { animScale, messageCps, type App, type Screen } from './app.js';
 import { drawHelp } from './help.js';
 
@@ -54,10 +53,11 @@ function isThrowable(def: { kind: string; throwEffect?: string }): boolean {
 export class DungeonScreen implements Screen {
   readonly id = 'dungeon';
 
-  private renderer = new DungeonRenderer();
-  private camera = new Camera();
-  private fx = new FxSystem();
+  /** 描画エンジンに渡す場面（見た目の台帳・演出・地形・粒子） */
+  private scene: DungeonScene;
   private hud = new Hud();
+  /** 主人公の画面の位置（案内の札・方向の選択）。使い回す */
+  private readonly playerPx = { x: 0, y: 0 };
   private menus = new MenuStack();
 
   private dialog: ConfirmDialog | null = null;
@@ -79,22 +79,25 @@ export class DungeonScreen implements Screen {
     public world: World,
     private onFinish: (kind: 'clear' | 'death' | 'escape', reason: string) => void,
     private onSuspend: () => void,
-  ) {}
+  ) {
+    this.scene = new DungeonScene(world, (id) => this.app.audio.play(id as never));
+  }
 
   enter(): void {
+    this.scene.reset(this.world);
     this.applySettings();
-    this.camera.setTarget(this.world.player.pos, this.world.map, SCREEN_W, SCREEN_H);
-    this.camera.snap();
     this.lastDepth = this.world.run.depth;
-    this.renderer.invalidateTerrain();
     this.pumpEvents();
+    this.scene.onTurn();
     this.app.audio.playBgm(this.world.dungeon.bgm as never);
   }
 
   applySettings(): void {
     const s = this.app.settings;
-    this.fx.speedScale = animScale(s.animSpeed);
-    this.fx.reduceMotion = s.reduceMotion;
+    this.scene.vw.speedScale = animScale(s.animSpeed);
+    this.scene.vw.reduceMotion = s.reduceMotion;
+    this.scene.vfx.reduceMotion = s.reduceMotion;
+    this.scene.ambientScale = [0.25, 0.55, 1][s.gfxQuality] ?? 1;
     this.app.log.cps = messageCps(s.messageSpeed);
     this.app.input.numpadOnlyDiagonal = !s.diagonalFree;
   }
@@ -105,27 +108,19 @@ export class DungeonScreen implements Screen {
     this.time = now;
     const world = this.world;
 
-    // フロアが変わったら地形のキャッシュを捨ててカメラを飛ばす
+    // フロアが変わったら方向キーを離すまで歩かせない（地形の絵とカメラは場面が作り直す）
     if (world.run.depth !== this.lastDepth) {
       this.lastDepth = world.run.depth;
-      this.renderer.invalidateTerrain();
-      this.camera.setTarget(world.player.pos, world.map, SCREEN_W, SCREEN_H);
-      this.camera.snap();
-      // ここで fx.reset() を呼ぶと、floorChange を処理した時に張られた
-      // モンスターハウス／ボスのバナーと入力ロックまで消えてしまう。
-      // 演出のリセットは fx 側が floorChange を受け取った時に済んでいる
       this.app.input.latchDirection();
     }
 
     this.app.log.update(dt);
-    this.fx.update(dt, this.actorPositions());
-    this.camera.setTarget(world.player.pos, world.map, SCREEN_W, SCREEN_H);
-    this.camera.update(dt);
-    this.hud.update(world.player, dt);
+    const p = world.player;
+    this.hud.update(p, dt, this.scene.vw.shownHp(p.id, p.hp, p.maxHp));
     if (this.dashCooldown > 0) this.dashCooldown -= dt;
 
     if (world.finished) {
-      if (!this.fx.isHolding()) {
+      if (!this.scene.vw.isHolding()) {
         const f = world.finished;
         clearRun();
         this.onFinish(f.kind, f.reason);
@@ -136,19 +131,19 @@ export class DungeonScreen implements Screen {
     this.handleInput(dt);
   }
 
-  private actorPositions(): Map<number, { x: number; y: number }> {
-    const m = new Map<number, { x: number; y: number }>();
-    for (const a of this.world.allActors()) {
-      if (a.alive) m.set(a.id, a.pos);
-    }
-    return m;
+  /** 見た目の固定刻み（60Hz）：台帳・演出・粒子・カメラ */
+  tick(stepMs: number): void {
+    this.scene.tick(stepMs, this.world);
   }
 
   /** ロジックが積んだイベントを演出とログへ流す */
   private pumpEvents(): void {
     const events = this.world.drainEvents();
     if (events.length === 0) return;
-    for (const e of events) {
+    // 見た目の台帳へ渡す。効果音は当たりの瞬間に場面が鳴らすので、ここではログと音楽だけ
+    const now = this.scene.vw.ingest(events, this.world);
+    this.scene.onTurn();
+    for (const e of now) {
       if (e.t === 'message') {
         this.app.log.add(e.text, e.style ?? 'normal', this.time);
         // プレイログにはターン番号と階を添えて残す。画面のログには時刻しか無く、
@@ -156,13 +151,10 @@ export class DungeonScreen implements Screen {
         this.app.recorder.line(
           this.world.run.totalTurn, this.world.run.depth, e.text, e.style ?? 'normal',
         );
-      } else if (e.t === 'sfx') {
-        this.app.audio.play(e.name as never);
       } else if (e.t === 'bgm') {
         this.app.audio.playBgm(e.track as never);
       }
     }
-    this.fx.consume(events, (id) => this.world.actorById(id)?.pos ?? null);
     // 被弾したらダッシュと連続移動を止める
     if (events.some((e) => e.t === 'damage' && e.actorId === this.world.player.id)) {
       this.dashDir = null;
@@ -172,7 +164,6 @@ export class DungeonScreen implements Screen {
       this.dashDir = null;
       this.app.input.latchDirection();
     }
-    this.fx.prune(new Set(this.world.allActors().map((a) => a.id)));
   }
 
   /** プレイログをクリップボードへ */
@@ -198,6 +189,7 @@ export class DungeonScreen implements Screen {
    */
   private act(action: Action): void {
     this.app.recorder.action(action);
+    this.scene.vw.notePlayerAction(action);
     stepTurn(this.world, action);
     this.pumpEvents();
   }
@@ -206,7 +198,7 @@ export class DungeonScreen implements Screen {
     const input = this.app.input;
 
     // 演出待ちの間は入力を取らない（階層移動の暗転など）
-    if (this.fx.isHolding()) return;
+    if (this.scene.vw.isHolding()) return;
 
     // メニューから出した全体図。閉じるまでは他の操作を受け付けない
     // （真っ暗な地図の裏で歩けてしまうのを防ぐ）
@@ -333,7 +325,7 @@ export class DungeonScreen implements Screen {
       if (this.dashDir === null && d !== null) this.dashDir = d;
       if (this.dashDir !== null && this.dashCooldown <= 0) {
         this.doDashStep();
-        this.dashCooldown = Math.max(16, 45 * this.fx.speedScale);
+        this.dashCooldown = Math.max(16, 45 * this.scene.vw.speedScale);
       }
       return;
     }
@@ -1253,51 +1245,9 @@ export class DungeonScreen implements Screen {
     const world = this.world;
     const theme = world.dungeon.theme;
 
-    g.fillStyle = theme.gloom;
-    g.fillRect(0, 0, SCREEN_W, SCREEN_H);
-
-    g.save();
-    g.translate(Math.round(this.fx.shakeX), Math.round(this.fx.shakeY));
-
-    const ctx = {
-      map: world.map, theme, camera: this.camera, fx: this.fx, time: now,
-    };
-    this.renderer.drawTerrain(g, ctx);
-    this.renderer.drawGround(g, ctx, world.run.floorItems.map((f) => ({
-      pos: f.pos,
-      sprite: spriteOfItem(f.item, world.run.identify.known),
-      shopPrice: f.item.shopPrice,
-    })));
-
-    // アクターは y 座標順に描いて前後関係を出す
-    const actors = world.allActors()
-      .filter((a) => a.alive || (this.fx.views.get(a.id)?.fade ?? 0) > 0)
-      .sort((a, b) => a.pos.y - b.pos.y);
-    for (const a of actors) {
-      const tile = at(world.map, a.pos.x, a.pos.y);
-      if (a.kind !== 'player' && !tile?.visible) continue;
-      const view = this.fx.view(a.id, a.pos);
-      if (a.kind === 'player') {
-        this.renderer.drawActor(g, ctx, view, `player${a.dir}`, {
-          invisible: world.hasStatus(a, 'invisible'),
-        });
-      } else {
-        const def = world.defOf(a);
-        // 化けているミミックはアイテムに見せる
-        const spriteId = a.disguise ? spriteOfItem(a.disguise, world.run.identify.known) : a.defId;
-        this.renderer.drawActor(g, ctx, view, spriteId, {
-          asleep: a.asleep,
-          invisible: world.hasStatus(a, 'invisible'),
-          boss: def.isBoss,
-          tint: a.kind === 'ally' ? '#6ee06e' : undefined,
-        });
-      }
-    }
-
-    this.renderer.drawEffects(g, ctx);
-    g.restore();
-
-    this.renderer.drawScreenFx(g, this.fx);
+    // 世界：地形・床の物・キャラ・光・ブルーム・ぼかし・色調（描画エンジン）→ 告知の帯・暗転
+    this.app.compositor.render(g, this.scene, now);
+    this.scene.paintOverlay(g);
 
     // HUD
     const frame = theme.accent;
@@ -1315,6 +1265,7 @@ export class DungeonScreen implements Screen {
       seeItems: braceletEffect === 'seeTraps',
     }, this.minimapMode, frame);
     this.hud.draw(g, world.player, {
+      shownHp: this.scene.vw.shownHp(world.player.id, world.player.hp, world.player.maxHp),
       dungeonName: world.dungeon.name,
       depth: world.run.depth,
       turn: world.run.totalTurn,
@@ -1332,17 +1283,18 @@ export class DungeonScreen implements Screen {
       })),
     }, frame);
 
-    // 斜め固定・向き変更のバッジ
-    const px = world.player.pos.x * TILE - this.camera.x + TILE / 2;
-    const py = world.player.pos.y * TILE - this.camera.y + TILE / 2;
+    // 斜め固定・向き変更のバッジ（主人公の足元の画面の位置から）
+    this.scene.playerScreen(this.playerPx);
+    const px = this.playerPx.x;
+    const py = this.playerPx.y - 24;
     if (this.app.input.isDown(Cmd.L)) {
-      drawBadgeAt(g, '斜め', px, py + TILE);
+      drawBadgeAt(g, '斜め', px, py + 48);
     }
     if (this.app.input.isDown(Cmd.R)) {
-      drawBadgeAt(g, '向き', px, py + TILE);
+      drawBadgeAt(g, '向き', px, py + 48);
     }
     if (this.dashDir !== null) {
-      drawBadgeAt(g, 'ダッシュ', px, py - TILE);
+      drawBadgeAt(g, 'ダッシュ', px, py - 60);
     }
 
     this.menus.draw(g, now, frame);
