@@ -1312,6 +1312,7 @@ export class TownScreen {
     }
     tick(stepMs) {
         this.view?.tick(stepMs / 1000);
+        this.anim?.tick(stepMs);
     }
     draw(g, now) {
         // 背景：夕暮れの広場（ゆっくり横へ流す）

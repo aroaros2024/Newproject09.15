@@ -362,7 +362,8 @@ export function drawBadge(
  * 返り値は札の幅。
  */
 export function drawTitlePlaque(
-  g: Ctx, text: string, x: number, y: number, o: { size?: number; color?: string } = {},
+  g: Ctx, text: string, x: number, y: number,
+  o: { size?: number; color?: string; align?: 'left' | 'center' } = {},
 ): number {
   if (!text) return 0;
   const size = o.size ?? 20;
@@ -371,7 +372,7 @@ export function drawTitlePlaque(
   const tw = Math.round(g.measureText(text).width);
   const w = tw + 36;
   const h = size + 12;
-  const bx = Math.round(x);
+  const bx = Math.round(o.align === 'center' ? x - w / 2 : x);
   const by = Math.round(y);
   // 帯（中央が濃く、両端へ薄く）
   g.fillStyle = 'rgba(200,168,105,0.10)';

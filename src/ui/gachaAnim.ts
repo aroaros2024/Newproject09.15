@@ -6,9 +6,10 @@
  * 「決まった結果をどう見せるか」しか持たない。
  *
  * 見せ方は 3 段。
- *   ため   石が集まり、脈打つ。この時点では色を出さない
- *   はじけ  光が弾ける。ここで初めてレア度の色が出る
- *   結果   名前と説明。A で次へ
+ *   ため   銀の光の筋がカールノイズの流れにうねりながら中心へ渦を巻いて集まり、光の玉になる。
+ *          この時点では色を出さない（色で結果が分かってしまう）
+ *   はじけ  光が弾ける。ここで初めてレア度の色が出る。粒は流れ場に乗って渦を巻き続ける
+ *   結果   飾り枠のカードに名前と説明。A で次へ
  *
  * レア度が高いほど「ため」が長い。長く待たされるほど期待が上がるので、
  * 色を出す前の時間そのものが演出になる。
@@ -21,7 +22,18 @@
 
 import type { PullResult } from '../game/gacha.js';
 import { RARITY_COLOR, RARITY_LABEL, type Rarity } from '../data/gacha.js';
-import { type Ctx, drawOverlay, drawPanel, drawText, wrapText } from './draw.js';
+import { Rng } from '../core/rng.js';
+import { RAMP_GOLD } from './art/palette.js';
+import { hashFloat } from './art/hash.js';
+import { CURL_GRID_DIORAMA, CurlField } from './gfx-core/curl.js';
+import {
+  type BurstSpec, KIND_HD, ParticlePool, TONE_GOLD, TONE_MAGIC, TONE_WATER, TONE_WHITE,
+} from './gfx-core/particles.js';
+import { type ParticleXform, drawHDParticles, makeHDAtlas } from './gfx/particlesDraw.js';
+import { type Canvas2D, ctx2d, makeCanvas } from './gfx/canvas.js';
+import {
+  type Ctx, drawCursor, drawOverlay, drawPanel, drawText, drawTitlePlaque, wrapText,
+} from './draw.js';
 import { getSprite, sprites } from './sprites.js';
 import { tryGetItem } from '../data/registry.js';
 import { iconKeyForCatalog } from './art/items.js';
@@ -38,6 +50,50 @@ const BURST_MS = 320;
 /** 出るものが尽きたあとのギタンの色 */
 const GITAN_COLOR = '#ffd98a';
 
+/** 光の粒の色の組（レア度ごと） */
+const RARITY_TONE: Record<Rarity, number> = { n: TONE_WHITE, r: TONE_WATER, sr: TONE_MAGIC, ssr: TONE_GOLD };
+
+/** 集まる光の筋の数 */
+const STREAMS = 56;
+
+/** 画面の中心（画用紙のドット。画面 = ドット × 3） */
+const CX = 640 / 3;
+const CY = 330 / 3;
+
+/** はじける光（HD の粒）。数と速さはレア度で変える */
+function burstSpec(rarity: Rarity | null): BurstSpec {
+  const big = rarity === 'ssr' ? 2 : rarity === 'sr' ? 1.4 : 1;
+  return {
+    count: Math.round(60 * big), speed: [40, 150 * big], spread: Math.PI * 2, life: [0.9, 2.2],
+    size: 3, ramp: RAMP_GOLD, kind: KIND_HD, gain: 1.8, drag: 1.4, gravity: 0, flowRamp: 1.6,
+    radius: 4, emissive: true, tone: rarity ? RARITY_TONE[rarity] : TONE_GOLD,
+  };
+}
+
+/** カードのまわりに湧く粒 */
+const SPARKLE: Record<'ssr' | 'sr', BurstSpec> = {
+  ssr: { ...burstSpec('ssr'), count: 2, speed: [6, 20], life: [1.2, 2.4], size: 2.5, gravity: -8 },
+  sr: { ...burstSpec('sr'), count: 1, speed: [6, 18], life: [1.0, 2.0], size: 2.2, gravity: -6 },
+};
+
+/** 柔らかい光の玉（色ごとに 1 枚だけ焼く） */
+const glowCache = new Map<string, Canvas2D>();
+function glow(color: string): Canvas2D {
+  const hit = glowCache.get(color);
+  if (hit) return hit;
+  const c = makeCanvas(64, 64);
+  const g = ctx2d(c);
+  const grad = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  grad.addColorStop(0, '#ffffff');
+  grad.addColorStop(0.18, color);
+  grad.addColorStop(0.5, `${color}55`);
+  grad.addColorStop(1, `${color}00`);
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 64, 64);
+  glowCache.set(color, c);
+  return c;
+}
+
 export class GachaAnim {
   private phase: Phase = 'charge';
   private t = 0;
@@ -45,6 +101,16 @@ export class GachaAnim {
   private skipped = false;
   /** 一覧で選んでいる行 */
   private cursor = 0;
+  /** 粒（表示専用の乱数。ゲームの乱数は使わない） */
+  private readonly field = new CurlField(CURL_GRID_DIORAMA);
+  private readonly pool = new ParticlePool(900, new Rng('fx:gacha'));
+  private readonly atlas = makeHDAtlas();
+  private readonly xf: ParticleXform = { scale: 3, offX: 0, offY: 0 };
+  private readonly flow = new Float64Array(2);
+  /** はじけた瞬間からの時間（白い閃きと衝撃の輪） */
+  private flashT = -1;
+  /** SSR・SR のカードのまわりに湧き続ける粒の間隔 */
+  private sparkleAcc = 0;
 
   constructor(
     private results: PullResult[],
@@ -83,6 +149,7 @@ export class GachaAnim {
     if (this.phase === 'charge' && this.t >= this.chargeMs) {
       this.phase = 'burst';
       this.t = 0;
+      this.explode();
     } else if (this.phase === 'burst' && this.t >= BURST_MS) {
       // まとめ引きは 1 枚ずつ見せない。はじけたらそのまま一覧へ
       this.phase = this.bulk ? 'summary' : 'reveal';
@@ -98,6 +165,7 @@ export class GachaAnim {
    */
   advance(): void {
     if (this.phase === 'charge' || this.phase === 'burst') {
+      if (this.phase === 'charge') this.explode();
       this.skipped = true;
       this.phase = this.bulk ? 'summary' : 'reveal';
       this.t = 0;
@@ -122,6 +190,33 @@ export class GachaAnim {
     this.t = 0;
   }
 
+  /** 表示のレア度（まとめ引きは一番良いもの） */
+  private get shownRarity(): Rarity | null {
+    return this.bulk ? this.bestRarity : (this.current?.rarity ?? null);
+  }
+
+  private explode(): void {
+    this.pool.burst(burstSpec(this.shownRarity), CX, CY);
+    this.flashT = 0;
+  }
+
+  /** 60Hz の刻み（粒と流れ場） */
+  tick(stepMs: number): void {
+    this.field.tick();
+    this.pool.step(stepMs / 1000, this.field);
+    if (this.flashT >= 0) this.flashT += stepMs;
+    // SSR・SR のカードのまわりに光の粒が湧き続ける
+    const r = this.shownRarity;
+    if (this.phase === 'reveal' && (r === 'ssr' || r === 'sr')) {
+      this.sparkleAcc += stepMs;
+      while (this.sparkleAcc > (r === 'ssr' ? 60 : 110)) {
+        this.sparkleAcc -= r === 'ssr' ? 60 : 110;
+        const a = hashFloat(this.pool.count, Math.floor(this.sparkleAcc * 7), 3) * Math.PI * 2;
+        this.pool.burst(SPARKLE[r], CX + Math.cos(a) * 80, CY + Math.sin(a) * 60);
+      }
+    }
+  }
+
   /** 一覧の中でカーソルを動かす。選んだ行の説明が下に出る */
   move(dy: number): void {
     if (this.phase !== 'summary') return;
@@ -133,6 +228,8 @@ export class GachaAnim {
   draw(g: Ctx, now: number): void {
     drawOverlay(g, SCREEN_W, SCREEN_H, 0.93);
     if (this.phase === 'summary') {
+      const best = this.bestRarity;
+      this.drawParticlesAndFlash(g, best ? RARITY_COLOR[best] : GITAN_COLOR);
       this.drawSummary(g);
       return;
     }
@@ -146,18 +243,17 @@ export class GachaAnim {
     if (this.phase === 'charge') {
       // 色はまだ出さない。何が出るか分かってしまう
       const p = Math.min(1, this.t / this.chargeMs);
+      this.drawStreams(g, p);
       const pulse = 1 + Math.sin(now / 90) * 0.08;
-      this.drawOrb(g, cx, cy, (26 + p * 34) * pulse, '#c8c8d4', 0.25 + p * 0.5);
-      drawText(g, '……', cx, cy + 130, {
-        size: 20, align: 'center', color: UI.textDim,
-      });
+      this.drawOrb(g, cx, cy, (18 + p * 40) * pulse, '#c8c8d4', 0.3 + p * 0.55);
     } else if (this.phase === 'burst') {
       const p = Math.min(1, this.t / BURST_MS);
       this.drawOrb(g, cx, cy, 60 + p * 220, color, (1 - p) * 0.8);
-      this.drawRays(g, cx, cy, p, color);
+      if (r.rarity === 'ssr' || r.rarity === 'sr') this.drawRays(g, cx, cy, p, color);
     } else {
       this.drawCard(g, cx, cy, r, now);
     }
+    this.drawParticlesAndFlash(g, color);
 
     if (this.results.length > 1) {
       drawText(g, `${this.index + 1} / ${this.results.length}`,
@@ -165,6 +261,57 @@ export class GachaAnim {
     }
     drawText(g, this.phase === 'reveal' ? 'A：次へ' : 'A：飛ばす',
       SCREEN_W / 2, SCREEN_H - 34, { size: 15, align: 'center', color: UI.textDim });
+  }
+
+  /**
+   * 集まる光の筋。筋ごとに生まれる向き・半径・出だしをハッシュで決め、
+   * 半径を縮めながら角度を進めて渦を巻かせる。カールノイズの流れ場で位置をうねらせる。
+   */
+  private drawStreams(g: Ctx, p: number): void {
+    const dot = glow('#c8c8d4');
+    g.save();
+    g.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < STREAMS; i++) {
+      const delay = hashFloat(i, 1, 41) * 0.55;
+      const r0 = 70 + hashFloat(i, 2, 41) * 110;
+      const a0 = hashFloat(i, 3, 41) * Math.PI * 2;
+      for (let k = 0; k < 5; k++) {
+        const q = Math.max(0, Math.min(1, (p - delay) / (1 - delay) - k * 0.035));
+        if (q <= 0 || q >= 1) continue;
+        const rad = r0 * (1 - q * q);
+        const ang = a0 + q * 2.6;
+        let x = CX + Math.cos(ang) * rad;
+        let y = CY + Math.sin(ang) * rad * 0.8;
+        this.field.sample(x, y, this.flow);
+        x += this.flow[0] * 0.25 * (1 - q);
+        y += this.flow[1] * 0.25 * (1 - q);
+        const size = (k === 0 ? 16 : 10 - k) * (0.6 + q * 0.6);
+        g.globalAlpha = (k === 0 ? 0.9 : 0.45 / k) * Math.min(1, q * 6);
+        g.drawImage(dot, x * 3 - size, y * 3 - size, size * 2, size * 2);
+      }
+    }
+    g.restore();
+  }
+
+  /** はじけた粒（流れ場で渦を巻く）と、白い閃き・衝撃の輪 */
+  private drawParticlesAndFlash(g: Ctx, color: string): void {
+    drawHDParticles(g, this.pool, this.xf, this.atlas);
+    if (this.flashT < 0 || this.flashT > 700) return;
+    g.save();
+    const f = this.flashT;
+    if (f < 160) {
+      g.globalAlpha = 0.55 * (1 - f / 160);
+      g.fillStyle = '#ffffff';
+      g.fillRect(0, 0, SCREEN_W, SCREEN_H);
+    }
+    const k = f / 700;
+    g.globalAlpha = 0.8 * (1 - k);
+    g.strokeStyle = color;
+    g.lineWidth = 6 * (1 - k) + 1;
+    g.beginPath();
+    g.ellipse(CX * 3, CY * 3, 40 + k * 520, 30 + k * 400, 0, 0, Math.PI * 2);
+    g.stroke();
+    g.restore();
   }
 
   private drawOrb(g: Ctx, x: number, y: number, r: number, color: string, alpha: number): void {
@@ -223,58 +370,90 @@ export class GachaAnim {
 
   private drawCard(g: Ctx, cx: number, cy: number, r: PullResult, now: number): void {
     const color = r.rarity ? RARITY_COLOR[r.rarity] : GITAN_COLOR;
-    const box = { x: cx - 210, y: cy - 160, w: 420, h: 330 };
+    const box = { x: cx - 220, y: cy - 170, w: 440, h: 350 };
+    const appear = Math.min(1, this.t / 220);
 
-    // SSR と SR は後ろで光り続ける
+    // SSR と SR は後ろで光り続け、SSR はゆっくり回る光条を背負う
     if (r.rarity === 'ssr' || r.rarity === 'sr') {
-      this.drawOrb(g, cx, cy, 200 + Math.sin(now / 200) * 16, color, 0.3);
+      this.drawOrb(g, cx, cy, 210 + Math.sin(now / 200) * 16, color, 0.28);
+      if (r.rarity === 'ssr') this.drawHalo(g, cx, cy, now, color);
     }
-    drawPanel(g, box, { frame: color, alpha: 0.97 });
+    g.save();
+    g.globalAlpha = appear;
+    // 出る瞬間に少し大きく見せてから落ち着く
+    const k = 1 + 0.06 * (1 - appear);
+    g.translate(cx, cy);
+    g.scale(k, k);
+    g.translate(-cx, -cy);
+    drawPanel(g, box, { alpha: 0.96 });
+    // レア度の札（枠の上辺に掛ける）と、レア度の色の細線
+    drawTitlePlaque(g, r.rarity ? RARITY_LABEL[r.rarity] : 'ギタン', cx, box.y - 16, { size: 24, color, align: 'center' });
+    g.fillStyle = color;
+    g.globalAlpha = appear * 0.8;
+    g.fillRect(box.x + 30, box.y + 44, box.w - 60, 1);
+    g.fillRect(box.x + 30, box.y + box.h - 40, box.w - 60, 1);
+    g.globalAlpha = appear;
 
-    drawText(g, r.rarity ? RARITY_LABEL[r.rarity] : 'ギタン', cx, box.y + 40, {
-      size: 26, bold: true, align: 'center', color,
-    });
-
-    // 絵。SSR は大きく出す
+    // 絵。台座の光の上に置く。SSR は大きく出す
     const spriteId = this.spriteOf(r);
     const icon = spriteId ? getSprite(spriteId) : null;
-    const artY = box.y + 130;
+    const artY = box.y + 128;
+    const pedestal = glow(color);
+    g.save();
+    g.globalCompositeOperation = 'lighter';
+    g.globalAlpha = 0.5 * appear;
+    g.drawImage(pedestal, cx - 90, artY - 70, 180, 140);
+    g.restore();
     if (icon && spriteId) {
-      const size = r.rarity === 'ssr' ? 104 : 76;
-      // 台座。絵が背景に溶けないように敷く
-      g.save();
-      g.globalAlpha = 0.16;
-      g.fillStyle = color;
-      g.beginPath();
-      g.arc(cx, artY, size * 0.72, 0, Math.PI * 2);
-      g.fill();
-      g.restore();
-      sprites.draw(g, spriteId, icon, cx, artY, size, {});
+      const size = r.rarity === 'ssr' ? 112 : 80;
+      const bob = Math.round(Math.sin(now / 420) * 3);
+      sprites.draw(g, spriteId, icon, cx, artY + bob, size, {});
     } else {
       // 加護とギタンは絵の代わりに印を出す
-      g.save();
-      g.globalAlpha = 0.9;
       g.strokeStyle = color;
       g.lineWidth = 3;
       g.beginPath();
       g.arc(cx, artY, 38, 0, Math.PI * 2);
       g.stroke();
-      g.restore();
-      drawText(g, r.prize ? '加護' : 'G', cx, artY + 7, {
-        size: 20, bold: true, align: 'center', color,
+      drawText(g, r.prize ? '加護' : 'G', cx, artY + 8, {
+        size: 22, bold: true, align: 'center', color, family: 'serif',
       });
     }
 
-    drawText(g, this.titleOf(r), cx, box.y + 218, {
-      size: 22, bold: true, align: 'center', color: UI.text,
+    drawText(g, this.titleOf(r), cx, box.y + 232, {
+      size: 26, bold: true, align: 'center', color: UI.text, family: 'serif',
     });
-
-    const lines = wrapText(g, this.noteOf(r), box.w - 50, 15).slice(0, 3);
+    const lines = wrapText(g, this.noteOf(r), box.w - 60, 17).slice(0, 3);
     lines.forEach((line, i) => {
-      drawText(g, line, cx, box.y + 258 + i * 24, {
-        size: 15, align: 'center', color: UI.textDim,
+      drawText(g, line, cx, box.y + 268 + i * 24, {
+        size: 17, align: 'center', color: UI.textDim,
       });
     });
+    g.restore();
+  }
+
+  /** SSR の後ろでゆっくり回る光条 */
+  private drawHalo(g: Ctx, cx: number, cy: number, now: number, color: string): void {
+    g.save();
+    g.globalCompositeOperation = 'lighter';
+    g.translate(cx, cy);
+    g.rotate(now / 6000);
+    for (let i = 0; i < 16; i++) {
+      g.rotate(Math.PI / 8);
+      const grad = g.createLinearGradient(0, 0, 0, -330);
+      grad.addColorStop(0, `${color}00`);
+      grad.addColorStop(0.3, `${color}30`);
+      grad.addColorStop(1, `${color}00`);
+      g.fillStyle = grad;
+      g.beginPath();
+      g.moveTo(-10, 0);
+      g.lineTo(10, 0);
+      g.lineTo(i % 2 === 0 ? 34 : 22, -330);
+      g.lineTo(i % 2 === 0 ? -34 : -22, -330);
+      g.closePath();
+      g.fill();
+    }
+    g.restore();
   }
 
   /** その 1 回で何が起きたかを 1 行で */
@@ -289,39 +468,46 @@ export class GachaAnim {
   }
 
   private drawSummary(g: Ctx): void {
-    const box = { x: 240, y: 70, w: 800, h: 560 };
+    const n = this.results.length;
+    const rows = Math.ceil(n / 2);
+    const rowH = 54;
+    const box = { x: 220, y: Math.max(40, 360 - (rows * rowH + 170) / 2), w: 840, h: rows * rowH + 170 };
     drawPanel(g, box, { alpha: 0.95 });
-    drawText(g, '引いたもの', box.x + 24, box.y + 36, {
-      size: 20, bold: true, color: UI.cursorEdge,
-    });
+    drawTitlePlaque(g, `引いたもの　${n} 回`, box.x + 14, box.y + 10);
 
     this.results.forEach((r, i) => {
       const col = i % 2;
       const row = Math.floor(i / 2);
-      const x = box.x + 30 + col * 390;
-      const y = box.y + 84 + row * 46;
+      const x = box.x + 32 + col * 400;
+      const y = box.y + 64 + row * rowH;
       const color = r.rarity ? RARITY_COLOR[r.rarity] : GITAN_COLOR;
-      if (i === this.cursor) {
-        drawPanel(g, { x: x - 10, y: y - 22, w: 372, h: 36 }, { frame: UI.cursorEdge, alpha: 0.2 });
-      }
-      drawText(g, r.rarity ? RARITY_LABEL[r.rarity] : 'G', x, y,
-        { size: 15, bold: true, color });
+      if (i === this.cursor) drawCursor(g, { x: x - 6, y: y + 2, w: 384, h: rowH - 8 }, 0);
+      // レア度の札
+      g.save();
+      g.fillStyle = 'rgba(11,16,32,0.8)';
+      g.fillRect(x + 6, y + 12, 52, 26);
+      g.fillStyle = color;
+      g.fillRect(x + 6, y + 12, 52, 2);
+      g.fillRect(x + 6, y + 36, 52, 2);
+      g.restore();
+      drawText(g, r.rarity ? RARITY_LABEL[r.rarity] : 'G', x + 32, y + 32,
+        { size: 17, bold: true, align: 'center', color, family: 'serif' });
       // 1 枚ずつのカードを出さなくなったぶん、ここに絵も出す
       const spriteId = this.spriteOf(r);
       const icon = spriteId ? getSprite(spriteId) : null;
-      if (spriteId && icon) sprites.draw(g, spriteId, icon, x + 62, y - 6, 22);
-      drawText(g, this.titleOf(r), x + 82, y, { size: 16, color: UI.text });
+      if (spriteId && icon) sprites.draw(g, spriteId, icon, x + 86, y + 25, 32);
+      drawText(g, this.titleOf(r), x + 112, y + 33, { size: 20, color: UI.text });
     });
 
     // 選んでいる行の説明。カードに出していた 1 行がここへ移る
     const sel = this.results[this.cursor];
     if (sel) {
-      drawText(g, this.noteOf(sel), box.x + 24, box.y + box.h - 54, {
-        size: 15, color: UI.textDim,
+      drawText(g, this.noteOf(sel), box.x + 32, box.y + box.h - 58, {
+        size: 19, color: UI.textDim,
       });
     }
-    drawText(g, '↑↓：見る　　A：閉じる', SCREEN_W / 2, box.y + box.h - 24, {
-      size: 15, align: 'center', color: UI.textDim,
+    drawText(g, '↑↓：見る　　A：閉じる', SCREEN_W / 2, box.y + box.h - 22, {
+      size: 16, align: 'center', color: UI.textDim,
     });
   }
 }

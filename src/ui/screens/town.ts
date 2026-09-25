@@ -1381,6 +1381,7 @@ export class TownScreen implements Screen {
 
   tick(stepMs: number): void {
     this.view?.tick(stepMs / 1000);
+    this.anim?.tick(stepMs);
   }
 
   draw(g: Ctx, now: number): void {
