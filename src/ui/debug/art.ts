@@ -13,7 +13,7 @@
  * tools/shots.mjs はこのキャンバスを撮る。
  */
 
-import '../art/rigs/index.js';
+import '../art/index.js';
 import { PAL_HEX, PAL_SIZE, RAMPS, STEPS, WHITE, ci, luminance } from '../art/palette.js';
 import { PixBuf } from '../art/pixbuf.js';
 import {
@@ -233,7 +233,7 @@ function lineup(tierFilter: Tier | null, gray: boolean): void {
 }
 
 /** ?scene=art:… を開く */
-export function openArtScene(spec: string, params: URLSearchParams): void {
+export function open(spec: string, params: URLSearchParams): void {
   const parts = spec.split(':');
   const k = Math.max(1, Math.min(8, Number(params.get('scale') ?? 4)));
   const gray = params.get('gray') === '1';

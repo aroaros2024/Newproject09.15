@@ -407,8 +407,13 @@ let game: Game | null = null;
 export function boot(canvas: HTMLCanvasElement): void {
   const params = new URLSearchParams(window.location.search);
   const scene = params.get('scene');
-  if (scene && scene.startsWith('art:')) {
-    void import('./ui/debug/scenes.js').then((m) => m.openArtScene(scene, params));
+  // dungeon: / town / title 以外の「<名前>:…」は src/ui/debug/<名前>.ts の open() に任せる
+  // （見本帳・描画エンジン・粒子・地形の検証場面。遊ぶときは読み込まれない）
+  const prefix = scene?.match(/^([a-z]+):/)?.[1];
+  if (scene && prefix && prefix !== 'dungeon') {
+    void import(`./ui/debug/${prefix}.js`)
+      .then((m: { open(spec: string, p: URLSearchParams, c: HTMLCanvasElement): void }) =>
+        m.open(scene, params, canvas));
     return;
   }
   game = new Game(canvas);
