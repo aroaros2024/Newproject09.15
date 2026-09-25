@@ -79,7 +79,7 @@ export const LAYOUT = {
   /** ステータス（左上） */
   status: { x: 16, y: 12, w: 388, h: 104 } as Rect,
   /** 状態異常の札（ステータスの下） */
-  statusIcons: { x: 16, y: 122, w: 388, h: 34 } as Rect,
+  statusIcons: { x: 16, y: 122, w: 380, h: 34 } as Rect,
   /** 階層表示（右上） */
   floor: { x: 1052, y: 12, w: 212, h: 58 } as Rect,
   /** ミニマップ（階層表示の下）。中は 200×136 で、48×32 マスの階が 1 マス 4px で収まる */
