@@ -1112,6 +1112,38 @@ export class DungeonScreen implements Screen {
         },
       },
       {
+        // 重い合成（ぼかし・ブルーム・光の筋）から順に切る。遅い端末では下げる
+        label: '画質',
+        right: ['低', '中', '高'][s.gfxQuality] ?? '高',
+        onSelect: () => {
+          s.gfxQuality = (s.gfxQuality + 2) % 3;
+          this.applySettings();
+          rebuild();
+          return false;
+        },
+      },
+      {
+        label: 'ぼかし（奥と手前）',
+        right: s.depthOfField ? 'あり' : 'なし',
+        onSelect: () => {
+          s.depthOfField = !s.depthOfField;
+          this.applySettings();
+          rebuild();
+          return false;
+        },
+      },
+      {
+        // 画面の大きさが半端なときも、ドットの幅を揃えて表示する（周りに余白が出る）
+        label: '整数倍で 表示',
+        right: s.pixelPerfect ? 'する' : 'しない',
+        onSelect: () => {
+          s.pixelPerfect = !s.pixelPerfect;
+          this.app.applySettings();
+          rebuild();
+          return false;
+        },
+      },
+      {
         label: '音量（全体）',
         right: `${Math.round(s.masterVolume * 100)}%`,
         onSelect: () => {
@@ -1146,8 +1178,8 @@ export class DungeonScreen implements Screen {
     this.menus.push(new ListMenu({
       title: '設定',
       entries: build(),
-      rect: { x: 400, y: 150, w: 480, h: 440 },
-      rowH: 44,
+      rect: { x: 400, y: 70, w: 480, h: 72 + build().length * 42 },
+      rowH: 42,
       onClose: () => this.app.persist(),
     }));
   }
