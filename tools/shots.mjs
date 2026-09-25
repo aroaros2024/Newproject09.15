@@ -21,7 +21,7 @@
  */
 
 import { spawn } from 'node:child_process';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -86,8 +86,12 @@ try {
     await page.goto(url, { waitUntil: 'networkidle' });
     await page.waitForTimeout(wait);
     const path = join(out, fileName(scene));
-    const sheet = await page.$('#sheet');
-    if (sheet) await sheet.screenshot({ path });
+    // 見本帳は画面より大きいことがあるので、キャンバスの中身をそのまま書き出す
+    const data = await page.evaluate(() => {
+      const c = document.getElementById('sheet');
+      return c instanceof HTMLCanvasElement ? c.toDataURL('image/png') : null;
+    });
+    if (data) writeFileSync(path, Buffer.from(data.slice(data.indexOf(',') + 1), 'base64'));
     else await page.screenshot({ path });
     page.off('console', onConsole);
     page.off('pageerror', onError);

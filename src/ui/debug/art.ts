@@ -6,6 +6,8 @@
  *   ?scene=art:rig:<リグの id>          そのリグを使う全部の種
  *   ?scene=art:lineup                  全部の種の待機（手前向き）を段ごとに並べる
  *   ?scene=art:lineup&tier=L           段を絞る
+ *   ?scene=art:items                   道具の絵（全部の鍵。一覧の大きさでも並べる）
+ *   ?scene=art:traps                   ワナの絵
  *
  * 付けられるもの：&scale=4（拡大率）&gray=1（明るさだけで見る）
  *
@@ -21,6 +23,9 @@ import {
   animOf, getRig, getSpecies, renderFrame,
 } from '../art/rig.js';
 import { PAL_RGBA } from '../art/palette.js';
+import { ICON_SIZE, allIconKeys, buildIcon, iconKeyOf } from '../art/items.js';
+import { ALL_ITEMS, allTraps, tryGetItem } from '../../data/registry.js';
+import { buildTrapIcon } from '../art/traps.js';
 
 const BG_GREY = '#5a5f6e';
 const BG_DARK = '#14121c';
@@ -232,6 +237,81 @@ function lineup(tierFilter: Tier | null, gray: boolean): void {
   }
 }
 
+/**
+ * 道具の絵を種類ごとに並べる。4 倍（見本）と、一覧の大きさ（2 倍・紺の地）の 2 通り。
+ * 最後に「未識別で見える絵」を種類ごとに並べ、正体が漏れていないかを目で確かめる。
+ */
+function itemsSheet(k: number, gray: boolean): void {
+  const groups = new Map<string, string[]>();
+  for (const key of allIconKeys()) {
+    const def = tryGetItem(key);
+    const g = def ? def.kind : 'category';
+    if (!groups.has(g)) groups.set(g, []);
+    groups.get(g)!.push(key);
+  }
+  const cellW = ICON_SIZE * k + 76;
+  const cellH = ICON_SIZE * k + 30;
+  const width = 1680;
+  const perRow = Math.floor((width - 20) / cellW);
+  let height = 20;
+  for (const list of groups.values()) height += 30 + Math.ceil(list.length / perRow) * cellH;
+  // 未識別の見え方
+  const unknownKeys = [...new Set(ALL_ITEMS.map((d) => iconKeyOf(d.id, false)))];
+  height += 40 + Math.ceil(unknownKeys.length / perRow) * cellH;
+  const { g } = makeSheet(width, height, BG_DARK);
+  const buf = new PixBuf(ICON_SIZE, ICON_SIZE);
+  let y = 10;
+  const cell = (key: string, name: string, i: number): void => {
+    const x = 10 + (i % perRow) * cellW;
+    const yy = y + Math.floor(i / perRow) * cellH;
+    buildIcon(key, buf);
+    g.fillStyle = '#26232f';
+    g.fillRect(x, yy, ICON_SIZE * k, ICON_SIZE * k);
+    blit(g, buf, x, yy, k, gray);
+    // 一覧の大きさ（2 倍）を紺の地に
+    g.fillStyle = '#10152a';
+    g.fillRect(x + ICON_SIZE * k + 4, yy, ICON_SIZE * 2 + 8, ICON_SIZE * 2 + 8);
+    blit(g, buf, x + ICON_SIZE * k + 8, yy + 4, 2, gray);
+    // 床の大きさ（3 倍）を石の地に
+    g.fillStyle = '#4a4550';
+    g.fillRect(x + ICON_SIZE * k + 4, yy + ICON_SIZE * 2 + 12, ICON_SIZE * 3 + 4, ICON_SIZE * 3 + 4);
+    blit(g, buf, x + ICON_SIZE * k + 6, yy + ICON_SIZE * 2 + 14, 3, gray);
+    label(g, name, x, yy + ICON_SIZE * k + 6, '#a9a391', 11);
+  };
+  for (const [kind, list] of groups) {
+    label(g, `${kind}  (${list.length})`, 10, y);
+    y += 26;
+    list.forEach((key, i) => cell(key, tryGetItem(key)?.name ?? key, i));
+    y += Math.ceil(list.length / perRow) * cellH;
+  }
+  label(g, '未識別で見える絵（全部の道具を知らない状態で引いた鍵）', 10, y + 8, '#ffb070');
+  y += 34;
+  unknownKeys.forEach((key, i) => cell(key, key, i));
+}
+
+/** ワナの絵を、見本（k 倍）と床の大きさ（3 倍・石の床の上）で並べる */
+function trapsSheet(k: number, gray: boolean): void {
+  const traps = allTraps();
+  const cellW = 16 * k + 70;
+  const cellH = 16 * k + 30;
+  const width = 1400;
+  const perRow = Math.floor((width - 20) / cellW);
+  const { g } = makeSheet(width, 40 + Math.ceil(traps.length / perRow) * cellH, BG_DARK);
+  const buf = new PixBuf(16, 16);
+  traps.forEach((t, i) => {
+    const x = 10 + (i % perRow) * cellW;
+    const y = 10 + Math.floor(i / perRow) * cellH;
+    buildTrapIcon(t.id, buf);
+    g.fillStyle = '#26232f';
+    g.fillRect(x, y, 16 * k, 16 * k);
+    blit(g, buf, x, y, k, gray);
+    g.fillStyle = '#4a4550';
+    g.fillRect(x + 16 * k + 4, y, 48, 48);
+    blit(g, buf, x + 16 * k + 4, y, 3, gray);
+    label(g, t.name, x, y + 16 * k + 6, '#a9a391', 11);
+  });
+}
+
 /** ?scene=art:… を開く */
 export function open(spec: string, params: URLSearchParams): void {
   const parts = spec.split(':');
@@ -249,6 +329,12 @@ export function open(spec: string, params: URLSearchParams): void {
       return;
     case 'lineup':
       lineup((params.get('tier') as Tier | null) ?? null, gray);
+      return;
+    case 'items':
+      itemsSheet(k, gray);
+      return;
+    case 'traps':
+      trapsSheet(k, gray);
       return;
     default: {
       const { g } = makeSheet(600, 60, BG_DARK);

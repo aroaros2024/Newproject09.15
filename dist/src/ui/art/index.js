@@ -5,4 +5,7 @@
 import './player.js';
 import './rigs/index.js';
 import './terrain/index.js';
+import './items.js';
+import './traps.js';
+import './fxSprites.js';
 //# sourceMappingURL=index.js.map

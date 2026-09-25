@@ -6,7 +6,7 @@
  * 同じ文が続いたら「×n」に畳み、履歴は全画面で読み返せる。
  */
 import { ANIM, LAYOUT, LOG_COLOR, UI } from './theme.js';
-import { drawPanel, drawScrollArrow, drawText, wrapText } from './draw.js';
+import { drawOverlay, drawPanel, drawScrollArrow, drawText, drawTitlePlaque, wrapText, } from './draw.js';
 const HISTORY_LIMIT = 200;
 const VISIBLE_LINES = 3;
 const LINE_H = 30;
@@ -122,33 +122,35 @@ export class MessageLog {
     }
     /** 全画面のログ履歴 */
     drawHistory(g, w, h, scroll) {
-        g.save();
-        g.fillStyle = 'rgba(6,6,12,0.94)';
-        g.fillRect(0, 0, w, h);
-        drawText(g, 'これまでのできごと', w / 2, 52, {
-            size: 26, bold: true, align: 'center', color: UI.cursorEdge,
-        });
-        const top = 90;
-        const bottom = h - 60;
-        const rows = Math.floor((bottom - top) / 26);
+        drawOverlay(g, w, h, 0.78);
+        const r = { x: 60, y: 28, w: w - 120, h: h - 56 };
+        drawPanel(g, r);
+        drawTitlePlaque(g, 'これまでのできごと', r.x + 20, r.y + 14, { size: 24 });
+        const top = r.y + 70;
+        const bottom = r.y + r.h - 50;
+        const lineH = 30;
+        const rows = Math.floor((bottom - top) / lineH);
         const all = [];
         for (const e of this.entries) {
             const text = e.count > 1 ? `${e.text} ×${e.count}` : e.text;
-            for (const line of wrapText(g, text, w - 160, 17)) {
+            for (const line of wrapText(g, text, r.w - 80, 19)) {
                 all.push({ text: line, style: e.style });
             }
         }
         const maxScroll = Math.max(0, all.length - rows);
         const start = Math.max(0, Math.min(maxScroll, scroll));
         all.slice(start, start + rows).forEach((line, i) => {
-            drawText(g, line.text, 80, top + 20 + i * 26, {
-                size: 17, color: LOG_COLOR[line.style] ?? UI.text,
+            drawText(g, line.text, r.x + 40, top + 22 + i * lineH, {
+                size: 19, color: LOG_COLOR[line.style] ?? UI.text,
             });
         });
-        drawText(g, '↑↓ でスクロール　　B で閉じる', w / 2, h - 28, {
+        if (start > 0)
+            drawScrollArrow(g, r.x + r.w / 2, top + 4, false, performance.now());
+        if (start < maxScroll)
+            drawScrollArrow(g, r.x + r.w / 2, bottom + 6, true, performance.now());
+        drawText(g, '↑↓ でスクロール　　B で閉じる', w / 2, r.y + r.h - 18, {
             size: 16, align: 'center', color: UI.textDim,
         });
-        g.restore();
         return maxScroll;
     }
 }

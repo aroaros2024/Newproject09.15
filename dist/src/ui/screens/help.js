@@ -1,7 +1,7 @@
 /**
  * 操作ヘルプ。
  */
-import { drawText } from '../draw.js';
+import { drawOverlay, drawPanel, drawText, drawTitlePlaque } from '../draw.js';
 import { UI } from '../theme.js';
 const SECTIONS = [
     {
@@ -58,35 +58,34 @@ const SECTIONS = [
     },
 ];
 export function drawHelp(g, w, h) {
-    g.save();
-    g.fillStyle = 'rgba(6,6,12,0.95)';
-    g.fillRect(0, 0, w, h);
-    drawText(g, '操作方法', w / 2, 48, {
-        size: 26, bold: true, align: 'center', color: UI.cursorEdge,
-    });
-    const colW = (w - 120) / 2;
-    let x = 60;
-    let y = 90;
+    drawOverlay(g, w, h, 0.78);
+    const r = { x: 40, y: 28, w: w - 80, h: h - 56 };
+    drawPanel(g, r);
+    drawTitlePlaque(g, '操作方法', r.x + 20, r.y + 14, { size: 24 });
+    const colW = (r.w - 80) / 2;
+    let x = r.x + 32;
+    let y = r.y + 88;
     let col = 0;
     for (const section of SECTIONS) {
-        const needed = 30 + section.rows.length * 24;
-        if (y + needed > h - 60 && col === 0) {
+        const needed = 34 + section.rows.length * 28;
+        if (y + needed > r.y + r.h - 50 && col === 0) {
             col = 1;
-            x = 60 + colW + 20;
-            y = 90;
+            x = r.x + 32 + colW + 24;
+            y = r.y + 88;
         }
-        drawText(g, section.title, x, y, { size: 18, bold: true, color: UI.cursorEdge });
-        y += 26;
+        drawText(g, section.title, x, y, {
+            size: 20, bold: true, family: 'serif', color: UI.cursorEdge,
+        });
+        y += 30;
         for (const [key, desc] of section.rows) {
-            drawText(g, key, x + 8, y, { size: 14, color: UI.equip });
-            drawText(g, desc, x + 200, y, { size: 14, color: UI.text });
-            y += 24;
+            drawText(g, key, x + 8, y, { size: 17, bold: true, color: UI.equip });
+            drawText(g, desc, x + 200, y, { size: 17, color: UI.text });
+            y += 28;
         }
-        y += 14;
+        y += 12;
     }
-    drawText(g, 'B / Esc で閉じる', w / 2, h - 26, {
-        size: 15, align: 'center', color: UI.textDim,
+    drawText(g, 'B / Esc で閉じる', w / 2, r.y + r.h - 20, {
+        size: 16, align: 'center', color: UI.textDim,
     });
-    g.restore();
 }
 //# sourceMappingURL=help.js.map

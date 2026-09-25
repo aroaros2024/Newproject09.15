@@ -66,17 +66,17 @@ export class ResultScreen {
         g.fillRect(0, 0, SCREEN_W, SCREEN_H);
         const title = clear ? 'ダンジョン 踏破！'
             : d.kind === 'escape' ? '村へ 生還した' : 'ちからつきた……';
-        const color = clear ? '#ffd24a' : d.kind === 'escape' ? '#7ee8ff' : '#ff6b6b';
+        const color = clear ? '#e8c66a' : d.kind === 'escape' ? '#9fd6f0' : '#e07a6a';
         const appear = Math.min(1, this.t / 500);
         g.save();
         g.globalAlpha = appear;
         drawText(g, title, SCREEN_W / 2, 130, {
-            size: 52, bold: true, align: 'center', color,
-            outline: '#000', outlineWidth: 8,
+            size: 52, bold: true, align: 'center', color, family: 'serif', spacing: 6,
+            outline: '#0b1020', outlineWidth: 8,
         });
         g.restore();
         const r = { x: SCREEN_W / 2 - 340, y: 190, w: 680, h: 380 };
-        drawPanel(g, r, { frame: color });
+        drawPanel(g, r);
         const rows = [
             ['ダンジョン', d.record.dungeonName],
             ['到達した階', `${d.record.depth} F`],
@@ -97,8 +97,8 @@ export class ResultScreen {
             const shown = this.t > 600 + i * 70;
             if (!shown)
                 return;
-            drawText(g, label, r.x + 48, y, { size: 17, color: UI.textDim });
-            drawText(g, value, r.x + r.w - 48, y, { size: 19, align: 'right', bold: true });
+            drawText(g, label, r.x + 48, y, { size: 18, color: UI.textDim });
+            drawText(g, value, r.x + r.w - 48, y, { size: 20, align: 'right', bold: true });
         });
         let y = r.y + r.h + 34;
         if (d.rewardMessage && this.t > 1400) {
