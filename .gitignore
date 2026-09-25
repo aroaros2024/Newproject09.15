@@ -9,3 +9,6 @@ node_modules/
 # 検証用の使い捨てスクリプトを置いても取り込まれないようにしておく。
 dist/**/*.mjs
 dist/**/*.cjs
+
+# ワークフローの作業場（git worktree）。取り込むのは枝だけ
+.claude/worktrees/

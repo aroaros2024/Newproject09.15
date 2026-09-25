@@ -13,30 +13,34 @@ export const SCREEN_H = 720;
 /** 1 マスの大きさ（ピクセル） */
 export const TILE = 32;
 
-/** UI の色 */
+/**
+ * UI の色。深い紺の地に金の縁、文字は温かい白（新しい UI の決まりは ui2/tokens.ts）。
+ * 名前は昔のまま残してある（呼び出し側を全部書き換えずに色だけ入れ替えるため）。
+ */
 export const UI = {
-  panelBg: 'rgba(12,12,18,0.78)',
-  panelBgSolid: '#12121a',
-  frame: '#c8c8d4',
-  frameInner: 'rgba(255,255,255,0.14)',
-  text: '#f2f2f6',
-  textDim: '#9a9aa8',
-  textDisabled: '#5c5c68',
-  cursorFill: 'rgba(255,210,74,0.30)',
-  cursorEdge: '#ffd24a',
-  good: '#6ee06e',
-  warn: '#ffd24a',
-  danger: '#ff5a5a',
-  curse: '#d94ac8',
-  equip: '#4ad6ff',
-  gitan: '#ffd24a',
-  hpHi: '#4ade80',
-  hpMid: '#ffd24a',
-  hpLo: '#ff5a5a',
-  food: '#ffb347',
-  exp: '#7aa2ff',
-  shadow: 'rgba(0,0,0,0.55)',
-  overlay: 'rgba(0,0,0,0.62)',
+  panelBg: 'rgba(11,16,32,0.86)',
+  panelBgSolid: '#0b1020',
+  frame: '#c8a869',
+  frameInner: 'rgba(232,214,160,0.18)',
+  text: '#f1ebdd',
+  textDim: '#a9a391',
+  textDisabled: '#5e5a52',
+  cursorFill: 'rgba(70,110,190,0.45)',
+  /** 見出し・選択・強調の金 */
+  cursorEdge: '#e8c66a',
+  good: '#7fd88f',
+  warn: '#f2c45a',
+  danger: '#f06a5a',
+  curse: '#d070d0',
+  equip: '#6fcbef',
+  gitan: '#f2ce6a',
+  hpHi: '#6edb8c',
+  hpMid: '#f2c45a',
+  hpLo: '#f06a5a',
+  food: '#f0a860',
+  exp: '#8fb0ff',
+  shadow: 'rgba(3,5,12,0.55)',
+  overlay: 'rgba(3,5,12,0.62)',
 } as const;
 
 /** ログの種類ごとの文字色 */
@@ -55,8 +59,17 @@ export const FONT_STACK =
   '"Hiragino Kaku Gothic ProN", "Hiragino Sans", "Noto Sans JP", ' +
   '"Yu Gothic UI", "Meiryo", "MS PGothic", sans-serif';
 
-export const font = (size: number, weight: 'normal' | 'bold' = 'normal'): string =>
-  `${weight === 'bold' ? 'bold ' : ''}${size}px ${FONT_STACK}`;
+/** 明朝（見出し・名前・告知）。ui2/tokens.ts と同じもの */
+export const SERIF_FONT_STACK =
+  '"Hiragino Mincho ProN", "Yu Mincho", "YuMincho", "Noto Serif JP", "Noto Serif CJK JP", ' +
+  '"Source Han Serif JP", "IPAMincho", "IPAexMincho", "MS PMincho", serif';
+
+export type FontFamily = 'sans' | 'serif';
+
+export const font = (
+  size: number, weight: 'normal' | 'bold' = 'normal', family: FontFamily = 'sans',
+): string =>
+  `${weight === 'bold' ? 'bold ' : ''}${size}px ${family === 'serif' ? SERIF_FONT_STACK : FONT_STACK}`;
 
 /** HUD の配置 */
 export const LAYOUT = {

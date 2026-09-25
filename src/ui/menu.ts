@@ -8,7 +8,8 @@
 import type { Rect } from '../core/geom.js';
 import { Cmd, type InputManager } from '../core/input.js';
 import {
-  type Ctx, drawBadge, drawCursor, drawPanel, drawScrollArrow, drawText, ellipsize, wrapText,
+  type Ctx, drawBadge, drawCursor, drawPanel, drawScrollArrow, drawText, drawTitlePlaque,
+  ellipsize, fitRect, wrapText,
 } from './draw.js';
 import { UI, font } from './theme.js';
 import { getSprite, sprites } from './sprites.js';
@@ -91,9 +92,11 @@ export class ListMenu {
   constructor(o: ListMenuOptions) {
     this.title = o.title;
     this.entries = o.entries;
-    this.rect = o.rect;
-    this.rowH = o.rowH ?? 34;
-    this.rows = o.rows ?? Math.max(1, Math.floor((o.rect.h - 64) / this.rowH));
+    // 大きさを固定で書いたメニューでも、画面からはみ出さないように直す
+    this.rect = fitRect(o.rect);
+    this.rowH = o.rowH ?? 40;
+    const fitRows = Math.max(1, Math.floor((this.rect.h - 64) / this.rowH));
+    this.rows = Math.max(1, Math.min(o.rows ?? fitRows, fitRows));
     this.showDesc = o.showDesc ?? false;
     this.closable = o.closable ?? true;
     this.emptyText = o.emptyText ?? '何も無い';
@@ -160,21 +163,13 @@ export class ListMenu {
   draw(g: Ctx, time: number, frame: string = UI.frame): void {
     const r = this.rect;
     drawPanel(g, r, { frame });
-    drawText(g, liveValue(this.title) ?? '', r.x + 18, r.y + 30, {
-      size: 18, bold: true, color: UI.cursorEdge,
-    });
-    g.save();
-    g.strokeStyle = 'rgba(255,255,255,0.12)';
-    g.beginPath();
-    g.moveTo(r.x + 14, r.y + 40.5);
-    g.lineTo(r.x + r.w - 14, r.y + 40.5);
-    g.stroke();
-    g.restore();
+    const title = liveValue(this.title) ?? '';
+    if (title) drawTitlePlaque(g, ellipsize(g, title, r.w - 120, 20), r.x + 14, r.y + 10);
 
     const top = r.y + 50;
     if (this.entries.length === 0) {
       drawText(g, this.emptyText, r.x + r.w / 2, top + 40, {
-        size: 17, align: 'center', color: UI.textDim,
+        size: 20, align: 'center', color: UI.textDim,
       });
       return;
     }
@@ -183,14 +178,15 @@ export class ListMenu {
     visible.forEach((entry, i) => {
       const index = this.scroll + i;
       const y = top + i * this.rowH;
-      const rowRect = { x: r.x + 14, y, w: r.w - 28, h: this.rowH - 4 };
+      // 左の指し手が枠の線に重ならないよう、行は枠の内側 22px から始める
+      const rowRect = { x: r.x + 22, y, w: r.w - 36, h: this.rowH - 4 };
       if (index === this.cursor) drawCursor(g, rowRect, time);
 
       const color = entry.disabled ? UI.textDisabled : (liveValue(entry.color) ?? UI.text);
       // 行番号は描かない。数字キーで行を選ぶ実装がどこにも無いので押しても効かず、
       // 10 行目が「0」・11 行目以降は番号が出ずにラベルの位置だけずれていた。
       // 数字キー 1〜9 はダンジョンの道具ショートカットだけの意味にする
-      let x = rowRect.x + 12;
+      let x = rowRect.x + 10;
       // アイコン（ドット絵が登録されていれば）
       if (entry.sprite) {
         const icon = getSprite(entry.sprite);
@@ -211,22 +207,22 @@ export class ListMenu {
       const right = liveValue(entry.right);
       if (right) {
         drawText(g, right, bx, y + this.rowH / 2, {
-          size: 15, align: 'right', color: UI.textDim, baseline: 'middle',
+          size: 17, align: 'right', color: UI.textDim, baseline: 'middle',
         });
         g.save();
-        g.font = font(15);
+        g.font = font(17);
         bx -= g.measureText(right).width + 12;
         g.restore();
       }
       for (const badge of entry.badges ?? []) {
         const bw = 28;
-        drawBadge(g, badge.text, bx - bw, y + 6, badge.color, 12);
+        drawBadge(g, badge.text, bx - bw, y + Math.round((this.rowH - 4) / 2) - 9, badge.color, 12);
         bx -= bw + 6;
       }
 
       const labelMax = Math.max(40, bx - x - 8);
-      drawText(g, ellipsize(g, liveValue(entry.label) ?? '', labelMax, 17), x, y + this.rowH / 2, {
-        size: 17, color, baseline: 'middle',
+      drawText(g, ellipsize(g, liveValue(entry.label) ?? '', labelMax, 20), x, y + this.rowH / 2, {
+        size: 20, color, baseline: 'middle',
       });
     });
 
@@ -238,7 +234,7 @@ export class ListMenu {
 
     // 件数
     drawText(g, `${this.cursor + 1} / ${this.entries.length}`,
-      r.x + r.w - 18, r.y + 30, { size: 14, align: 'right', color: UI.textDim });
+      r.x + r.w - 20, r.y + 32, { size: 15, align: 'right', color: UI.textDim });
 
     if (this.showDesc) this.drawDesc(g);
   }
@@ -247,15 +243,15 @@ export class ListMenu {
     const entry = this.current;
     const r = this.rect;
     // 画面からはみ出さない位置に置く
-    const h = 92;
+    const h = 110;
     const y = Math.min(r.y + r.h + 10, 720 - h - 12);
     const box = { x: r.x, y, w: r.w, h };
-    drawPanel(g, box, { alpha: 0.92 });
+    drawPanel(g, box, { alpha: 0.94, ornaments: false });
     const text = liveValue(entry?.desc) ?? '';
-    const lines = wrapText(g, text, box.w - 36, 15).slice(0, 3);
+    const lines = wrapText(g, text, box.w - 40, 19).slice(0, 3);
     lines.forEach((line, i) => {
-      drawText(g, line, box.x + 18, box.y + 30 + i * 22, {
-        size: 15, color: UI.textDim,
+      drawText(g, line, box.x + 20, box.y + 33 + i * 27, {
+        size: 19, color: i === 0 ? UI.text : UI.textDim,
       });
     });
   }
@@ -357,26 +353,28 @@ export class ConfirmDialog {
   }
 
   draw(g: Ctx, screenW: number, screenH: number, time: number): void {
-    const lines = wrapText(g, this.opts.message, 440, 18);
-    const h = 110 + lines.length * 26;
-    const r = { x: screenW / 2 - 260, y: screenH / 2 - h / 2, w: 520, h };
+    const lines = wrapText(g, this.opts.message, 480, 20);
+    const h = 124 + lines.length * 30;
+    const r = { x: Math.round(screenW / 2 - 280), y: Math.round(screenH / 2 - h / 2), w: 560, h };
     drawPanel(g, r, { frame: this.opts.danger ? UI.danger : UI.frame });
     lines.forEach((line, i) => {
-      drawText(g, line, r.x + r.w / 2, r.y + 44 + i * 26, {
-        size: 18, align: 'center',
+      drawText(g, line, r.x + r.w / 2, r.y + 50 + i * 30, {
+        size: 20, align: 'center',
       });
     });
 
-    const by = r.y + r.h - 46;
-    const yesRect = { x: r.x + r.w / 2 - 150, y: by, w: 130, h: 36 };
-    const noRect = { x: r.x + r.w / 2 + 20, y: by, w: 130, h: 36 };
-    if (this.yes) drawCursor(g, yesRect, time);
-    else drawCursor(g, noRect, time);
-    drawText(g, this.opts.yesLabel ?? 'はい', yesRect.x + yesRect.w / 2, by + 24, {
-      size: 17, align: 'center', bold: this.yes,
+    const by = r.y + r.h - 60;
+    const yesRect = { x: r.x + r.w / 2 - 170, y: by, w: 150, h: 44 };
+    const noRect = { x: r.x + r.w / 2 + 20, y: by, w: 150, h: 44 };
+    for (const [rect, on] of [[yesRect, this.yes], [noRect, !this.yes]] as const) {
+      if (on) drawCursor(g, rect, time);
+      else drawPanel(g, rect, { alpha: 0.5, shadow: false, ornaments: false });
+    }
+    drawText(g, this.opts.yesLabel ?? 'はい', yesRect.x + yesRect.w / 2, by + 29, {
+      size: 20, align: 'center', bold: this.yes, color: this.yes ? UI.text : UI.textDim,
     });
-    drawText(g, this.opts.noLabel ?? 'いいえ', noRect.x + noRect.w / 2, by + 24, {
-      size: 17, align: 'center', bold: !this.yes,
+    drawText(g, this.opts.noLabel ?? 'いいえ', noRect.x + noRect.w / 2, by + 29, {
+      size: 20, align: 'center', bold: !this.yes, color: !this.yes ? UI.text : UI.textDim,
     });
   }
 }
@@ -412,10 +410,10 @@ export class DirectionPicker {
 
   draw(g: Ctx, screenW: number, screenH: number, playerPx: number, playerPy: number): void {
     // 画面上部に案内
-    const r = { x: screenW / 2 - 200, y: 130, w: 400, h: 56 };
-    drawPanel(g, r, { frame: UI.cursorEdge });
-    drawText(g, this.message, r.x + r.w / 2, r.y + 34, {
-      size: 17, align: 'center',
+    const r = { x: Math.round(screenW / 2 - 230), y: 110, w: 460, h: 60 };
+    drawPanel(g, r, { ornaments: false });
+    drawText(g, this.message, r.x + r.w / 2, r.y + 37, {
+      size: 20, align: 'center',
     });
     void screenH;
 
@@ -425,17 +423,26 @@ export class DirectionPicker {
     ];
     for (let i = 0; i < 8; i++) {
       const [dx, dy] = vecs[i];
-      const x = playerPx + dx * 46;
-      const y = playerPy + dy * 46;
+      const x = playerPx + dx * 60;
+      const y = playerPy + dy * 60;
+      const on = i === this.dir;
       g.save();
-      g.globalAlpha = i === this.dir ? 1 : 0.35;
-      g.fillStyle = i === this.dir ? UI.cursorEdge : UI.textDim;
-      g.translate(x, y);
+      g.globalAlpha = on ? 1 : 0.4;
+      g.translate(Math.round(x), Math.round(y));
       g.rotate(Math.atan2(dy, dx) + Math.PI / 2);
+      // 縁取りのある金の矢じり
+      g.fillStyle = '#0b1020';
+      g.beginPath();
+      g.moveTo(0, -16);
+      g.lineTo(12, 10);
+      g.lineTo(-12, 10);
+      g.closePath();
+      g.fill();
+      g.fillStyle = on ? UI.cursorEdge : UI.textDim;
       g.beginPath();
       g.moveTo(0, -12);
-      g.lineTo(9, 8);
-      g.lineTo(-9, 8);
+      g.lineTo(9, 7);
+      g.lineTo(-9, 7);
       g.closePath();
       g.fill();
       g.restore();
@@ -484,11 +491,11 @@ export class QuantityPicker {
   }
 
   draw(g: Ctx, screenW: number, screenH: number): void {
-    const r = { x: screenW / 2 - 180, y: screenH / 2 - 60, w: 360, h: 120 };
-    drawPanel(g, r, { frame: UI.cursorEdge });
-    drawText(g, this.message, r.x + r.w / 2, r.y + 38, { size: 17, align: 'center' });
-    drawText(g, `◀  ${this.value}  ▶`, r.x + r.w / 2, r.y + 84, {
-      size: 30, bold: true, align: 'center', color: UI.cursorEdge,
+    const r = { x: Math.round(screenW / 2 - 200), y: Math.round(screenH / 2 - 70), w: 400, h: 140 };
+    drawPanel(g, r);
+    drawText(g, this.message, r.x + r.w / 2, r.y + 44, { size: 20, align: 'center' });
+    drawText(g, `◀  ${this.value}  ▶`, r.x + r.w / 2, r.y + 100, {
+      size: 36, bold: true, align: 'center', color: UI.cursorEdge, family: 'serif',
     });
   }
 }

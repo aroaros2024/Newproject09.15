@@ -259,10 +259,11 @@ export class TownScreen implements Screen {
       },
     ];
     this.menus.push(new ListMenu({
-      title: '風の村',
+      title: '広場',
       entries,
-      rect: { x: 90, y: 150, w: 400, h: 60 + entries.length * 46 },
-      rowH: 46,
+      // 13 行 × 40px で y=700 に収まる（前は 46px で y=808 まで画面の外へはみ出していた）
+      rect: { x: 56, y: 108, w: 420, h: 72 + entries.length * 40 },
+      rowH: 40,
       showDesc: false,
       closable: false,
     }));
@@ -1418,12 +1419,13 @@ export class TownScreen implements Screen {
     }
     g.restore();
 
-    drawText(g, '風の村', 90, 96, {
-      size: 40, bold: true, color: '#e8dcae', outline: '#12100a', outlineWidth: 6,
+    drawText(g, '風の村', 56, 62, {
+      size: 40, bold: true, family: 'serif', spacing: 4, color: '#e8d6a0',
+      outline: '#0b1020', outlineWidth: 6,
     });
     drawText(g, `所持ギタン ${this.app.town.gitan.toLocaleString('ja-JP')}　`
-      + `倉庫 ${this.app.town.storage.length}/${storageLimit(this.app.town)}`, 92, 128, {
-      size: 16, color: UI.textDim,
+      + `倉庫 ${this.app.town.storage.length}/${storageLimit(this.app.town)}`, 58, 94, {
+      size: 17, color: UI.textDim, outline: '#0b1020', outlineWidth: 4,
     });
 
     if (this.place === 'records') {
