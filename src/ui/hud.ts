@@ -49,6 +49,11 @@ export interface FloorInfo {
   bottom: boolean;
   /** ショートカットの見え方（数字キー 1〜9） */
   shortcuts: ShortcutView[];
+  /**
+   * 見せる HP（演出の当たりの瞬間に減る値。VisualWorld.shownHp）。
+   * 省けば本当の HP をそのまま出す
+   */
+  shownHp?: number;
 }
 
 /** ショートカット 1 枠の表示内容 */
@@ -63,8 +68,9 @@ export class Hud {
   /** HP バーの追従表示（減った分がゆっくり追いつく） */
   private hpTrail = 1;
 
-  update(p: PlayerActor, dt: number): void {
-    const target = p.maxHp > 0 ? p.hp / p.maxHp : 0;
+  /** shownHp：演出に合わせて見せる HP（省けば本当の HP） */
+  update(p: PlayerActor, dt: number, shownHp = p.hp): void {
+    const target = p.maxHp > 0 ? shownHp / p.maxHp : 0;
     if (this.hpTrail > target) {
       this.hpTrail = Math.max(target, this.hpTrail - (dt / 1000) * 0.6);
     } else {
@@ -74,7 +80,7 @@ export class Hud {
 
   /** frame は昔の呼び出しとの互換のため残している（枠は常に金） */
   draw(g: Ctx, p: PlayerActor, info: FloorInfo, _frame?: string): void {
-    this.drawStatus(g, p);
+    this.drawStatus(g, p, info.shownHp ?? p.hp);
     this.drawStatusIcons(g, p);
     this.drawFloor(g, info);
     this.drawShortcuts(g, info);
@@ -130,7 +136,7 @@ export class Hud {
     }
   }
 
-  private drawStatus(g: Ctx, p: PlayerActor): void {
+  private drawStatus(g: Ctx, p: PlayerActor, hp: number): void {
     const r = LAYOUT.status;
     drawPanel(g, r);
     const left = r.x + 18;
@@ -152,9 +158,9 @@ export class Hud {
     });
 
     // 2 行目：HP
-    const hpRatio = p.maxHp > 0 ? p.hp / p.maxHp : 0;
+    const hpRatio = p.maxHp > 0 ? hp / p.maxHp : 0;
     drawText(g, 'HP', left, r.y + 64, { size: 15, color: UI.textDim });
-    drawText(g, `${p.hp}`, left + 78, r.y + 65, {
+    drawText(g, `${hp}`, left + 78, r.y + 65, {
       size: 22, bold: true, align: 'right', color: hpColor(hpRatio),
     });
     drawText(g, `/${p.maxHp}`, left + 80, r.y + 65, { size: 15, color: UI.textDim });

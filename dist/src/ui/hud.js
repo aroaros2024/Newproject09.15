@@ -38,8 +38,9 @@ const STATUS_ICON = {
 export class Hud {
     /** HP バーの追従表示（減った分がゆっくり追いつく） */
     hpTrail = 1;
-    update(p, dt) {
-        const target = p.maxHp > 0 ? p.hp / p.maxHp : 0;
+    /** shownHp：演出に合わせて見せる HP（省けば本当の HP） */
+    update(p, dt, shownHp = p.hp) {
+        const target = p.maxHp > 0 ? shownHp / p.maxHp : 0;
         if (this.hpTrail > target) {
             this.hpTrail = Math.max(target, this.hpTrail - (dt / 1000) * 0.6);
         }
@@ -49,7 +50,7 @@ export class Hud {
     }
     /** frame は昔の呼び出しとの互換のため残している（枠は常に金） */
     draw(g, p, info, _frame) {
-        this.drawStatus(g, p);
+        this.drawStatus(g, p, info.shownHp ?? p.hp);
         this.drawStatusIcons(g, p);
         this.drawFloor(g, info);
         this.drawShortcuts(g, info);
@@ -104,7 +105,7 @@ export class Hud {
             }
         }
     }
-    drawStatus(g, p) {
+    drawStatus(g, p, hp) {
         const r = LAYOUT.status;
         drawPanel(g, r);
         const left = r.x + 18;
@@ -124,9 +125,9 @@ export class Hud {
             size: 15, align: 'right', color: UI.textDim,
         });
         // 2 行目：HP
-        const hpRatio = p.maxHp > 0 ? p.hp / p.maxHp : 0;
+        const hpRatio = p.maxHp > 0 ? hp / p.maxHp : 0;
         drawText(g, 'HP', left, r.y + 64, { size: 15, color: UI.textDim });
-        drawText(g, `${p.hp}`, left + 78, r.y + 65, {
+        drawText(g, `${hp}`, left + 78, r.y + 65, {
             size: 22, bold: true, align: 'right', color: hpColor(hpRatio),
         });
         drawText(g, `/${p.maxHp}`, left + 80, r.y + 65, { size: 15, color: UI.textDim });
