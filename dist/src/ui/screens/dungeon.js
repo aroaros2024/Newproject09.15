@@ -1192,7 +1192,9 @@ export class DungeonScreen {
         this.renderer.drawScreenFx(g, this.fx);
         // HUD
         const frame = theme.accent;
-        this.app.log.draw(g, now);
+        // メニューを開いている間はログを隠す（下の会話窓と説明欄が重なる）
+        if (!this.menus.isOpen)
+            this.app.log.draw(g, now);
         const bracelet = equippedBracelet(world.player);
         const braceletEffect = bracelet ? world.braceletEffectOf(world.player) : null;
         drawMinimap(g, {

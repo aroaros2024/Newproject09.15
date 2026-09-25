@@ -1,13 +1,14 @@
 /**
  * メッセージログ。
  *
- * シレンのログは「直近 3 行が画面上部に出て、しばらくすると薄くなる」形式。
+ * 左下の会話窓に直近 3 行を出し、黙っていると 3 秒で薄くなって消える
+ * （世界を隠さないため。HD-2D の画面は常時表示を小さく保つ）。
  * 同じ文が続いたら「×n」に畳み、履歴は全画面で読み返せる。
  */
 
 import type { LogStyle } from '../core/types.js';
 import { ANIM, LAYOUT, LOG_COLOR, UI } from './theme.js';
-import { type Ctx, drawPanel, drawText, wrapText } from './draw.js';
+import { type Ctx, drawPanel, drawScrollArrow, drawText, wrapText } from './draw.js';
 
 export interface LogEntry {
   text: string;
@@ -20,7 +21,7 @@ export interface LogEntry {
 
 const HISTORY_LIMIT = 200;
 const VISIBLE_LINES = 3;
-const LINE_H = 28;
+const LINE_H = 30;
 
 export class MessageLog {
   private entries: LogEntry[] = [];
@@ -86,19 +87,21 @@ export class MessageLog {
     this.revealed = Math.min(full, this.revealed + dtMs / speed);
   }
 
-  /** ログ表示の不透明度（しばらく経つと薄くなる） */
+  /** ログ表示の不透明度（しばらく経つと消える。文字送り中は消さない） */
   private alphaAt(now: number): number {
+    if (this.isTyping()) return 1;
     const age = now - this.lastAddedAt;
     if (age <= ANIM.messageHold) return 1;
     const t = Math.min(1, (age - ANIM.messageHold) / ANIM.messageFade);
-    return 1 - t * 0.65;
+    return 1 - t;
   }
 
-  /** 画面上部に直近 3 行を描く */
+  /** 左下の会話窓に直近 3 行を描く */
   draw(g: Ctx, now: number): void {
     if (this.entries.length === 0) return;
     const r = LAYOUT.message;
     const alpha = this.alphaAt(now);
+    if (alpha <= 0) return;
 
     // 折り返しを考慮して、後ろから 3 行ぶん取り出す
     const lines: Array<{ text: string; style: LogStyle }> = [];
@@ -106,7 +109,7 @@ export class MessageLog {
       const e = this.entries[i];
       let text = this.displayText(e);
       if (i === this.entries.length - 1) text = text.slice(0, Math.floor(this.revealed));
-      const wrapped = wrapText(g, text, r.w - 32, 18);
+      const wrapped = wrapText(g, text, r.w - 40, 20);
       for (let j = wrapped.length - 1; j >= 0; j--) {
         lines.unshift({ text: wrapped[j], style: e.style });
       }
@@ -116,20 +119,18 @@ export class MessageLog {
 
     g.save();
     g.globalAlpha = alpha;
-    drawPanel(g, r, { alpha: alpha * 0.9 });
+    drawPanel(g, r, { alpha, ornaments: false });
     shown.forEach((line, i) => {
-      drawText(g, line.text, r.x + 16, r.y + 34 + i * LINE_H, {
-        size: 18,
+      drawText(g, line.text, r.x + 20, r.y + 38 + i * LINE_H, {
+        size: 20,
         color: LOG_COLOR[line.style] ?? UI.text,
-        outline: 'rgba(0,0,0,0.8)',
+        outline: 'rgba(11,16,32,0.85)',
         outlineWidth: 3,
       });
     });
     // 文字送り中は「▼」を出さない
     if (!this.isTyping() && this.entries.length > VISIBLE_LINES) {
-      drawText(g, '▼', r.x + r.w - 26, r.y + r.h - 12, {
-        size: 14, color: UI.textDim,
-      });
+      drawScrollArrow(g, r.x + r.w - 22, r.y + r.h - 16, true, now);
     }
     g.restore();
   }

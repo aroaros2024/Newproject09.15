@@ -72,11 +72,27 @@ function paint(g, d, originX, originY, cell, showAll) {
         g.fillStyle = MINIMAP_COLOR.ally;
         g.fillRect(originX + a.pos.x * cell, originY + a.pos.y * cell, cell, cell);
     }
-    // プレイヤー（点滅させて見失わないようにする）
-    g.fillStyle = MINIMAP_COLOR.player;
-    const px = originX + d.player.pos.x * cell;
-    const py = originY + d.player.pos.y * cell;
-    g.fillRect(px - 1, py - 1, cell + 2, cell + 2);
+    // プレイヤー：点滅する金の菱形（見失わないように、マスより一回り大きく）
+    const px = originX + d.player.pos.x * cell + cell / 2;
+    const py = originY + d.player.pos.y * cell + cell / 2;
+    const on = Math.floor(performance.now() / 400) % 2 === 0;
+    const rr = Math.max(2, cell) + 1;
+    g.fillStyle = '#0b1020';
+    g.beginPath();
+    g.moveTo(px, py - rr - 1);
+    g.lineTo(px + rr + 1, py);
+    g.lineTo(px, py + rr + 1);
+    g.lineTo(px - rr - 1, py);
+    g.closePath();
+    g.fill();
+    g.fillStyle = on ? MINIMAP_COLOR.player : UI.cursorEdge;
+    g.beginPath();
+    g.moveTo(px, py - rr);
+    g.lineTo(px + rr, py);
+    g.lineTo(px, py + rr);
+    g.lineTo(px - rr, py);
+    g.closePath();
+    g.fill();
 }
 /** 右上の小さなミニマップ */
 export function drawMinimap(g, d, mode, frame) {
@@ -86,8 +102,9 @@ export function drawMinimap(g, d, mode, frame) {
     const r = mode === 'large'
         ? { x: base.x - 120, y: base.y, w: base.w + 120, h: base.h + 80 }
         : base;
-    drawPanel(g, r, { frame, alpha: 0.85 });
-    const inner = { x: r.x + 8, y: r.y + 8, w: r.w - 16, h: r.h - 16 };
+    void frame;
+    drawPanel(g, r, { alpha: 0.9, ornaments: false });
+    const inner = { x: r.x + 6, y: r.y + 6, w: r.w - 12, h: r.h - 12 };
     const cell = cellSize(d.map, inner.w, inner.h);
     const ox = inner.x + Math.floor((inner.w - d.map.width * cell) / 2);
     const oy = inner.y + Math.floor((inner.h - d.map.height * cell) / 2);

@@ -54,31 +54,34 @@ export const FONT_STACK = '"Hiragino Kaku Gothic ProN", "Hiragino Sans", "Noto S
 export const SERIF_FONT_STACK = '"Hiragino Mincho ProN", "Yu Mincho", "YuMincho", "Noto Serif JP", "Noto Serif CJK JP", ' +
     '"Source Han Serif JP", "IPAMincho", "IPAexMincho", "MS PMincho", serif';
 export const font = (size, weight = 'normal', family = 'sans') => `${weight === 'bold' ? 'bold ' : ''}${size}px ${family === 'serif' ? SERIF_FONT_STACK : FONT_STACK}`;
-/** HUD の配置 */
+/**
+ * HUD の配置。世界を広く見せるため、四隅に小さくまとめて中央（400〜880 × 130〜580）を空ける。
+ * 世界は 1 マス 48px なので、画面には横 26・縦 15 マスしか出ない。常時表示が大きいと部屋が見えない。
+ */
 export const LAYOUT = {
-    /** メッセージログ */
-    message: { x: 16, y: 8, w: 1100, h: 100 },
-    /** ミニマップ */
-    minimap: { x: 1128, y: 8, w: 144, h: 96 },
-    /** 状態異常アイコン */
-    statusIcons: { x: 16, y: 548, w: 456, h: 40 },
-    /** ステータス */
-    status: { x: 16, y: 592, w: 456, h: 112 },
-    /** 階層表示 */
-    floor: { x: 1096, y: 600, w: 168, h: 104 },
-    /** ショートカット（数字キー 1〜9） */
-    shortcuts: { x: 484, y: 626, w: 604, h: 78 },
+    /** ステータス（左上） */
+    status: { x: 16, y: 12, w: 388, h: 104 },
+    /** 状態異常の札（ステータスの下） */
+    statusIcons: { x: 16, y: 122, w: 388, h: 34 },
+    /** 階層表示（右上） */
+    floor: { x: 1052, y: 12, w: 212, h: 58 },
+    /** ミニマップ（階層表示の下）。中は 200×136 で、48×32 マスの階が 1 マス 4px で収まる */
+    minimap: { x: 1052, y: 76, w: 212, h: 148 },
+    /** メッセージ（左下の会話窓） */
+    message: { x: 16, y: 588, w: 700, h: 120 },
+    /** ショートカット（右下、数字キー 1〜9） */
+    shortcuts: { x: 728, y: 640, w: 536, h: 68 },
 };
 /** メニューの配置 */
 export const MENU_LAYOUT = {
     /** メインメニュー（右寄せの縦一列） */
-    main: { x: 968, y: 120, w: 264, itemH: 44 },
+    main: { x: 968, y: 236, w: 296, itemH: 46 },
     /** 道具一覧 */
-    items: { x: 300, y: 76, w: 580, h: 500, rowH: 34, rows: 13 },
+    items: { x: 236, y: 60, w: 640, h: 464, rowH: 40, rows: 10 },
     /** 道具のコンテキストメニュー */
-    context: { w: 200, itemH: 38 },
+    context: { w: 220, itemH: 42 },
     /** アイテムの説明パネル */
-    detail: { x: 300, y: 560, w: 680, h: 120 },
+    detail: { x: 236, y: 560, w: 720, h: 136 },
 };
 /** 演出の時間（ミリ秒）。設定の「アニメ速度」で倍率が掛かる */
 export const ANIM = {
@@ -95,8 +98,8 @@ export const ANIM = {
     /** メッセージの 1 文字あたり(ms) */
     messageCps: 18,
     /** ログが薄くなり始めるまで */
-    messageHold: 2600,
-    messageFade: 400,
+    messageHold: 3000,
+    messageFade: 500,
 };
 /** 画面のゆれ・フラッシュの強さ */
 export const FX = {
@@ -117,17 +120,17 @@ export function hpColor(ratio) {
 /** ミニマップの色 */
 export const MINIMAP_COLOR = {
     unknown: 'rgba(0,0,0,0)',
-    wall: '#2a2a38',
-    floor: '#5a5a70',
-    corridor: '#464658',
-    water: '#2a5878',
-    lava: '#8a3a18',
-    stairs: '#5ce05c',
-    item: '#5cc8ff',
-    trap: '#ff9b3d',
-    shop: '#ffd24a',
-    monster: '#ff5a5a',
-    ally: '#6ee06e',
-    player: '#ffe24a',
+    wall: '#262a3c',
+    floor: '#5b6178',
+    corridor: '#464b60',
+    water: '#2f6a98',
+    lava: '#b24a1c',
+    stairs: '#7fd88f',
+    item: '#6fcbef',
+    trap: '#f0a860',
+    shop: '#e8c66a',
+    monster: '#f06a5a',
+    ally: '#7fd88f',
+    player: '#fff0b0',
 };
 //# sourceMappingURL=theme.js.map
